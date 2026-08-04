@@ -4,22 +4,22 @@
 
 AfrJigi is an educational platform built around **Akili**, an AI tutor that guides students through their national exam preparation (BEPC, BAC Général, BAC Technique) using official Ivorian curriculum documents (DPFC programs, past exam papers, official lab worksheets).
 
-🌐 [afrjigi.com](https://afrjigi.com) · 💬 [WhatsApp Akili](https://wa.me/13154030671)
+🌐 [afrjigi.com](https://afrjigi.com) · 💬 WhatsApp access *(coming soon)*
 
 ## Why AfrJigi
 
 - 300,000+ students take the BAC in Côte d'Ivoire every year
-- Historical pass rate below 50%
+- BAC pass rate around 40% (2025, up from 34% in 2024) — source: DECO, Côte d'Ivoire
 - Near-universal smartphone ownership, but limited access to qualified teachers (especially in sciences)
 
-AfrJigi meets students where they already are — on their phone, on WhatsApp — with a tutor grounded in the real curriculum, not generic web content.
+AfrJigi meets students where they already are — on their phone, and soon on WhatsApp — with a tutor grounded in the real curriculum, not generic web content.
 
 ## How Akili works
 
 - **Guides, never gives the answer directly** — a Socratic method that keeps students actively engaged
 - **Two modes**: *Étude* (study, leaning on official programs/lessons) and *Examen* (drills on real past papers)
 - **Matched to the real curriculum**: separate content and tone for BEPC (3ème), BAC Général and BAC Technique
-- **Built for the real device**: full web app + native WhatsApp access, formulas offered as multiple-choice taps instead of hard typing
+- **Built for the real device**: full web app (native WhatsApp access in rollout), formulas offered as multiple-choice taps instead of hard typing
 
 ## Project structure
 
