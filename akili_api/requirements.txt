@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+google-cloud-aiplatform
+vertexai
+pillow
+python-multipart
+google-cloud-storage
+google-cloud-firestore

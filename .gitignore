@@ -1,0 +1,39 @@
+# Secrets et credentials
+firebase_credentials.json
+*.pem
+*.key
+.env
+.env.*
+
+# Contenu pedagogique (droits DPFC, ne pas redistribuer publiquement)
+*.pdf
+*.docx
+*.doc
+
+# Backups de sessions de travail
+*.backup_*
+app.py.backup*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# Divers
+.DS_Store
+*.log
+nohup.out
+
+# Dumps de la base de donnees (contenu DPFC, ne pas redistribuer)
+jigi_global_database*.json
+
+# Copies locales brutes des dossiers Drive
+Jigi/
+
+# Cache Firebase CLI
+.firebase/

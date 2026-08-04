@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AfrJigi — La première Plateforme Intelligente pour Réussir le BAC en Afrique</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #1E3A8A;
+    --gold: #C9A84C;
+    --gold-light: #F5E6C0;
+    --cream: #FAFAF7;
+    --text: #1a1a2e;
+    --muted: #6B7280;
+    --white: #ffffff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--cream); color: var(--text); overflow-x: hidden; }
+
+  /* NAV */
+  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 1rem 2rem; background: rgba(250,250,247,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(201,168,76,0.2); }
+  .nav-logo { font-family: 'Playfair Display', serif; font-size: 1.5rem; font-weight: 900; color: var(--navy); letter-spacing: -0.5px; }
+  .nav-logo span { color: var(--gold); }
+  .nav-links { display: flex; gap: 2rem; list-style: none; }
+  .nav-links a { text-decoration: none; color: var(--muted); font-size: 0.9rem; font-weight: 500; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--navy); }
+  .nav-cta { background: var(--navy) !important; color: var(--white) !important; padding: 0.5rem 1.25rem !important; border-radius: 50px !important; font-weight: 600 !important; }
+  .nav-cta:hover { background: var(--gold) !important; color: var(--navy) !important; }
+
+  /* HERO */
+  .hero { min-height: 100vh; display: flex; align-items: center; padding: 8rem 2rem 4rem; position: relative; overflow: hidden; }
+  .hero-content { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: center; }
+  .hero-badge { display: inline-flex; align-items: center; gap: 0.5rem; background: var(--gold-light); color: #8B6914; font-size: 0.8rem; font-weight: 600; padding: 0.4rem 1rem; border-radius: 50px; margin-bottom: 1.5rem; letter-spacing: 0.5px; text-transform: uppercase; }
+  .hero h1 { font-family: 'Playfair Display', serif; font-size: clamp(2.5rem, 5vw, 3.8rem); font-weight: 900; line-height: 1.1; color: var(--navy); margin-bottom: 1.5rem; }
+  .hero h1 em { font-style: italic; color: var(--gold); }
+  .hero p { font-size: 1.1rem; line-height: 1.7; color: var(--muted); margin-bottom: 0.75rem; max-width: 480px; }
+  .hero-slogan { font-size: 1rem; font-style: italic; color: var(--gold); font-weight: 600; margin-bottom: 2rem; }
+  .hero-actions { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .btn-primary { background: var(--navy); color: var(--white); padding: 0.9rem 2rem; border-radius: 50px; text-decoration: none; font-weight: 600; font-size: 1rem; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; border: none; cursor: pointer; }
+  .btn-primary:hover { background: #152d6e; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(30,58,138,0.25); }
+  .btn-secondary { background: transparent; color: var(--navy); padding: 0.9rem 2rem; border-radius: 50px; text-decoration: none; font-weight: 600; font-size: 1rem; border: 2px solid var(--navy); transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; }
+  .btn-secondary:hover { background: var(--navy); color: var(--white); transform: translateY(-2px); }
+
+  /* CHAT MOCKUP */
+  .hero-visual { position: relative; }
+  .chat-mockup { background: var(--white); border-radius: 20px; padding: 1.5rem; box-shadow: 0 20px 60px rgba(30,58,138,0.15); animation: float 4s ease-in-out infinite; }
+  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+  .chat-header { display: flex; align-items: center; gap: 0.75rem; padding-bottom: 1rem; border-bottom: 1px solid #f0f0f0; margin-bottom: 1rem; }
+  .chat-avatar { width: 40px; height: 40px; background: var(--navy); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--gold); font-weight: 900; font-family: 'Playfair Display', serif; font-size: 1rem; }
+  .chat-name { font-weight: 600; font-size: 0.95rem; color: var(--navy); }
+  .chat-status { font-size: 0.75rem; color: #22c55e; display: flex; align-items: center; gap: 0.3rem; }
+  .chat-status::before { content: ''; width: 6px; height: 6px; background: #22c55e; border-radius: 50%; display: inline-block; }
+  .chat-bubble { margin-bottom: 0.75rem; max-width: 85%; }
+  .chat-bubble.user { margin-left: auto; text-align: right; }
+  .bubble-inner { display: inline-block; padding: 0.7rem 1rem; border-radius: 16px; font-size: 0.85rem; line-height: 1.5; }
+  .user .bubble-inner { background: var(--navy); color: var(--white); border-radius: 16px 16px 4px 16px; }
+  .akili .bubble-inner { background: #f4f6fb; color: var(--text); border-radius: 16px 16px 16px 4px; text-align: left; }
+  .typing-dots { display: flex; gap: 4px; padding: 0.7rem 1rem; background: #f4f6fb; border-radius: 16px 16px 16px 4px; width: fit-content; }
+  .typing-dots span { width: 6px; height: 6px; background: var(--muted); border-radius: 50%; animation: bounce 1.2s infinite; }
+  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+  .floating-badge { position: absolute; background: var(--white); border-radius: 12px; padding: 0.6rem 1rem; box-shadow: 0 8px 24px rgba(0,0,0,0.12); font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+  .badge-top { top: -1.5rem; right: -1rem; color: #22c55e; }
+  .badge-bottom { bottom: -1rem; left: -1.5rem; color: var(--navy); }
+
+  /* STATS */
+  .stats { background: var(--navy); padding: 3rem 2rem; }
+  .stats-grid { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; text-align: center; }
+  .stat-num { font-family: 'Playfair Display', serif; font-size: 2.5rem; font-weight: 900; color: var(--gold); display: block; margin-bottom: 0.25rem; }
+  .stat-label { color: rgba(255,255,255,0.7); font-size: 0.9rem; }
+
+  /* SECTIONS */
+  section { padding: 6rem 2rem; }
+  .section-header { text-align: center; margin-bottom: 4rem; }
+  .section-tag { display: inline-block; background: var(--gold-light); color: #8B6914; font-size: 0.75rem; font-weight: 600; padding: 0.3rem 1rem; border-radius: 50px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 1rem; }
+  .section-title { font-family: 'Playfair Display', serif; font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 900; color: var(--navy); margin-bottom: 1rem; }
+  .section-sub { color: var(--muted); font-size: 1.05rem; max-width: 500px; margin: 0 auto; line-height: 1.6; }
+
+  /* FEATURES */
+  .features { background: var(--white); }
+  .features-grid { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; }
+  .feature-card { background: var(--cream); border-radius: 20px; padding: 2rem; transition: transform 0.2s, box-shadow 0.2s; position: relative; overflow: hidden; }
+  .feature-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--gold); transform: scaleX(0); transition: transform 0.3s; }
+  .feature-card:hover::before { transform: scaleX(1); }
+  .feature-card:hover { transform: translateY(-4px); box-shadow: 0 16px 48px rgba(30,58,138,0.12); }
+  .feature-icon { width: 52px; height: 52px; background: var(--navy); border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; margin-bottom: 1.25rem; }
+  .feature-title { font-weight: 700; font-size: 1.1rem; color: var(--navy); margin-bottom: 0.6rem; }
+  .feature-desc { color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
+
+  /* MATIERES */
+  .matieres { background: var(--cream); }
+  .matieres-grid { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .matiere-pill { background: var(--white); border: 2px solid transparent; border-radius: 12px; padding: 1rem 1.5rem; text-align: center; cursor: pointer; transition: all 0.2s; font-weight: 500; color: var(--navy); font-size: 0.9rem; }
+  .matiere-pill:hover, .matiere-pill.active { border-color: var(--gold); background: var(--gold-light); color: #8B6914; transform: scale(1.03); }
+  .matiere-emoji { display: block; font-size: 1.5rem; margin-bottom: 0.3rem; }
+
+  /* PROBLEM */
+  .problem { background: var(--navy); padding: 6rem 2rem; }
+  .problem-grid { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; align-items: center; }
+  .problem-title { font-family: 'Playfair Display', serif; font-size: clamp(1.8rem, 4vw, 2.5rem); font-weight: 900; color: var(--white); margin-bottom: 1.5rem; }
+  .problem-title em { color: var(--gold); font-style: italic; }
+  .problem-stat { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; }
+  .pstat-num { font-family: 'Playfair Display', serif; font-size: 2rem; font-weight: 900; color: var(--gold); min-width: 80px; }
+  .pstat-label { color: rgba(255,255,255,0.85); font-size: 0.95rem; line-height: 1.5; }
+  .problem-insight { background: rgba(201,168,76,0.15); border: 1px solid rgba(201,168,76,0.3); border-radius: 16px; padding: 1.5rem; }
+  .problem-insight p { color: var(--gold); font-weight: 600; font-size: 1rem; line-height: 1.6; }
+
+  /* FOUNDER */
+  .founder { background: var(--white); }
+  .founder-grid { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1.6fr; gap: 3rem; align-items: start; }
+  .founder-card { background: var(--navy); border-radius: 24px; padding: 2rem; color: white; position: relative; overflow: hidden; }
+  .founder-card::before { content: ''; position: absolute; bottom: -30px; right: -30px; width: 150px; height: 150px; background: rgba(201,168,76,0.15); border-radius: 50%; }
+  .founder-avatar { width: 80px; height: 80px; background: var(--gold); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; font-weight: 900; color: var(--navy); font-family: 'Playfair Display', serif; margin-bottom: 1.25rem; }
+  .founder-name { font-size: 1.2rem; font-weight: 700; margin-bottom: 0.25rem; }
+  .founder-role { font-size: 0.82rem; color: var(--gold); font-weight: 600; letter-spacing: 0.5px; margin-bottom: 1.5rem; }
+  .founder-badges { display: flex; flex-direction: column; gap: 0.6rem; }
+  .fbi { display: flex; align-items: center; gap: 0.6rem; font-size: 0.82rem; color: rgba(255,255,255,0.85); }
+  .fdot { width: 6px; height: 6px; background: var(--gold); border-radius: 50%; flex-shrink: 0; }
+  .cert-pills { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.5rem; }
+  .cert-pill { background: rgba(201,168,76,0.2); border: 1px solid rgba(201,168,76,0.4); color: var(--gold); font-size: 0.72rem; font-weight: 700; padding: 0.3rem 0.75rem; border-radius: 50px; }
+  .stats-mini { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem; }
+  .smin { background: var(--cream); border-radius: 12px; padding: 1rem; text-align: center; }
+  .snum { font-family: 'Playfair Display', serif; font-size: 1.6rem; font-weight: 900; color: var(--navy); display: block; }
+  .slbl { font-size: 0.72rem; color: var(--muted); line-height: 1.3; }
+  .founder-story { display: flex; flex-direction: column; gap: 1.5rem; }
+  .sblock { background: var(--cream); border-radius: 16px; padding: 1.5rem; border-left: 4px solid var(--gold); }
+  .slabel { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--gold); margin-bottom: 0.5rem; }
+  .stext { font-size: 0.9rem; line-height: 1.7; color: #374151; }
+  .stext strong { color: var(--navy); font-weight: 600; }
+  .vision-block { background: var(--navy); border-radius: 20px; padding: 2rem; color: white; }
+  .vision-title { font-family: 'Playfair Display', serif; font-size: 1.1rem; font-weight: 700; color: var(--gold); margin-bottom: 0.75rem; }
+  .vision-text { font-size: 0.9rem; line-height: 1.7; color: rgba(255,255,255,0.85); margin-bottom: 1.5rem; }
+  .roadmap { display: flex; position: relative; }
+  .roadmap::before { content: ''; position: absolute; top: 16px; left: 16px; right: 16px; height: 2px; background: rgba(255,255,255,0.2); }
+  .rstep { flex: 1; text-align: center; }
+  .rdot { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; margin: 0 auto 0.5rem; position: relative; z-index: 1; }
+  .dact { background: var(--gold); color: var(--navy); }
+  .dfut { background: rgba(255,255,255,0.2); color: rgba(255,255,255,0.6); }
+  .rlbl { font-size: 0.72rem; color: rgba(255,255,255,0.7); line-height: 1.3; }
+  .rlbl.act { color: var(--gold); font-weight: 600; }
+
+  /* IMPACT */
+  .impact { background: var(--cream); }
+  .impact-grid { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
+  .impact-card { background: var(--white); border-radius: 16px; padding: 1.5rem; text-align: center; border-bottom: 3px solid var(--gold); }
+  .impact-icon { font-size: 2rem; margin-bottom: 0.75rem; display: block; }
+  .impact-label { font-size: 0.82rem; color: var(--muted); font-weight: 500; }
+  .impact-odd { display: inline-block; background: var(--gold-light); color: #8B6914; font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 50px; margin-top: 0.5rem; }
+
+  /* PRICING */
+  .pricing { background: var(--white); }
+  .pricing-grid { max-width: 800px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: start; }
+  .plan-card { border-radius: 24px; padding: 2.5rem; position: relative; }
+  .plan-free { background: var(--cream); border: 2px solid #e5e7eb; }
+  .plan-premium { background: var(--navy); color: var(--white); transform: scale(1.03); box-shadow: 0 24px 60px rgba(30,58,138,0.3); }
+  .plan-badge { position: absolute; top: -0.75rem; left: 50%; transform: translateX(-50%); background: var(--gold); color: var(--navy); font-size: 0.75rem; font-weight: 700; padding: 0.3rem 1rem; border-radius: 50px; white-space: nowrap; }
+  .plan-name { font-size: 0.85rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 0.75rem; opacity: 0.7; }
+  .plan-premium .plan-name { color: var(--gold); opacity: 1; }
+  .plan-price { font-family: 'Playfair Display', serif; font-size: 3rem; font-weight: 900; line-height: 1; margin-bottom: 0.25rem; color: var(--navy); }
+  .plan-premium .plan-price { color: var(--gold); }
+  .plan-period { font-size: 0.85rem; opacity: 0.6; margin-bottom: 2rem; display: block; }
+  .plan-features { list-style: none; margin-bottom: 2rem; }
+  .plan-features li { padding: 0.5rem 0; font-size: 0.9rem; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid rgba(0,0,0,0.06); }
+  .plan-premium .plan-features li { border-color: rgba(255,255,255,0.1); color: rgba(255,255,255,0.9); }
+  .check { color: #22c55e; } .cross { color: #9ca3af; }
+
+  /* TESTIMONIALS */
+  .testimonials { background: var(--cream); }
+  .testimonials-grid { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+  .testimonial-card { background: var(--white); border-radius: 20px; padding: 2rem; }
+  .stars { color: var(--gold); font-size: 1rem; margin-bottom: 1rem; letter-spacing: 2px; }
+  .testimonial-text { font-size: 0.9rem; line-height: 1.7; color: var(--text); margin-bottom: 1.5rem; font-style: italic; }
+  .testimonial-author { display: flex; align-items: center; gap: 0.75rem; }
+  .author-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--navy); display: flex; align-items: center; justify-content: center; color: var(--gold); font-weight: 700; font-size: 0.9rem; }
+  .author-name { font-weight: 600; font-size: 0.9rem; color: var(--navy); }
+  .author-detail { font-size: 0.78rem; color: var(--muted); }
+
+  /* CTA */
+  .cta-section { background: var(--navy); padding: 6rem 2rem; text-align: center; }
+  .cta-title { font-family: 'Playfair Display', serif; font-size: clamp(2rem, 5vw, 3rem); font-weight: 900; color: var(--white); margin-bottom: 1rem; }
+  .cta-title em { color: var(--gold); font-style: italic; }
+  .cta-sub { color: rgba(255,255,255,0.7); font-size: 1.05rem; margin-bottom: 2.5rem; max-width: 450px; margin-left: auto; margin-right: auto; }
+  .cta-buttons { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+  .btn-gold { background: var(--gold); color: var(--navy); padding: 1rem 2.5rem; border-radius: 50px; font-weight: 700; font-size: 1rem; text-decoration: none; transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; border: none; cursor: pointer; }
+  .btn-gold:hover { background: #e0ba58; transform: translateY(-2px); }
+  .btn-outline-white { background: transparent; color: var(--white); padding: 1rem 2rem; border-radius: 50px; font-weight: 600; font-size: 1rem; text-decoration: none; border: 2px solid rgba(255,255,255,0.4); transition: all 0.2s; display: inline-flex; align-items: center; gap: 0.5rem; }
+  .btn-outline-white:hover { border-color: var(--white); background: rgba(255,255,255,0.1); }
+
+  /* CONTACT */
+  .contact { background: var(--white); padding: 4rem 2rem; text-align: center; }
+
+  .announcement-bar { background: var(--gold); color: var(--navy); text-align: center; padding: 0.65rem 1rem; font-size: 0.9rem; font-weight: 600; position: sticky; top: 0; z-index: 200; letter-spacing: 0.2px; }
+  .announcement-bar a { color: var(--navy); text-decoration: underline; }
+  footer { background: #0f1e4a; padding: 2rem; text-align: center; color: rgba(255,255,255,0.5); font-size: 0.85rem; }
+  footer strong { color: var(--gold); }
+  footer a { color: var(--gold); text-decoration: none; }
+
+  @media (max-width: 768px) {
+    .hero-content, .founder-grid, .features-grid, .pricing-grid, .testimonials-grid, .problem-grid { grid-template-columns: 1fr; }
+    .stats-grid, .matieres-grid, .impact-grid { grid-template-columns: repeat(2, 1fr); }
+    .plan-premium { transform: none; }
+    .nav-links { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="announcement-bar">
+  🎓 Accès 100% GRATUIT jusqu'au BAC · <strong>Questions illimitées pour tous</strong> — <a href="https://afrjigi.com">Commence maintenant →</a>
+</div>
+
+<nav>
+  <div class="nav-logo">Afr<span>Jigi</span></div>
+  <ul class="nav-links">
+    <li><a href="#features">Fonctionnalités</a></li>
+    <li><a href="#founder">Le Fondateur</a></li>
+    <li><a href="#pricing">Tarifs</a></li>
+    <li><a href="#contact">Contact</a></li>
+    <li><a href="https://afrjigi.com" class="nav-cta">Commencer →</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-content">
+    <div>
+      <div class="hero-badge">🎓 Accès gratuit · Toutes séries BAC & BEPC</div>
+      <h1>La première Plateforme Intelligente pour Réussir le <em>BAC en Afrique</em></h1>
+      <p>800+ sujets officiels de 2006 à 2026. Un tuteur IA disponible 24h/24, 7j/7 pour t'accompagner vers la réussite.</p>
+      <p class="hero-slogan">Études avec confiance. Réussite avec excellence.</p>
+      <div class="hero-actions">
+        <a href="https://afrjigi.com" class="btn-primary">Commencer gratuitement →</a>
+        <a href="https://wa.me/13154030671" class="btn-secondary">💬 WhatsApp Akili</a>
+        <a href="https://afrjigi.com/espace_enseignant" class="btn-secondary">👨‍🏫 Espace Enseignant</a>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="floating-badge badge-top">✅ Réponse en moins de 10s</div>
+      <div class="chat-mockup">
+        <div class="chat-header">
+          <div class="chat-avatar">A</div>
+          <div>
+            <div class="chat-name">Akili — AfrJigi</div>
+            <div class="chat-status">En ligne</div>
+          </div>
+        </div>
+        <div class="chat-bubble user"><div class="bubble-inner">Explique-moi les limites en Maths Série D</div></div>
+        <div class="chat-bubble akili"><div class="bubble-inner">Pour une limite en +∞ d'une fraction, divise par le terme de plus haut degré. Ex : lim (2x²+3x)/(x²-1) = <strong>2</strong> ✨</div></div>
+        <div class="chat-bubble user"><div class="bubble-inner">Merci ! Et pour la Philo Série A ?</div></div>
+        <div class="chat-bubble akili"><div class="typing-dots"><span></span><span></span><span></span></div></div>
+      </div>
+      <div class="floating-badge badge-bottom">🎓 800+ sujets BAC indexés</div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<div class="stats">
+  <div class="stats-grid">
+    <div><span class="stat-num">225+</span><span class="stat-label">Élèves déjà inscrits</span></div>
+    <div><span class="stat-num">800+</span><span class="stat-label">Sujets BAC officiels (2006–2026)</span></div>
+    <div><span class="stat-num">22</span><span class="stat-label">Matières disponibles</span></div>
+    <div><span class="stat-num">24/7</span><span class="stat-label">Disponibilité d'Akili</span></div>
+  </div>
+</div>
+
+<!-- PROBLEM -->
+<div class="problem">
+  <div class="problem-grid">
+    <div>
+      <h2 class="problem-title">Un défi éducatif <em>majeur</em> en Afrique</h2>
+      <div class="problem-stat"><span class="pstat-num">300K+</span><span class="pstat-label">Candidats au BAC chaque année en Côte d'Ivoire</span></div>
+      <div class="problem-stat"><span class="pstat-num">&lt;50%</span><span class="pstat-label">Taux de réussite historique au BAC CI</span></div>
+      <div class="problem-stat"><span class="pstat-num">80-100</span><span class="pstat-label">Élèves par classe dans certaines écoles</span></div>
+      <div class="problem-stat"><span class="pstat-num">90%</span><span class="pstat-label">Des élèves disposent déjà d'un smartphone</span></div>
+    </div>
+    <div class="problem-insight">
+      <p>Le défi n'est plus l'accès à la technologie.<br><br>Le défi est l'accès à un <strong style="color:var(--gold);">accompagnement pédagogique personnalisé</strong> pour chaque élève, partout en Afrique.</p>
+    </div>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div class="section-header">
+    <span class="section-tag">Fonctionnalités</span>
+    <h2 class="section-title">Tout ce dont tu as besoin pour réussir</h2>
+    <p class="section-sub">Akili combine l'intelligence artificielle et les vrais sujets du BAC pour te préparer efficacement.</p>
+  </div>
+  <div class="features-grid">
+    <div class="feature-card"><div class="feature-icon">🧠</div><div class="feature-title">IA Gemini 2.5 Flash</div><div class="feature-desc">Le modèle IA le plus avancé de Google, entraîné sur 20 ans de sujets BAC officiels de Côte d'Ivoire.</div></div>
+    <div class="feature-card"><div class="feature-icon">📸</div><div class="feature-title">Scanner d'exercices</div><div class="feature-desc">Prends en photo ton exercice et Akili le résout étape par étape avec le format BAC officiel.</div></div>
+    <div class="feature-card"><div class="feature-icon">🔊</div><div class="feature-title">Réponses vocales</div><div class="feature-desc">Écoute les explications d'Akili en audio. Parfait pour réviser pendant tes déplacements.</div></div>
+    <div class="feature-card"><div class="feature-icon">📱</div><div class="feature-title">Accessible partout</div><div class="feature-desc">Sur smartphone, tablette ou ordinateur. Akili est disponible partout, même avec une connexion limitée.</div></div>
+    <div class="feature-card"><div class="feature-icon">📚</div><div class="feature-title">Base de données officielle</div><div class="feature-desc">800+ sujets et corrigés BAC officiels de 2006 à 2026, alignés sur les programmes nationaux ivoiriens.</div></div>
+    <div class="feature-card"><div class="feature-icon">🎯</div><div class="feature-title">Format BAC officiel</div><div class="feature-desc">Akili structure ses réponses exactement selon les barèmes officiels des correcteurs ivoiriens.</div></div>
+  </div>
+</section>
+
+<!-- MATIERES -->
+<section class="matieres" id="matieres">
+  <div class="section-header">
+    <span class="section-tag">Matières</span>
+    <h2 class="section-title">Toutes les matières du BAC</h2>
+    <p class="section-sub">Séries A, C et D — Akili maîtrise chaque matière selon les exigences spécifiques de chaque série.</p>
+  </div>
+  <div class="matieres-grid">
+    <div class="matiere-pill active"><span class="matiere-emoji">📐</span>Mathématiques</div>
+    <div class="matiere-pill"><span class="matiere-emoji">🏛️</span>Philosophie</div>
+    <div class="matiere-pill"><span class="matiere-emoji">⚗️</span>Physique-Chimie</div>
+    <div class="matiere-pill"><span class="matiere-emoji">🌿</span>SVT</div>
+    <div class="matiere-pill"><span class="matiere-emoji">🌍</span>Histoire-Géographie</div>
+    <div class="matiere-pill"><span class="matiere-emoji">🇬🇧</span>Anglais</div>
+    <div class="matiere-pill"><span class="matiere-emoji">📝</span>Français</div>
+    <div class="matiere-pill"><span class="matiere-emoji">🇩🇪</span>Allemand</div>
+    <div class="matiere-pill"><span class="matiere-emoji">🇪🇸</span>Espagnol</div>
+  </div>
+</section>
+
+<!-- FOUNDER -->
+<section class="founder" id="founder">
+  <div class="section-header">
+    <span class="section-tag">Le Fondateur</span>
+    <h2 class="section-title">De la cybersécurité à la <em style="color:var(--gold);font-style:italic;">révolution éducative africaine</em></h2>
+  </div>
+  <div class="founder-grid">
+    <div>
+      <div class="founder-card">
+        <div class="founder-avatar">DD</div>
+        <div class="founder-name">Daouda Diarrassouba</div>
+        <div class="founder-role">Fondateur & CEO · AFRJIGI LLC · New York, USA</div>
+        <div class="founder-badges">
+          <div class="fbi"><div class="fdot"></div>Originaire de Côte d'Ivoire</div>
+          <div class="fbi"><div class="fdot"></div>US Army · 11 ans de service actif</div>
+          <div class="fbi"><div class="fdot"></div>Cybersécurité & Systèmes critiques</div>
+          <div class="fbi"><div class="fdot"></div>Expert Cloud & Intelligence Artificielle</div>
+        </div>
+        <div class="cert-pills">
+          <div class="cert-pill">PMP®</div>
+          <div class="cert-pill">Google Cloud Security</div>
+          <div class="cert-pill">Associate Cloud Engineer</div>
+          <div class="cert-pill">Generative AI Leader</div>
+          <div class="cert-pill">Cloud Digital Leader</div>
+          <div class="cert-pill">US Army 🇺🇸</div>
+        </div>
+      </div>
+      <div class="stats-mini">
+        <div class="smin"><span class="snum">&lt;50%</span><span class="slbl">Taux BAC CI historique</span></div>
+        <div class="smin"><span class="snum">90%</span><span class="slbl">Élèves avec smartphone</span></div>
+        <div class="smin"><span class="snum">11M+</span><span class="slbl">Élèves UEMOA à atteindre</span></div>
+      </div>
+    </div>
+    <div class="founder-story">
+      <div class="sblock">
+        <div class="slabel">Le déclic</div>
+        <div class="stext">Originaire de Côte d'Ivoire, j'ai passé plus de <strong>11 ans à concevoir, sécuriser et gérer des systèmes critiques</strong> dans le domaine de la cybersécurité. Mais une question revenait constamment : pourquoi des millions de jeunes Africains possèdent aujourd'hui un smartphone, alors que l'accès à un <strong>accompagnement éducatif de qualité reste limité ?</strong> C'est cette question qui a donné naissance à AfrJigi.</div>
+      </div>
+      <div class="sblock">
+        <div class="slabel">Mon avantage unique</div>
+        <div class="stext">Avec mes certifications en <strong>Google Cloud, Intelligence Artificielle et Gestion de Projets (PMP®)</strong>, j'ai développé une capacité rare : concevoir des systèmes complexes et les faire fonctionner à grande échelle. AfrJigi est le résultat de cette expertise appliquée à l'éducation africaine.</div>
+      </div>
+      <div class="sblock">
+        <div class="slabel">Pourquoi AfrJigi est différent</div>
+        <div class="stext">AfrJigi n'est pas un chatbot générique. C'est une solution construite sur <strong>800+ vrais sujets BAC officiels</strong>, calibrée sur les barèmes ivoiriens, accessible depuis un smartphone. <strong>Conçue par un Africain, pour les réalités africaines</strong> — avec la rigueur d'un expert et la vision d'un entrepreneur.</div>
+      </div>
+      <div class="vision-block">
+        <div class="vision-title">Notre vision pour l'Afrique 🌍</div>
+        <div class="vision-text">Construire la <strong style="color:var(--gold);">première base de connaissances éducatives africaines</strong> alimentée par l'IA — un actif stratégique qui grandira avec chaque élève, chaque document, chaque interaction.</div>
+        <div class="roadmap">
+          <div class="rstep"><div class="rdot dact">✓</div><div class="rlbl act">BAC CI<br>2026</div></div>
+          <div class="rstep"><div class="rdot dfut">2</div><div class="rlbl">BEPC<br>2027</div></div>
+          <div class="rstep"><div class="rdot dfut">3</div><div class="rlbl">BTS<br>2028</div></div>
+          <div class="rstep"><div class="rdot dfut">4</div><div class="rlbl">UEMOA<br>2028+</div></div>
+          <div class="rstep"><div class="rdot dfut">5</div><div class="rlbl">Afrique<br>2029</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- IMPACT -->
+<section class="impact" id="impact">
+  <div class="section-header">
+    <span class="section-tag">Impact & ODD</span>
+    <h2 class="section-title">Réduire les inégalités éducatives grâce à l'IA</h2>
+    <p class="section-sub">AfrJigi contribue directement aux Objectifs de Développement Durable de l'ONU.</p>
+  </div>
+  <div class="impact-grid">
+    <div class="impact-card">
+      <span class="impact-icon">📚</span>
+      <strong style="color:var(--navy);display:block;margin-bottom:0.5rem;">Éducation de qualité</strong>
+      <span class="impact-label">Accès à un tuteur IA expert pour chaque élève, partout en Afrique</span>
+      <span class="impact-odd">ODD 4</span>
+    </div>
+    <div class="impact-card">
+      <span class="impact-icon">⚖️</span>
+      <strong style="color:var(--navy);display:block;margin-bottom:0.5rem;">Égalité des chances</strong>
+      <span class="impact-label">Même accompagnement pour les filles et garçons, zones rurales incluses</span>
+      <span class="impact-odd">ODD 5</span>
+    </div>
+    <div class="impact-card">
+      <span class="impact-icon">💼</span>
+      <strong style="color:var(--navy);display:block;margin-bottom:0.5rem;">Compétences pour l'emploi</strong>
+      <span class="impact-label">Préparer les jeunes africains aux défis économiques du continent</span>
+      <span class="impact-odd">ODD 8</span>
+    </div>
+    <div class="impact-card">
+      <span class="impact-icon">🌍</span>
+      <strong style="color:var(--navy);display:block;margin-bottom:0.5rem;">Réduction des inégalités</strong>
+      <span class="impact-label">Démocratiser l'accès à l'éducation de qualité pour tous les élèves</span>
+      <span class="impact-odd">ODD 10</span>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="pricing" id="pricing">
+  <div class="section-header">
+    <span class="section-tag">Tarifs</span>
+    <h2 class="section-title">Simple et accessible</h2>
+    <p class="section-sub">🎉 Accès <strong>100% gratuit et illimité</strong> pour tous, dès maintenant.</p>
+  </div>
+  <div class="pricing-grid">
+    <div class="plan-card plan-free" style="border-color:var(--gold);">
+      <div class="plan-badge" style="background:var(--navy);color:var(--gold);">🎓 GRATUIT JUSQU'AU BAC</div>
+      <div class="plan-name">Gratuit</div>
+      <div class="plan-price">0</div>
+      <span class="plan-period">FCFA / mois</span>
+      <ul class="plan-features">
+        <li><span class="check">✓</span> Questions <strong>illimitées</strong></li>
+        <li><span class="check">✓</span> Toutes les matières</li>
+        <li><span class="check">✓</span> Accès sujets BAC</li>
+        <li><span class="check">✓</span> Scanner d'exercices</li>
+        <li><span class="cross">✗</span> Réponses vocales</li>
+        <li><span class="cross">✗</span> Historique illimité</li>
+      </ul>
+      <a href="https://afrjigi.com" class="btn-secondary" style="width:100%;justify-content:center;">Commencer →</a>
+    </div>
+    <div class="plan-card plan-premium">
+      <div class="plan-badge">⭐ LE PLUS POPULAIRE</div>
+      <div class="plan-name">Premium</div>
+      <div class="plan-price">2 000</div>
+      <span class="plan-period">FCFA / mois · ou 3$ / mois</span>
+      <ul class="plan-features">
+        <li><span class="check">✓</span> Questions illimitées</li>
+        <li><span class="check">✓</span> Toutes les matières</li>
+        <li><span class="check">✓</span> Accès sujets BAC</li>
+        <li><span class="check">✓</span> Scanner d'exercices IA</li>
+        <li><span class="check">✓</span> Réponses vocales</li>
+        <li><span class="check">✓</span> Historique complet</li>
+      </ul>
+      <a href="https://afrjigi.com" class="btn-gold" style="width:100%;justify-content:center;">Passer Premium →</a>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIALS -->
+<section class="testimonials">
+  <div class="section-header">
+    <span class="section-tag">Témoignages</span>
+    <h2 class="section-title">Ce que disent les élèves</h2>
+  </div>
+  <div class="testimonials-grid">
+    <div class="testimonial-card">
+      <div class="stars">★★★★★</div>
+      <p class="testimonial-text">"Akili m'a aidé à comprendre les limites en Maths Série D que mon prof n'arrivait pas à m'expliquer clairement. Je me sens prêt pour le BAC !"</p>
+      <div class="testimonial-author"><div class="author-avatar">KA</div><div><div class="author-name">Kouamé Assi</div><div class="author-detail">Terminale D · Abidjan</div></div></div>
+    </div>
+    <div class="testimonial-card">
+      <div class="stars">★★★★★</div>
+      <p class="testimonial-text">"La dissertation de Philo avec les 2 axes, Akili me la structure parfaitement. Mon prof a été impressionné par mon plan au dernier devoir !"</p>
+      <div class="testimonial-author"><div class="author-avatar">TK</div><div><div class="author-name">Tia Koné</div><div class="author-detail">Terminale A · Bouaké</div></div></div>
+    </div>
+    <div class="testimonial-card">
+      <div class="stars">★★★★★</div>
+      <p class="testimonial-text">"J'utilise AfrJigi pendant mes pauses. C'est comme avoir un prof particulier dans ma poche. Incroyable !"</p>
+      <div class="testimonial-author"><div class="author-avatar">MY</div><div><div class="author-name">Mariame Yao</div><div class="author-detail">Terminale C · Yamoussoukro</div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <h2 class="cta-title">Prêt à réussir ton <em>BAC 2026</em> ?</h2>
+  <p class="cta-sub">Rejoins plus de 225 élèves qui préparent leur BAC avec Akili. Accès 100% gratuit, dès maintenant.</p>
+  <div class="cta-buttons">
+    <a href="https://afrjigi.com" class="btn-gold">Commencer gratuitement →</a>
+    <a href="https://wa.me/13154030671" class="btn-outline-white">💬 Écrire à Akili sur WhatsApp</a>
+  </div>
+</section>
+
+<!-- CONTACT -->
+<section class="contact" id="contact">
+  <div class="section-header">
+    <span class="section-tag">Contact</span>
+    <h2 class="section-title">Nous contacter</h2>
+  </div>
+  <p style="font-size:1.1rem;margin-bottom:1rem;">📧 <a href="mailto:contact@afrjigi.com" style="color:var(--navy);font-weight:600;">contact@afrjigi.com</a></p>
+  <p style="font-size:1.1rem;">📞 <a href="tel:+13154030671" style="color:var(--navy);font-weight:600;">+1 (315) 403-0671</a></p>
+</section>
+
+<footer>
+  <p>© 2026 <strong>AFRJIGI LLC</strong> · New York, USA · <a href="mailto:contact@afrjigi.com">contact@afrjigi.com</a></p>
+  <p style="margin-top:0.5rem;">Réduire les inégalités éducatives grâce à l'IA 🌍</p>
+</footer>
+
+<script>
+  document.querySelectorAll('.matiere-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('.matiere-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+    });
+  });
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if(e.isIntersecting) { e.target.style.opacity='1'; e.target.style.transform='translateY(0)'; } });
+  }, {threshold: 0.1});
+  document.querySelectorAll('.feature-card, .testimonial-card, .plan-card, .sblock, .impact-card').forEach(el => {
+    el.style.opacity='0'; el.style.transform='translateY(20px)'; el.style.transition='opacity 0.5s ease, transform 0.5s ease';
+    observer.observe(el);
+  });
+</script>
+</body>
+</html>config 
