@@ -3,3 +3,5 @@ uvicorn
 requests
 python-multipart
 google-cloud-firestore
+gTTS
+Pillow==10.4.0
