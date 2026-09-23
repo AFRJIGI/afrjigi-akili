@@ -344,6 +344,64 @@ class ActiveSessionP0Tests(unittest.TestCase):
         self.assertEqual(calls, [1])
         self.assertEqual(len(store.writes), 1)
 
+    def test_long_whatsapp_message_id_is_deduplicated(self):
+        store = self.enable_p0()
+        calls = []
+        message_id = "wamid." + ("x" * 300)
+        main.get_akili_response = lambda *args, **kwargs: calls.append(1) or "réponse valide"
+        main.send_whatsapp = lambda *args: None
+
+        main.process_p0_message("22501", "Maths série D", message_id)
+        main.process_p0_message("22501", "Maths série D", message_id)
+
+        self.assertEqual(calls, [1])
+        self.assertEqual(store.documents["22501"]["last_processed_message_id"], message_id)
+
+    def test_intermediate_level_uses_intermediate_exam_type(self):
+        profile = main.update_profile_from_text(
+            {"serie": "TOUTES", "matiere": "MATHS"},
+            "Je suis en 6ème et je veux faire des maths",
+        )
+
+        self.assertEqual(profile["serie"], "6E")
+        self.assertEqual(main.infer_type_examen(profile["serie"], "6ème"), "CLASSE_INTERMEDIAIRE")
+
+    def test_structured_akili_details_are_persisted(self):
+        store = self.enable_p0()
+        main.get_akili_response = lambda *args, **kwargs: {
+            "text": "Compare les deux nombres. Lequel est le plus grand ?",
+            "document": {"id": "doc-1", "ref": "Jigi/6E/MATHS/nombres"},
+            "exercise": {"id": "exo-2", "label": "Exercice 2"},
+            "current_question": {
+                "id": "q-2",
+                "text": "Compare 4 508 et 4 580.",
+                "expected_response_type": "short_text",
+            },
+            "structured_results": [{"question_id": "q-1", "outcome": "correct"}],
+            "next_expected_action": "explain_reasoning",
+        }
+        main.send_whatsapp = lambda *args: None
+
+        main.process_p0_message("22501", "6ème maths", "wamid.structured")
+        state = store.documents["22501"]
+
+        self.assertEqual(state["level_or_serie"], "6E")
+        self.assertEqual(state["type_examen"], "CLASSE_INTERMEDIAIRE")
+        self.assertEqual(state["document"]["id"], "doc-1")
+        self.assertEqual(state["exercise"]["id"], "exo-2")
+        self.assertEqual(state["current_question"]["id"], "q-2")
+        self.assertEqual(state["relevant_previous_results"][0]["outcome"], "correct")
+        self.assertEqual(state["next_expected_action"], "explain_reasoning")
+
+    def test_text_response_extracts_only_the_last_question(self):
+        response, details = main.normalize_p0_response(
+            "Idée clé : compare les milliers. Quel nombre est le plus grand ?"
+        )
+
+        self.assertTrue(response.startswith("Idée clé"))
+        self.assertEqual(details["current_question"]["text"], "Quel nombre est le plus grand ?")
+        self.assertEqual(details["structured_results"], [])
+
     def test_successful_vertex_response_commits_one_transition(self):
         store = self.enable_p0()
         sent = []

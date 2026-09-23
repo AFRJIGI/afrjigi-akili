@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import requests
 import uuid
 from fastapi import FastAPI, Request
@@ -22,6 +23,7 @@ ACTIVE_SESSIONS_COLLECTION = "whatsapp_active_sessions"
 P0_SCHEMA_VERSION = 1
 P0_SESSION_TTL_MINUTES = 30
 P0_MAX_SCOPE_VALUE_CHARS = 64
+P0_MAX_MESSAGE_ID_CHARS = 512
 P0_MAX_QUESTION_TEXT_CHARS = 1500
 P0_MAX_STUDENT_ANSWER_CHARS = 1000
 P0_MAX_PREVIOUS_RESULTS = 20
@@ -145,7 +147,11 @@ def prepare_active_session(stored_state, profile, message_id, now=None, session_
     """Read-only preparation. It never mutates or persists the stored state."""
     now = now or utcnow()
     state = dict(stored_state or {})
-    duplicate = bool(message_id and state.get("last_processed_message_id") == message_id)
+    normalized_message_id = bounded_text(message_id, P0_MAX_MESSAGE_ID_CHARS)
+    duplicate = bool(
+        normalized_message_id
+        and state.get("last_processed_message_id") == normalized_message_id
+    )
     expires_at = parse_datetime(state.get("expires_at"))
     expired = expires_at is None or now >= expires_at
     scope_changed = any(state.get(key) != value for key, value in profile_fields(profile).items())
@@ -177,7 +183,7 @@ def transition_after_success(prepared_state, student_answer, akili_response, mes
             current_question if current_question is not None else prepared_state.get("current_question")
         ),
         "student_last_answer": {
-            "message_id": bounded_text(message_id, P0_MAX_SCOPE_VALUE_CHARS),
+            "message_id": bounded_text(message_id, P0_MAX_MESSAGE_ID_CHARS),
             "value": bounded_text(student_answer, P0_MAX_STUDENT_ANSWER_CHARS),
             "normalized_value": None,
             "created_at": now,
@@ -185,7 +191,7 @@ def transition_after_success(prepared_state, student_answer, akili_response, mes
         "current_step": int(prepared_state.get("current_step", 0)) + 1,
         "relevant_previous_results": results,
         "next_expected_action": bounded_text(next_expected_action, P0_MAX_SCOPE_VALUE_CHARS),
-        "last_processed_message_id": bounded_text(message_id, P0_MAX_SCOPE_VALUE_CHARS),
+        "last_processed_message_id": bounded_text(message_id, P0_MAX_MESSAGE_ID_CHARS),
         "updated_at": now,
         "expires_at": now + timedelta(minutes=P0_SESSION_TTL_MINUTES),
         "revision": int(prepared_state.get("revision", 0)) + 1,
@@ -288,6 +294,11 @@ def send_whatsapp(to, message):
 def update_profile_from_text(profile, message):
     msg = message.upper()
 
+    intermediate_level = re.search(r"(?<![A-Z0-9])(6|5|4)\s*(?:E|ÈME|EME)(?![A-Z0-9])", msg)
+    if intermediate_level:
+        profile["serie"] = f"{intermediate_level.group(1)}E"
+        profile["type_examen"] = "CLASSE_INTERMEDIAIRE"
+
     if "BEPC" in msg or "3EME" in msg or "3ÈME" in msg or "TROISIEME" in msg or "TROISIÈME" in msg:
         profile["serie"] = "BEPC"
         profile["type_examen"] = "BEPC"
@@ -349,6 +360,11 @@ def infer_type_examen(serie, message):
     msg = (message or "").upper()
     serie = (serie or "").upper().strip()
 
+    if serie in {"6E", "5E", "4E"} or re.search(
+        r"(?<![A-Z0-9])(6|5|4)\s*(?:E|ÈME|EME)(?![A-Z0-9])", msg
+    ):
+        return "CLASSE_INTERMEDIAIRE"
+
     if serie == "BEPC" or "BEPC" in msg or "3EME" in msg or "3ÈME" in msg or "TROISIEME" in msg or "TROISIÈME" in msg:
         return "BEPC"
 
@@ -376,7 +392,7 @@ def infer_mode(message):
 
 
 def get_akili_response(question, matiere, serie, history, phone="whatsapp_user", type_examen=None,
-                       mode=None, raise_on_error=False):
+                       mode=None, raise_on_error=False, return_details=False):
     try:
         contexte = "\n".join([
             f"{'Élève' if m['role'] == 'user' else 'Akili'}: {m['content']}"
@@ -420,6 +436,15 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             or data.get("message")
         )
         if response_text:
+            if return_details:
+                return {
+                    "text": response_text,
+                    "document": data.get("document"),
+                    "exercise": data.get("exercise"),
+                    "current_question": data.get("current_question"),
+                    "structured_results": data.get("relevant_previous_results") or [],
+                    "next_expected_action": data.get("next_expected_action") or "await_student_answer",
+                }
             return response_text
         if raise_on_error:
             raise ValueError("Réponse Akili vide")
@@ -506,6 +531,43 @@ def p0_history(state):
     return history[-6:]
 
 
+def normalize_p0_response(response):
+    """Accept today's text response and optional structured fields from Akili."""
+    if isinstance(response, str):
+        details = {"text": response}
+    elif isinstance(response, dict):
+        details = dict(response)
+    else:
+        raise ValueError("Format de réponse Akili invalide")
+
+    response_text = details.get("text")
+    if not isinstance(response_text, str) or not response_text.strip():
+        raise ValueError("Réponse Akili vide")
+
+    current_question = details.get("current_question")
+    if not isinstance(current_question, dict):
+        question_matches = re.findall(
+            r"(?:^|[.!?])\s*([^.!?\n]{1,1499}\?)",
+            response_text,
+        )
+        current_question = (
+            {
+                "id": None,
+                "text": question_matches[-1].strip(),
+                "expected_response_type": "short_text",
+            }
+            if question_matches else None
+        )
+
+    return response_text, {
+        "document": details.get("document"),
+        "exercise": details.get("exercise"),
+        "current_question": current_question,
+        "structured_results": details.get("structured_results") or [],
+        "next_expected_action": details.get("next_expected_action") or "await_student_answer",
+    }
+
+
 def process_p0_message(phone, text, message_id):
     """Prepare without writes, call Akili, then persist exactly one successful transition."""
     store = get_active_session_store()
@@ -529,7 +591,7 @@ def process_p0_message(phone, text, message_id):
         return
 
     try:
-        reponse = get_akili_response(
+        akili_result = get_akili_response(
             text,
             profile["matiere"],
             profile["serie"],
@@ -538,14 +600,22 @@ def process_p0_message(phone, text, message_id):
             profile["type_examen"],
             profile["mode"],
             raise_on_error=True,
+            return_details=True,
         )
+        reponse, transition_details = normalize_p0_response(akili_result)
     except Exception as exc:
         print(f"P0: état inchangé après échec Akili: {exc!r}", flush=True)
         send_whatsapp(phone, "Désolé, je rencontre une petite difficulté technique, réessaie dans un instant.")
         return
 
     expected_revision = int((stored_state or {}).get("revision", 0))
-    next_state = transition_after_success(prepared_state, text, reponse, message_id)
+    next_state = transition_after_success(
+        prepared_state,
+        text,
+        reponse,
+        message_id,
+        **transition_details,
+    )
     if not store.save_if_revision(phone, next_state, expected_revision):
         print(f"P0: conflit de révision pour {phone}, état non remplacé", flush=True)
         return
