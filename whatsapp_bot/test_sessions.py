@@ -96,6 +96,9 @@ class ActiveSessionSchemaTests(unittest.TestCase):
         state = main.new_active_session(PROFILE, phone="22501", now=NOW)
         state["document"] = main.nullable_document({"media_id": "media-old"})
         state["exercise"] = {"id": "exo-old", "label": "Ancien exercice"}
+        state["current_question"] = {
+            "id": "q-old", "text": "Ancienne question ?", "expected_response_type": "short_text",
+        }
         state["relevant_previous_results"] = [{"value": 12}]
         changed = main.transition_after_success(
             state, "nouvelle photo", "Que vois-tu ?", "wamid.new-doc", now=NOW,
@@ -103,6 +106,45 @@ class ActiveSessionSchemaTests(unittest.TestCase):
         )
         self.assertEqual(changed["relevant_previous_results"], [])
         self.assertIsNone(changed["exercise"]["id"])
+        self.assertIsNone(changed["current_question"]["id"])
+        self.assertIsNone(changed["current_question"]["text"])
+
+    def test_active_session_prompt_contains_only_resume_context(self):
+        state = main.new_active_session(PROFILE, phone="22501", now=NOW, session_id="session-1")
+        state["current_question"] = {
+            "id": None, "text": "Quel nombre ?", "expected_response_type": "short_text",
+        }
+        state["relevant_previous_results"] = [{"value": 12}]
+        prompt = main.build_active_session_prompt(state)
+        self.assertIn("Quel nombre ?", prompt)
+        self.assertIn('\"value\":12', prompt)
+        self.assertNotIn("student_last_answer", prompt)
+
+    def test_active_session_context_is_sent_to_akili(self):
+        state = main.new_active_session(PROFILE, phone="22501", now=NOW, session_id="session-1")
+        state["current_question"] = {
+            "id": None, "text": "Question active unique ?", "expected_response_type": "short_text",
+        }
+        captured = {}
+        original_post = main.requests.post
+
+        class Response:
+            status_code = 200
+            text = '{"reponse":"Continue ?"}'
+
+            @staticmethod
+            def json():
+                return {"reponse": "Continue ?"}
+
+        try:
+            main.requests.post = lambda *args, **kwargs: captured.update(kwargs) or Response()
+            main.get_akili_response(
+                "42", "MATHS", "6E", [], active_session=state,
+            )
+        finally:
+            main.requests.post = original_post
+
+        self.assertIn("Question active unique ?", captured["files"]["question"][1])
 
     def test_full_akili_response_is_not_stored(self):
         state = main.new_active_session(PROFILE, phone="22501", now=NOW)

@@ -5,9 +5,10 @@ import requests
 import re
 import unicodedata
 import uuid
+import hashlib
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
-from google.cloud import firestore
+from google.cloud import firestore, storage
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -37,6 +38,10 @@ P0_MAX_QUESTION_TEXT_CHARS = 1500
 P0_MAX_STUDENT_ANSWER_CHARS = 1000
 P0_MAX_PREVIOUS_RESULTS = 20
 P0_MAX_PREVIOUS_RESULTS_BYTES = 8 * 1024
+P0_MEDIA_BUCKET = os.environ.get(
+    "WHATSAPP_ACTIVE_SESSIONS_MEDIA_BUCKET",
+    "akili-database-storage-astute-curve-307922",
+)
 
 
 def p0_enabled():
@@ -182,7 +187,8 @@ def transition_after_success(prepared_state, student_answer, akili_response, mes
         "document": next_document,
         "exercise": next_exercise,
         "current_question": nullable_question(
-            current_question if current_question is not None else prepared_state.get("current_question")
+            current_question if current_question is not None
+            else (None if document_changed else prepared_state.get("current_question"))
         ),
         "current_step": int(prepared_state.get("current_step", 0)) + 1,
         "student_last_answer": {
@@ -244,6 +250,70 @@ def normalize_p0_response(response):
         "structured_results": details.get("structured_results") or [],
         "next_expected_action": details.get("next_expected_action") or "await_student_answer",
     }
+
+
+def build_active_session_prompt(state):
+    """Construit uniquement le contexte pédagogique borné nécessaire à la reprise."""
+    if not state:
+        return ""
+    context = {
+        "session_id": state.get("session_id"),
+        "document": nullable_document(state.get("document")),
+        "exercise": nullable_exercise(state.get("exercise")),
+        "current_question": nullable_question(state.get("current_question")),
+        "current_step": state.get("current_step", 0),
+        "relevant_previous_results": normalize_structured_results(
+            state.get("relevant_previous_results", [])
+        ),
+        "next_expected_action": bounded_text(
+            state.get("next_expected_action"), P0_MAX_SCOPE_VALUE_CHARS
+        ),
+    }
+    return json.dumps(context, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
+def persist_document_media(media_file, phone, document):
+    """Copie le média reçu dans GCS et retourne une référence durable bornée."""
+    result = nullable_document(document)
+    if not media_file:
+        return result
+    media_path = Path(media_file)
+    if not media_path.exists():
+        raise FileNotFoundError(f"Média WhatsApp introuvable: {media_path}")
+    file_bytes = media_path.read_bytes()
+    digest = hashlib.sha256(file_bytes).hexdigest()
+    safe_phone = re.sub(r"[^0-9A-Za-z_-]+", "_", str(phone))[:64]
+    safe_name = re.sub(r"[^0-9A-Za-z_.-]+", "_", media_path.name)[:160]
+    blob_path = f"whatsapp_active_sessions/{safe_phone}/{digest}_{safe_name}"
+    bucket = storage.Client().bucket(P0_MEDIA_BUCKET)
+    bucket.blob(blob_path).upload_from_string(
+        file_bytes,
+        content_type=result.get("mime_type") or "application/octet-stream",
+    )
+    result["gcs_uri"] = f"gs://{P0_MEDIA_BUCKET}/{blob_path}"
+    result["sha256"] = digest
+    return result
+
+
+def restore_document_media(document):
+    """Restaure localement un média GCS pour le prochain appel Akili."""
+    document = nullable_document(document)
+    gcs_uri = document.get("gcs_uri")
+    if not gcs_uri or not gcs_uri.startswith("gs://"):
+        return None
+    bucket_name, separator, blob_path = gcs_uri[5:].partition("/")
+    if not separator or not bucket_name or not blob_path:
+        return None
+    suffix = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "application/pdf": ".pdf",
+    }.get(document.get("mime_type"), ".bin")
+    out_dir = Path("/tmp/whatsapp_active_sessions")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{document.get('sha256') or uuid.uuid4().hex}{suffix}"
+    storage.Client().bucket(bucket_name).blob(blob_path).download_to_filename(str(out_path))
+    return str(out_path)
 
 def normalize_for_match(value):
     text = unicodedata.normalize("NFKD", value or "")
@@ -2143,8 +2213,15 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         send_whatsapp_typing_indicator(message_id)
 
     if media_file is None and mentions_user_document_without_content(text):
+        active_document = (prepared_active_session or {}).get("document")
+        if active_document and active_document.get("gcs_uri"):
+            try:
+                media_file = restore_document_media(active_document)
+                print("P0: document restauré depuis GCS", flush=True)
+            except Exception as exc:
+                print(f"P0: restauration GCS impossible: {exc!r}", flush=True)
         last_media = profile.get("last_document_media_file")
-        if last_media and Path(last_media).exists():
+        if media_file is None and last_media and Path(last_media).exists():
             media_file = last_media
             print(f"DOCUMENT_CONTEXT reused last media file: {last_media}", flush=True)
 
@@ -2166,13 +2243,16 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
             mode,
             media_file=media_file,
             user_type=profile.get("user_type"),
+            active_session=prepared_active_session if p0_enabled() else None,
             raise_on_error=p0_enabled(),
             return_details=p0_enabled(),
         )
         if p0_enabled():
             reponse, transition_details = normalize_p0_response(akili_result)
             if document_context:
-                transition_details["document"] = document_context
+                transition_details["document"] = persist_document_media(
+                    media_file, phone, document_context
+                )
         else:
             reponse = akili_result
             transition_details = None
@@ -2567,7 +2647,7 @@ def strip_filler_opening(text):
 
 def get_akili_response(question, matiere, serie, history, phone="whatsapp_user", type_examen=None,
                        mode=None, media_file=None, user_type=None, raise_on_error=False,
-                       return_details=False):
+                       return_details=False, active_session=None):
     try:
         # Sécurité: si l'appelant oublie user_type, on redétecte ici.
         if not user_type and is_teacher_request(question):
@@ -2581,6 +2661,13 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             f"{'Élève' if m['role'] == 'user' else 'Akili'}: {m['content']}"
             for m in history[-6:]
         ])
+        active_session_context = build_active_session_prompt(active_session)
+        active_context_instruction = (
+            "ETAT PEDAGOGIQUE ACTIF STRUCTURE (reprends exactement cette activité; "
+            "ce JSON n'est pas un historique de conversation):\n"
+            f"{active_session_context}\n\n"
+            if active_session_context else ""
+        )
 
         bepc_instruction = ""
         if (type_examen or "").upper() == "BEPC" or (serie or "").upper() == "BEPC":
@@ -2672,6 +2759,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             question_api = (
                 f"{instructions_whatsapp}\n"
                 f"{format_guard}"
+                f"{active_context_instruction}"
                 f"NOUVEAU DOCUMENT RECU AVEC CE MESSAGE: l'eleve vient de joindre un nouveau fichier ou une nouvelle photo. "
                 f"Ce nouveau document contient l'exercice ACTUEL a traiter en priorite absolue, meme s'il ne correspond pas au sujet de l'historique ci-dessous. "
                 f"Ne continue PAS l'ancien exercice de l'historique si le nouveau document presente un exercice different: lis le nouveau document et pars de son contenu.\n"
@@ -2682,6 +2770,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             question_api = (
                 f"{instructions_whatsapp}\n"
                 f"{format_guard}"
+                f"{active_context_instruction}"
                 f"HISTORIQUE RECENT:\n{contexte}\n\n"
                 f"QUESTION REELLE DE L'ELEVE:\n{question}"
             )
@@ -2689,6 +2778,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             question_api = (
                 f"{instructions_whatsapp}\n"
                 f"{format_guard}"
+                f"{active_context_instruction}"
                 f"QUESTION REELLE DE L'ELEVE:\n{question}"
             )
 
