@@ -1,11 +1,13 @@
 import asyncio
+import concurrent.futures
 import json
 import os
 import sys
+import threading
 import types
 import unittest
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -51,6 +53,140 @@ class RequestStub:
 
     async def json(self):
         return self.body
+
+
+class FakeSnapshot:
+    def __init__(self, value):
+        self._value = deepcopy(value)
+        self.exists = value is not None
+
+    def to_dict(self):
+        return deepcopy(self._value)
+
+
+class FakeDocumentReference:
+    def __init__(self, client, collection_name, document_id):
+        self.client = client
+        self.collection_name = collection_name
+        self.document_id = document_id
+
+    def get(self, transaction=None):
+        return FakeSnapshot(self.client.documents.get((self.collection_name, self.document_id)))
+
+
+class FakeCollectionReference:
+    def __init__(self, client, collection_name):
+        self.client = client
+        self.collection_name = collection_name
+
+    def document(self, document_id):
+        return FakeDocumentReference(self.client, self.collection_name, document_id)
+
+
+class FakeTransaction:
+    def __init__(self, client):
+        self.client = client
+
+    def set(self, reference, value):
+        key = (reference.collection_name, reference.document_id)
+        self.client.documents[key] = deepcopy(value)
+        self.client.writes.append(key)
+
+
+class FakeFirestoreClient:
+    def __init__(self):
+        self.documents = {}
+        self.writes = []
+        self.collection_calls = []
+        self.lock = threading.RLock()
+
+    def collection(self, collection_name):
+        self.collection_calls.append(collection_name)
+        return FakeCollectionReference(self, collection_name)
+
+    def transaction(self):
+        return FakeTransaction(self)
+
+
+class FirestoreAdapterTests(unittest.TestCase):
+    def setUp(self):
+        self.saved_modules = {
+            name: sys.modules.get(name)
+            for name in ("google", "google.cloud", "google.cloud.firestore")
+        }
+        google_module = types.ModuleType("google")
+        cloud_module = types.ModuleType("google.cloud")
+        firestore_module = types.ModuleType("google.cloud.firestore")
+
+        def transactional(function):
+            def wrapped(transaction):
+                with transaction.client.lock:
+                    return function(transaction)
+            return wrapped
+
+        firestore_module.transactional = transactional
+        cloud_module.firestore = firestore_module
+        google_module.cloud = cloud_module
+        sys.modules["google"] = google_module
+        sys.modules["google.cloud"] = cloud_module
+        sys.modules["google.cloud.firestore"] = firestore_module
+        self.client = FakeFirestoreClient()
+        self.store = main.FirestoreActiveSessionStore(self.client)
+
+    def tearDown(self):
+        for name, module in self.saved_modules.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
+    def state(self, revision):
+        state = main.new_active_session(
+            PROFILE, now=NOW, session_id="session-1", phone="22501"
+        )
+        state["revision"] = revision
+        return state
+
+    def test_initial_creation_uses_active_sessions_document(self):
+        created = self.store.save_if_revision("22501", self.state(1), expected_revision=0)
+        self.assertTrue(created)
+        self.assertEqual(self.client.writes, [("whatsapp_active_sessions", "22501")])
+        self.assertEqual(self.store.get("22501")["revision"], 1)
+
+    def test_update_with_current_revision_succeeds(self):
+        self.client.documents[("whatsapp_active_sessions", "22501")] = self.state(1)
+        updated = self.store.save_if_revision("22501", self.state(2), expected_revision=1)
+        self.assertTrue(updated)
+        self.assertEqual(self.store.get("22501")["revision"], 2)
+
+    def test_stale_revision_is_rejected_without_write(self):
+        self.client.documents[("whatsapp_active_sessions", "22501")] = self.state(2)
+        updated = self.store.save_if_revision("22501", self.state(3), expected_revision=1)
+        self.assertFalse(updated)
+        self.assertEqual(self.client.writes, [])
+        self.assertEqual(self.store.get("22501")["revision"], 2)
+
+    def test_two_concurrent_transitions_accept_only_one(self):
+        barrier = threading.Barrier(2)
+
+        def save_once(marker):
+            candidate = self.state(1)
+            candidate["next_expected_action"] = marker
+            barrier.wait()
+            return self.store.save_if_revision("22501", candidate, expected_revision=0)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(save_once, ("first", "second")))
+
+        self.assertEqual(sorted(results), [False, True])
+        self.assertEqual(len(self.client.writes), 1)
+
+    def test_adapter_never_addresses_legacy_collections(self):
+        self.store.save_if_revision("22501", self.state(1), expected_revision=0)
+        self.store.get("22501")
+        forbidden = {"whatsapp_state", "whatsapp_contexts", "whatsapp_historiques"}
+        self.assertTrue(forbidden.isdisjoint(self.client.collection_calls))
+        self.assertEqual(set(self.client.collection_calls), {"whatsapp_active_sessions"})
 
 
 class ActiveSessionP0Tests(unittest.TestCase):
@@ -249,6 +385,43 @@ class ActiveSessionP0Tests(unittest.TestCase):
         before = deepcopy(stored)
         main.prepare_active_session(stored, PROFILE, "wamid.1", now=NOW)
         self.assertEqual(stored, before)
+
+    def test_expired_session_is_replaced(self):
+        stored = main.new_active_session(PROFILE, now=NOW, session_id="expired-session")
+        stored["expires_at"] = NOW - timedelta(seconds=1)
+        prepared, duplicate = main.prepare_active_session(
+            stored, PROFILE, "wamid.new", now=NOW,
+            session_id="replacement-session", phone="22501",
+        )
+        self.assertFalse(duplicate)
+        self.assertEqual(prepared["session_id"], "replacement-session")
+        self.assertEqual(prepared["revision"], 0)
+
+    def test_each_scope_change_starts_a_new_session(self):
+        stored = main.new_active_session(PROFILE, now=NOW, session_id="session-1")
+        changes = (
+            {"matiere": "PC"},
+            {"serie": "C"},
+            {"type_examen": "BEPC"},
+            {"mode": "examen"},
+        )
+        for index, change in enumerate(changes):
+            with self.subTest(change=change):
+                changed_profile = {**PROFILE, **change}
+                prepared, duplicate = main.prepare_active_session(
+                    stored, changed_profile, f"wamid.{index}", now=NOW,
+                    session_id=f"session-{index + 2}", phone="22501",
+                )
+                self.assertFalse(duplicate)
+                self.assertNotEqual(prepared["session_id"], stored["session_id"])
+
+    def test_last_processed_message_id_is_deduplicated_during_preparation(self):
+        stored = main.new_active_session(PROFILE, now=NOW, session_id="session-1")
+        stored["last_processed_message_id"] = "wamid.duplicate"
+        _, duplicate = main.prepare_active_session(
+            stored, PROFILE, "wamid.duplicate", now=NOW,
+        )
+        self.assertTrue(duplicate)
 
 
 if __name__ == "__main__":
