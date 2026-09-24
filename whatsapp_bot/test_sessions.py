@@ -184,10 +184,14 @@ class ActiveSessionSchemaTests(unittest.TestCase):
         self.assertTrue(main.mentions_user_document_without_content("Explique exercice 1"))
 
     def test_single_choice_is_recognized_as_pedagogical_answer(self):
-        for answer in ("a", "(a)", "b.", "2", "(3)"):
+        for answer in (
+            "a", "(a)", "b.", "2", "(3)", "VRAI", "faux", "oui", "non",
+            "la réponse est : Vrai", "je pense que cette réponse est vrai",
+        ):
             with self.subTest(answer=answer):
                 self.assertTrue(main.is_short_pedagogical_answer(answer))
         self.assertFalse(main.is_short_pedagogical_answer("photo"))
+        self.assertFalse(main.is_short_pedagogical_answer("Pourquoi cette réponse est vraie ?"))
 
     def test_short_answer_prompt_forbids_stale_file_fallback(self):
         captured = {}
@@ -214,6 +218,32 @@ class ActiveSessionSchemaTests(unittest.TestCase):
         self.assertIn("REPONSE COURTE DE L'ELEVE", files["question"][1])
         self.assertIn("ne demande jamais de renvoyer un fichier", files["question"][1])
         self.assertEqual(json.loads(files["history"][1]), history)
+        self.assertNotIn("file", files)
+
+    def test_true_false_answer_forbids_stale_file_fallback(self):
+        captured = {}
+        original_post = main.requests.post
+
+        class Response:
+            status_code = 200
+            text = '{"reponse":"C’est exact."}'
+
+            @staticmethod
+            def json():
+                return {"reponse": "C’est exact."}
+
+        history = [
+            {"role": "assistant", "content": "Les synapses sont perturbées. Vrai ou faux ?"},
+        ]
+        try:
+            main.requests.post = lambda *args, **kwargs: captured.update(kwargs) or Response()
+            main.get_akili_response("VRAI", "SVT", "D", history)
+        finally:
+            main.requests.post = original_post
+
+        files = captured["files"]
+        self.assertIn("REPONSE COURTE DE L'ELEVE", files["question"][1])
+        self.assertIn("ne demande jamais de renvoyer un fichier", files["question"][1])
         self.assertNotIn("file", files)
 
 

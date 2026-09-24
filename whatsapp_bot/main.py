@@ -2182,7 +2182,14 @@ def mentions_user_document_without_content(text):
 def is_short_pedagogical_answer(text):
     """Reconnaît les réponses minimales attendues par un QCM/une étape guidée."""
     compact = normalize_for_match(text or "").strip()
-    return bool(re.fullmatch(r"\(?\s*[A-L0-9]\s*\)?[.)]?", compact))
+    choice = r"(?:[A-L0-9]|VRAI|FAUX|OUI|NON)"
+    if re.fullmatch(rf"\(?\s*{choice}\s*\)?[.)]?", compact):
+        return True
+    return bool(re.fullmatch(
+        rf"(?:LA|MA) REPONSE (?:CORRECTE )?EST {choice}|"
+        rf"JE PENSE QUE (?:CETTE|LA) REPONSE EST {choice}",
+        compact,
+    ))
 
 
 def answer_learning_request(phone, profile, text, media_file=None, message_id=None, reply_audio=False,
