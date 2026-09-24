@@ -174,6 +174,48 @@ class ActiveSessionSchemaTests(unittest.TestCase):
         self.assertEqual(profile["serie"], "6E")
         self.assertEqual(main.infer_type_examen("6E", "maths"), "CLASSE_INTERMEDIAIRE")
 
+    def test_pasted_exercise_is_not_treated_as_missing_document(self):
+        statement = (
+            "EXERCICE 1 Partie I. On considère la fonction p définie sur C par "
+            "p(z) = z^3 - (3 + 2i)z^2 + (1 + 5i)z + 2 - 2i. "
+            "Calcule p(i), puis explique chaque étape de ton raisonnement."
+        )
+        self.assertFalse(main.mentions_user_document_without_content(statement))
+        self.assertTrue(main.mentions_user_document_without_content("Explique exercice 1"))
+
+    def test_single_choice_is_recognized_as_pedagogical_answer(self):
+        for answer in ("a", "(a)", "b.", "2", "(3)"):
+            with self.subTest(answer=answer):
+                self.assertTrue(main.is_short_pedagogical_answer(answer))
+        self.assertFalse(main.is_short_pedagogical_answer("photo"))
+
+    def test_short_answer_prompt_forbids_stale_file_fallback(self):
+        captured = {}
+        original_post = main.requests.post
+
+        class Response:
+            status_code = 200
+            text = '{"reponse":"Bonne réponse."}'
+
+            @staticmethod
+            def json():
+                return {"reponse": "Bonne réponse."}
+
+        history = [
+            {"role": "assistant", "content": "Réponds par a, b ou c."},
+        ]
+        try:
+            main.requests.post = lambda *args, **kwargs: captured.update(kwargs) or Response()
+            main.get_akili_response("a", "MATHS", "B", history)
+        finally:
+            main.requests.post = original_post
+
+        files = captured["files"]
+        self.assertIn("REPONSE COURTE DE L'ELEVE", files["question"][1])
+        self.assertIn("ne demande jamais de renvoyer un fichier", files["question"][1])
+        self.assertEqual(json.loads(files["history"][1]), history)
+        self.assertNotIn("file", files)
+
 
 class ActiveSessionFlowTests(unittest.TestCase):
     def setUp(self):
