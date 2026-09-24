@@ -71,7 +71,8 @@ def main():
     client = storage.Client(project=PROJECT_ID)
     bucket = client.bucket(BUCKET_NAME)
     data = json.loads(bucket.blob(DB_BLOB).download_as_text(timeout=600))
-    existing_ids = {d.get("id") for d in data.get("documents", [])}
+    existing_by_id = {d.get("id"): d for d in data.get("documents", [])}
+    existing_ids = set(existing_by_id)
     planned = []
     for subject, scope, remote_name, slug in DOCUMENTS:
         doc_id = f"dpfc_progression_{VERSION.replace('-', '_')}_{slug}"
@@ -94,14 +95,30 @@ def main():
     vertexai.init(project=PROJECT_ID, location=LOCATION)
     model = GenerativeModel("gemini-2.5-flash")
     created = 0
+    updated = 0
     for doc_id, subject, scope, remote_name, slug, exists in planned:
+        type_doc = "DOCUMENT_ACCOMPAGNEMENT" if scope == "ACCOMPAGNEMENT" else "PROGRESSION_ANNUELLE"
         if exists:
+            doc = existing_by_id[doc_id]
+            expected = {
+                "examen": "TOUS",
+                "type_doc": type_doc,
+                "source": "DPFC_OFFICIEL",
+                "version": VERSION,
+            }
+            changed = False
+            for key, value in expected.items():
+                if doc.get(key) != value:
+                    doc[key] = value
+                    changed = True
+            if changed:
+                updated += 1
+                print(f"Metadonnees actualisees: {doc_id}")
             continue
         url = BASE + remote_name
         content = download(url)
         filename = f"DPFC_2026-2027_{slug.upper()}.pdf"
         upload_path = f"ingestion_officielle/dpfc/{VERSION}/{filename}"
-        type_doc = "DOCUMENT_ACCOMPAGNEMENT" if scope == "ACCOMPAGNEMENT" else "PROGRESSION_ANNUELLE"
         destination = f"knowledge_base/{subject}/TOUTES/{VERSION}_{type_doc}_{filename}"
         bucket.blob(upload_path).upload_from_string(content, content_type="application/pdf")
         bucket.copy_blob(bucket.blob(upload_path), bucket, destination)
@@ -114,6 +131,7 @@ def main():
             "chemin": destination,
             "matiere": subject,
             "serie": "TOUTES",
+            "examen": "TOUS",
             "niveau": scope,
             "annee": VERSION,
             "version": VERSION,
@@ -134,7 +152,7 @@ def main():
     bucket.blob(DB_BLOB).upload_from_string(
         json.dumps(data, ensure_ascii=False, indent=2), content_type="application/json"
     )
-    print(f"Termine: {created} ajouts; total={data['total']}")
+    print(f"Termine: {created} ajouts; {updated} mises a jour; total={data['total']}")
 
 
 if __name__ == "__main__":

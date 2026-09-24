@@ -162,11 +162,13 @@ def serie_match(serie_doc, serie_eleve):
 
 ETUDE_TYPES = {
     "PROGRAMME": 40,
+    "PROGRESSION_ANNUELLE": 38,
     "PROGRESSION_2NDE": 38,
     "PROGRESSION_1ERE": 38,
     "PROGRESSION_TLE": 38,
     "GUIDE": 35,
     "DOCUMENT": 25,
+    "DOCUMENT_ACCOMPAGNEMENT": 30,
     "TP": 25,
     "ANNALE": 10,
     "SUJET": 8,
@@ -190,6 +192,8 @@ EXAMEN_TYPES = {
     "BAREME": 22,
     "SUJET CORRIGÉ": 22,
     "PROGRAMME": 5,
+    "PROGRESSION_ANNUELLE": 5,
+    "DOCUMENT_ACCOMPAGNEMENT": 4,
     "PROGRESSION_2NDE": 5,
     "PROGRESSION_1ERE": 5,
     "PROGRESSION_TLE": 5,
@@ -288,7 +292,10 @@ def chercher_contexte(question, matiere=None, serie=None, examen=None, mode="etu
     filtered_docs = documents
 
     if examen:
-        filtered_docs = [d for d in filtered_docs if (d.get("examen") or "").upper().strip() == examen]
+        filtered_docs = [
+            d for d in filtered_docs
+            if (d.get("examen") or "").upper().strip() in {examen, "TOUS"}
+        ]
 
     if matiere:
         filtered_docs = [d for d in filtered_docs if (d.get("matiere") or "").upper().strip() == matiere]
