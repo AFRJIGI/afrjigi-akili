@@ -101,7 +101,8 @@ def main():
         content = download(url)
         filename = f"DPFC_2026-2027_{slug.upper()}.pdf"
         upload_path = f"ingestion_officielle/dpfc/{VERSION}/{filename}"
-        destination = f"knowledge_base/{subject}/TOUTES/{VERSION}_PROGRESSION_ANNUELLE_{filename}"
+        type_doc = "DOCUMENT_ACCOMPAGNEMENT" if scope == "ACCOMPAGNEMENT" else "PROGRESSION_ANNUELLE"
+        destination = f"knowledge_base/{subject}/TOUTES/{VERSION}_{type_doc}_{filename}"
         bucket.blob(upload_path).upload_from_string(content, content_type="application/pdf")
         bucket.copy_blob(bucket.blob(upload_path), bucket, destination)
         text = extract_text(model, content)
@@ -116,7 +117,7 @@ def main():
             "niveau": scope,
             "annee": VERSION,
             "version": VERSION,
-            "type_doc": "PROGRESSION_ANNUELLE",
+            "type_doc": type_doc,
             "source": "DPFC_OFFICIEL",
             "score": 5,
             "texte": text,
