@@ -2170,7 +2170,19 @@ def mentions_user_document_without_content(text):
         "CORRIGE CA", "TRAITE CA", "EXPLIQUE CA",
     ]
 
-    return any(m in compact for m in document_markers + exercise_refs)
+    if any(marker in compact for marker in document_markers):
+        return True
+
+    # Un énoncé recopié peut lui-même commencer par « EXERCICE 1 ». Une
+    # référence courte doit réutiliser le document; un texte substantiel doit
+    # être traité directement comme l'énoncé fourni par l'élève.
+    return len(compact.split()) <= 12 and any(marker in compact for marker in exercise_refs)
+
+
+def is_short_pedagogical_answer(text):
+    """Reconnaît les réponses minimales attendues par un QCM/une étape guidée."""
+    compact = normalize_for_match(text or "").strip()
+    return bool(re.fullmatch(r"\(?\s*[A-L0-9]\s*\)?[.)]?", compact))
 
 
 def answer_learning_request(phone, profile, text, media_file=None, message_id=None, reply_audio=False,
@@ -2668,6 +2680,13 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             f"{active_session_context}\n\n"
             if active_session_context else ""
         )
+        short_answer_instruction = (
+            "REPONSE COURTE DE L'ELEVE: ce message est une réponse à la dernière "
+            "question pédagogique de l'historique. Aucun nouveau fichier ni aucune "
+            "nouvelle image n'est joint. Interprète cette réponse dans l'exercice en "
+            "cours et ne demande jamais de renvoyer un fichier.\n\n"
+            if media_file is None and is_short_pedagogical_answer(question) else ""
+        )
 
         bepc_instruction = ""
         if (type_examen or "").upper() == "BEPC" or (serie or "").upper() == "BEPC":
@@ -2760,6 +2779,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
                 f"{instructions_whatsapp}\n"
                 f"{format_guard}"
                 f"{active_context_instruction}"
+                f"{short_answer_instruction}"
                 f"NOUVEAU DOCUMENT RECU AVEC CE MESSAGE: l'eleve vient de joindre un nouveau fichier ou une nouvelle photo. "
                 f"Ce nouveau document contient l'exercice ACTUEL a traiter en priorite absolue, meme s'il ne correspond pas au sujet de l'historique ci-dessous. "
                 f"Ne continue PAS l'ancien exercice de l'historique si le nouveau document presente un exercice different: lis le nouveau document et pars de son contenu.\n"
@@ -2771,6 +2791,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
                 f"{instructions_whatsapp}\n"
                 f"{format_guard}"
                 f"{active_context_instruction}"
+                f"{short_answer_instruction}"
                 f"HISTORIQUE RECENT:\n{contexte}\n\n"
                 f"QUESTION REELLE DE L'ELEVE:\n{question}"
             )
@@ -2779,6 +2800,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
                 f"{instructions_whatsapp}\n"
                 f"{format_guard}"
                 f"{active_context_instruction}"
+                f"{short_answer_instruction}"
                 f"QUESTION REELLE DE L'ELEVE:\n{question}"
             )
 
@@ -2790,7 +2812,9 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             "serie": serie,
             "type_examen": type_examen,
             "mode": mode,
-            "history": contexte,
+            # L'API Akili attend un tableau JSON et ignorait auparavant ce champ
+            # parce qu'elle recevait une chaîne déjà mise en forme.
+            "history": json.dumps(history[-6:], ensure_ascii=False),
             "user_type": user_type or "",
         }
 
