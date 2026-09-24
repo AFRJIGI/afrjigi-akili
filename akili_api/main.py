@@ -283,6 +283,33 @@ def type_priority(type_doc, mode):
     table = EXAMEN_TYPES if mode == "examen" else ETUDE_TYPES
     return table.get(t, 0)
 
+
+def progression_priority(question, doc):
+    """Favorise une progression demandee explicitement, surtout sa version exacte."""
+    q = (question or "").lower()
+    if not any(term in q for term in ["progression", "repartition annuelle", "répartition annuelle"]):
+        return 0
+
+    type_doc = (doc.get("type_doc") or "").upper().strip()
+    if type_doc == "PROGRESSION_ANNUELLE":
+        score = 120
+    elif type_doc.startswith("PROGRESSION_"):
+        score = 90
+    else:
+        return 0
+
+    version = str(doc.get("version") or doc.get("annee") or "").lower()
+    requested_versions = re.findall(r"\b20\d{2}(?:\s*[-–/]\s*20\d{2})?\b", q)
+    if requested_versions:
+        normalized_version = re.sub(r"\s+", "", version).replace("–", "-").replace("/", "-")
+        if any(
+            re.sub(r"\s+", "", item).replace("–", "-").replace("/", "-") == normalized_version
+            for item in requested_versions
+        ):
+            score += 60
+
+    return score
+
 def chercher_contexte(question, matiere=None, serie=None, examen=None, mode="etude", max_docs=5):
     """Filtre les documents par examen/matière/série et recherche par mots-clés."""
     if not documents or not question:
@@ -317,7 +344,12 @@ def chercher_contexte(question, matiere=None, serie=None, examen=None, mode="etu
         meta_score = sum(1 for mot in mots_cles if mot in meta_text)
 
         if keyword_score > 0 or meta_score > 0:
-            score = (keyword_score * 10) + (meta_score * 4) + type_priority(doc.get("type_doc"), mode)
+            score = (
+                (keyword_score * 10)
+                + (meta_score * 4)
+                + type_priority(doc.get("type_doc"), mode)
+                + progression_priority(question, doc)
+            )
             results.append((score, doc))
 
     results.sort(key=lambda x: x[0], reverse=True)
