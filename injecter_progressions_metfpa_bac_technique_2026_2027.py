@@ -8,6 +8,8 @@ et ajouter les documents absents. Aucun document existant n'est supprime.
 import argparse
 import hashlib
 import json
+import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
@@ -66,26 +68,68 @@ def filename(discipline, niveau, serie):
     return f"METFPA_{VERSION}_{discipline}_{niveau}_{serie}.pdf"
 
 
-def download(url):
-    request = urllib.request.Request(url, headers={"User-Agent": "AfrJigi-Akili/1.0"})
-    with urllib.request.urlopen(request, timeout=120) as response:
-        content = response.read()
-    if not content.startswith(b"%PDF-"):
-        raise ValueError(f"La reponse recue n'est pas un PDF: {url}")
-    return content
+def download(url, max_attempts=6):
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "AfrJigi-Akili/1.0",
+            "Accept-Encoding": "identity",
+            "Connection": "close",
+        },
+    )
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                content = response.read()
+            if not content.startswith(b"%PDF-"):
+                raise ValueError(f"La reponse recue n'est pas un PDF: {url}")
+            return content
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            last_error = exc
+            if attempt == max_attempts:
+                break
+            delay = min(5 * attempt, 30)
+            print(
+                f"Telechargement temporairement indisponible "
+                f"({attempt}/{max_attempts}): {exc}; nouvel essai dans {delay}s"
+            )
+            time.sleep(delay)
+    raise RuntimeError(f"Echec du telechargement apres {max_attempts} essais: {url}") from last_error
 
 
-def extract_text(model, content, discipline, niveau, serie):
-    response = model.generate_content([
-        Part.from_data(data=content, mime_type="application/pdf"),
-        (
-            "Extrais fidelement le texte utile de cette progression METFPA "
-            f"de {discipline}, niveau {niveau}, serie {serie}. Conserve les "
-            "semaines, themes, lecons, competences et volumes horaires. "
-            "Ne produis aucun commentaire en dehors du texte extrait."
-        ),
-    ])
-    return (response.text or "").strip()
+def extract_text(model, content, discipline, niveau, serie, max_attempts=4):
+    prompt = (
+        "Extrais fidelement le texte utile de cette progression METFPA "
+        f"de {discipline}, niveau {niveau}, serie {serie}. Conserve les "
+        "semaines, themes, lecons, competences et volumes horaires. "
+        "Ne produis aucun commentaire en dehors du texte extrait."
+    )
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = model.generate_content([
+                Part.from_data(data=content, mime_type="application/pdf"),
+                prompt,
+            ])
+            text = (response.text or "").strip()
+            if not text:
+                raise RuntimeError("Extraction Vertex vide")
+            return text
+        except Exception as exc:
+            last_error = exc
+            if attempt == max_attempts:
+                break
+            delay = min(10 * attempt, 30)
+            print(
+                f"Extraction temporairement indisponible "
+                f"({attempt}/{max_attempts}): {exc}; nouvel essai dans {delay}s"
+            )
+            time.sleep(delay)
+    raise RuntimeError(
+        f"Echec de l'extraction apres {max_attempts} essais: "
+        f"{discipline} {niveau} {serie}"
+    ) from last_error
 
 
 def main():
@@ -178,6 +222,7 @@ def main():
         known_hashes.add(digest)
         created += 1
         print(f"Cree: {doc_id} ({len(text)} caracteres)")
+        time.sleep(2)
 
     data["total"] = len(data["documents"])
     data["generated_at"] = datetime.now(timezone.utc).isoformat()
