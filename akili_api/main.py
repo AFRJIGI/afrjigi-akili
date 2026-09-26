@@ -372,6 +372,34 @@ def formater_contexte_document(doc, question, serie):
     )
     return f"{entete}\n\n{extrait}"
 
+def progression_scope_matches(question, doc):
+    """Respecte les criteres explicites des progressions institutionnelles."""
+    q = normaliser_libelle_classe(question)
+    if "PROGRESSION" not in q:
+        return True
+    institutions = re.findall(r"\b(?:METFPA|DPFC)\b", q)
+    if not institutions:
+        return True
+    institution = str(doc.get("institution") or doc.get("source") or "").upper()
+    if not any(item == institution or institution == item + "_OFFICIEL" for item in institutions):
+        return False
+    if not str(doc.get("type_doc") or "").startswith("PROGRESSION_"):
+        return False
+    versions = re.findall(r"\b20\d{2}\s*[-–/]\s*20\d{2}\b", question)
+    normalize_version = lambda value: re.sub(r"\s+", "", str(value)).replace("–", "-").replace("/", "-")
+    if versions and normalize_version(doc.get("version") or doc.get("annee")) not in [normalize_version(v) for v in versions]:
+        return False
+    # Les documents DPFC multi-classes sont decoupes apres la selection.
+    if "METFPA" in institutions:
+        niveaux = re.findall(r"\b(?:TERMINALE|PREMIERE|SECONDE)\b", q)
+        disciplines = re.findall(r"\b(?:HISTOIRE|GEOGRAPHIE)\b", q)
+        if niveaux and normaliser_libelle_classe(doc.get("niveau")) not in niveaux:
+            return False
+        if disciplines and normaliser_libelle_classe(doc.get("discipline")) not in disciplines:
+            return False
+    return True
+
+
 def chercher_contexte(question, matiere=None, serie=None, examen=None, mode="etude", max_docs=5):
     """Filtre les documents par examen/matière/série et recherche par mots-clés."""
     if not documents or not question:
@@ -391,6 +419,8 @@ def chercher_contexte(question, matiere=None, serie=None, examen=None, mode="etu
 
     if serie:
         filtered_docs = [d for d in filtered_docs if serie_match(d.get("serie"), serie)]
+
+    filtered_docs = [d for d in filtered_docs if progression_scope_matches(question, d)]
 
     mots_cles = [m.lower() for m in re.findall(r"\w+", question) if len(m) > 3]
 
