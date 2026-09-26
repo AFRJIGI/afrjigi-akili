@@ -12,6 +12,9 @@ def load_helpers():
         "normaliser_libelle_classe",
         "extraire_section_progression",
         "formater_contexte_document",
+        "progression_scope_matches",
+        "chercher_contexte",
+        "progression_priority",
     }
     nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in wanted]
     namespace = {"re": re, "unicodedata": unicodedata}
@@ -25,6 +28,29 @@ formater_contexte_document = HELPERS["formater_contexte_document"]
 
 
 class ProgressionSectionTests(unittest.TestCase):
+    def test_metfpa_terminal_history_survives_competing_documents(self):
+        target = dict(source="METFPA_OFFICIEL", institution="METFPA",
+                      examen="BAC_TECHNIQUE", matiere="HG", serie="B",
+                      discipline="HISTOIRE", niveau="TERMINALE",
+                      version="2026-2027", type_doc="PROGRESSION_ANNUELLE",
+                      texte="Histoire", id="target")
+        competing = [dict(target, niveau="PREMIERE", id="premiere"),
+                     dict(target, discipline="GEOGRAPHIE", id="geo"),
+                     dict(target, institution="DPFC", source="DPFC_OFFICIEL", id="dpfc"),
+                     dict(target, version="2025-2026", id="old")]
+        ns = load_helpers()
+        ns.update(documents=competing + [target], normaliser_mode=lambda mode, q: mode,
+                  serie_match=lambda actual, requested: actual == requested,
+                  type_priority=lambda *args: 0)
+        question = "Progression METFPA 2026-2027 histoire Terminale B"
+        result = ns["chercher_contexte"](question, "HG", "B", "BAC_TECHNIQUE", max_docs=1)
+        self.assertEqual([d["id"] for d in result], ["target"])
+        ns["documents"] = competing
+        self.assertEqual(ns["chercher_contexte"](question, "HG", "B", "BAC_TECHNIQUE"), [])
+
+    def test_generic_question_keeps_existing_scope(self):
+        self.assertTrue(HELPERS["progression_scope_matches"]("Explique la guerre froide", {}))
+
     def setUp(self):
         self.doc = {
             "id": "dpfc_progression_2026_2027_mathematiques",
