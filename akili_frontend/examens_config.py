@@ -13,7 +13,7 @@ EXAMENS = {
     },
 
     "BAC Général": {
-        "series": ["A1", "A2", "C", "D", "E"],
+        "series": ["A1", "A2", "C", "D"],
         "matieres_par_serie": {
             "A1": ["Français", "Mathématiques", "Philosophie", "Histoire-Géographie",
                    "Anglais", "Allemand", "Espagnol"],
@@ -25,13 +25,11 @@ EXAMENS = {
             "D":  ["Français", "Mathématiques", "Philosophie", "Histoire-Géographie",
                    "Anglais", "Physique-Chimie",
                    "Sciences de la Vie et de la Terre (SVT)"],
-            "E":  ["Français", "Mathématiques", "Philosophie", "Histoire-Géographie",
-                   "Anglais", "Physique-Chimie"],
         }
     },
 
     "BAC Technique": {
-        "series": ["B", "E", "F1", "F2", "F3", "F4", "G1", "G2"],
+        "series": ["B", "E", "F1", "F2", "F3", "F4", "F7", "G1", "G2"],
         "matieres_par_serie": {
             "B": ["Économie", "Mathématiques", "Français", "Philosophie", "Histoire-Géographie",
                   "Anglais", "Allemand", "Espagnol"],
@@ -54,6 +52,9 @@ EXAMENS = {
 
             "F4": ["Technologie de construction", "Topographie", "Résistance des matériaux",
                    "Physique", "Mathématiques", "Français", "Philosophie",
+                   "Histoire-Géographie", "Anglais"],
+
+            "F7": ["Mathématiques", "Physique-Chimie", "Français", "Philosophie",
                    "Histoire-Géographie", "Anglais"],
 
             "G1": ["Étude de cas", "Techniques d'organisation", "Correspondance commerciale",

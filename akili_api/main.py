@@ -154,7 +154,7 @@ def serie_match(serie_doc, serie_eleve):
         return "B" in s_doc
     if s_el in ("G1", "G2"):
         return s_el in s_doc
-    if s_el in ("F1", "F2", "F3", "F4"):
+    if s_el in ("F1", "F2", "F3", "F4", "F7"):
         if s_el in s_doc: return True
         if s_doc == "F":  return True
         return False
@@ -216,7 +216,7 @@ def normaliser_examen_requete(type_examen=None, serie=None):
 
     if (
         "TECH" in raw
-        or s in {"B", "G1", "G2", "G1G2", "BG1", "BG2", "BG1G2", "F", "F1", "F2", "F3", "F4", "STI"}
+        or s in {"B", "E", "G1", "G2", "G1G2", "BG1", "BG2", "BG1G2", "F", "F1", "F2", "F3", "F4", "F7", "STI"}
     ):
         return "BAC_TECHNIQUE"
 
