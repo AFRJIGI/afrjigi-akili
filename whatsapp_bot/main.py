@@ -709,6 +709,42 @@ def is_other_or_concours(message):
     ])
 
 
+BAC_GENERAL_SERIES_CHOICES = {
+    "a": "A1",
+    "b": "A2",
+    "c": "C",
+    "d": "D",
+}
+
+BAC_TECHNIQUE_SERIES_CHOICES = {
+    "a": "B",
+    "b": "G1",
+    "c": "G2",
+    "d": "E",
+    "e": "F1",
+    "f": "F2",
+    "g": "F3",
+    "h": "F4",
+    "i": "F7",
+}
+
+BAC_TECHNIQUE_SUBJECT_CHOICES = {
+    "a": "COMPTA_FIN",
+    "b": "COMPTA_SOCIETES",
+    "c": "COMPTA_ANALYTIQUE",
+    "d": "MATHS_FIN",
+    "e": "MATHS_GENERAL",
+    "f": "ECO",
+    "g": "EXPRESSION_PRO",
+    "h": "PHYSIQUE_APPLIQUEE",
+    "i": "ESTI",
+    "j": "DROIT",
+    "k": "HG",
+    "l": "FRANCAIS",
+    "m": "ANGLAIS",
+}
+
+
 def choice_key(text):
     c = normalize_for_match(text)
     mapping = {
@@ -721,6 +757,10 @@ def choice_key(text):
         "7": "g", "G": "g",
         "8": "h", "H": "h",
         "9": "i", "I": "i",
+        "10": "j", "J": "j",
+        "11": "k", "K": "k",
+        "12": "l", "L": "l",
+        "13": "m", "M": "m",
     }
     return mapping.get(c)
 
@@ -744,9 +784,8 @@ def ask_serie_general(phone):
         "a. A1\n"
         "b. A2\n"
         "c. C\n"
-        "d. D\n"
-        "e. E\n\n"
-        "Réponds par a, b, c, d ou e."
+        "d. D\n\n"
+        "Réponds par a, b, c ou d."
     )
 
 
@@ -756,9 +795,13 @@ def ask_serie_technique(phone):
         "a. B\n"
         "b. G1\n"
         "c. G2\n"
-        "d. F1\n"
-        "e. F2/F3/F4\n\n"
-        "Réponds par a, b, c, d ou e."
+        "d. E\n"
+        "e. F1\n"
+        "f. F2\n"
+        "g. F3\n"
+        "h. F4\n"
+        "i. F7\n\n"
+        "Réponds par a, b, c, d, e, f, g, h ou i."
     )
 
 
@@ -801,8 +844,9 @@ def ask_matiere_technique(phone, serie=None):
         "i. Étude des Systèmes Techniques Industriels\n"
         "j. Droit\n"
         "k. Histoire-Géographie\n"
-        "l. Français\n\n"
-        "Réponds par a, b, c, d, e, f, g, h, i, j, k ou l."
+        "l. Français\n"
+        "m. Anglais\n\n"
+        "Réponds par a, b, c, d, e, f, g, h, i, j, k, l ou m."
     )
 
 
@@ -896,11 +940,12 @@ def mot_cle_vers_lettre(step, text, profile):
             "a": ["A1"], "b": ["A2"],
             "c": ["SERIE C", "TERMINALE C", "TERMINAL C"],
             "d": ["SERIE D", "TERMINALE D", "TERMINAL D"],
-            "e": ["SERIE E", "TERMINALE E", "TERMINAL E"],
         },
         "serie_technique": {
             "a": ["SERIE B", "TERMINALE B", "TERMINAL B"],
-            "b": ["G1"], "c": ["G2"], "d": ["F1"], "e": ["F2", "F3", "F4"],
+            "b": ["G1"], "c": ["G2"],
+            "d": ["SERIE E", "TERMINALE E", "TERMINAL E"],
+            "e": ["F1"], "f": ["F2"], "g": ["F3"], "h": ["F4"], "i": ["F7"],
         },
         "seconde": {
             "a": ["SECONDE A", "2NDE A"],
@@ -929,6 +974,7 @@ def mot_cle_vers_lettre(step, text, profile):
             "j": ["DROIT"],
             "k": ["HISTOIRE GEOGRAPHIE", "HG"],
             "l": ["FRANCAIS"],
+            "m": ["ANGLAIS", "ENGLISH"],
         },
         "mode": {
             "a": ["MODE ETUDE", "ETUDE", "COMPRENDRE"],
@@ -1061,7 +1107,7 @@ def handle_onboarding_choice(phone, profile, text):
 
 
     if step == "serie_general":
-        values = {"a": "A1", "b": "A2", "c": "C", "d": "D", "e": "E"}
+        values = BAC_GENERAL_SERIES_CHOICES
         if key in values:
             profile["serie"] = values[key]
             profile["onboarding_step"] = "matiere"
@@ -1071,7 +1117,7 @@ def handle_onboarding_choice(phone, profile, text):
             return True
 
     if step == "serie_technique":
-        values = {"a": "B", "b": "G1", "c": "G2", "d": "F1", "e": "F2"}
+        values = BAC_TECHNIQUE_SERIES_CHOICES
         if key in values:
             profile["serie"] = values[key]
             profile["onboarding_step"] = "matiere"
@@ -1112,20 +1158,7 @@ def handle_onboarding_choice(phone, profile, text):
 
     if step == "matiere":
         if profile.get("type_examen") == "BAC_TECHNIQUE":
-            values = {
-                "a": "COMPTA_FIN",
-                "b": "COMPTA_SOCIETES",
-                "c": "COMPTA_ANALYTIQUE",
-                "d": "MATHS_FIN",
-                "e": "MATHS_GENERAL",
-                "f": "ECO",
-                "g": "EXPRESSION_PRO",
-                "h": "PHYSIQUE_APPLIQUEE",
-                "i": "ESTI",
-                "j": "DROIT",
-                "k": "HG",
-                "l": "FRANCAIS",
-            }
+            values = BAC_TECHNIQUE_SUBJECT_CHOICES
         else:
             if (profile.get("serie") or "").upper().strip() == "BEPC":
                 values = {"a": "MATHS", "b": "PC", "c": "SVT", "d": "FRANCAIS", "e": "HG", "f": "EDHC", "g": "ESPAGNOL", "h": "ALLEMAND", "i": "ANGLAIS"}
@@ -2441,7 +2474,7 @@ def update_profile_from_text(profile, message):
         profile["type_examen"] = "BEPC"
 
     # Detecte les niveaux du BAC General.
-    for serie in ["A1", "A2", "C", "D", "E", "A"]:
+    for serie in ["A1", "A2", "C", "D", "A"]:
         patterns = [
             f"SERIE {serie}", f"TERMINALE {serie}", f"TERMINAL {serie}",
             f"TLE {serie}", f"1ERE {serie}", f"PREMIERE {serie}",
@@ -2452,7 +2485,7 @@ def update_profile_from_text(profile, message):
             break
 
     # Detecte les series techniques avant les matieres.
-    for serie in ["G1", "G2", "F1", "F2", "F3", "F4", "B"]:
+    for serie in ["G1", "G2", "E", "F1", "F2", "F3", "F4", "F7", "B"]:
         patterns = [
             f"SERIE {serie}", f"TERMINALE {serie}", f"TERMINAL {serie}",
             f"TLE {serie}", f"BAC {serie}",
@@ -2510,7 +2543,7 @@ def infer_type_examen(serie, message):
     if serie == "BEPC" or "BEPC" in msg or "3EME" in msg or "3ÈME" in msg or "TROISIEME" in msg or "TROISIÈME" in msg:
         return "BEPC"
 
-    if serie in {"B", "G1", "G2", "F1", "F2", "F3", "F4", "STI"}:
+    if serie in {"B", "G1", "G2", "E", "F1", "F2", "F3", "F4", "F7", "STI"}:
         return "BAC_TECHNIQUE"
 
     if any(x in msg for x in ["BAC TECH", "BAC TECHNIQUE", "TECHNIQUE", "TERMINALE G", "TERMINALE B"]):
