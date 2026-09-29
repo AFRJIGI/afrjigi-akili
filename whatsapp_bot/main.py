@@ -1965,6 +1965,205 @@ def charger_historique_conv(conversation_key):
     return []
 
 
+# ─── FIN DE SESSION : bilan quand l'eleve dit au revoir, ou apres une pause ───
+SESSIONS_BILAN_COLLECTION = "whatsapp_sessions_bilan"
+SESSION_INACTIVITE_MINUTES = 30
+SESSION_FENETRE_WHATSAPP_HEURES = 23  # WhatsApp n'autorise un message libre que 24 h apres le dernier message de l'eleve
+SESSION_MAX_MESSAGES = 40
+BILAN_MIN_ECHANGES_INACTIVITE = 2
+BILAN_MAX_PAR_TACHE = 20
+AKILI_BILAN_URL = os.environ.get("AKILI_BILAN_URL", AKILI_API_URL.rsplit("/", 1)[0] + "/bilan-session")
+MESSAGE_AVIS_FIN_SESSION = "Ton avis nous aide : réponds « retour: » suivi de ton message."
+MESSAGE_AU_REVOIR_SIMPLE = "À bientôt ! Reviens quand tu veux : envoie un exercice, une photo ou le chapitre à travailler."
+
+EXPRESSIONS_AU_REVOIR = [
+    "AU REVOIR", "AUREVOIR", "A BIENTOT", "A DEMAIN", "A LA PROCHAINE", "A PLUS TARD",
+    "BONNE NUIT", "BONNE SOIREE", "BYE",
+    "C EST FINI POUR AUJOURD HUI", "FINI POUR AUJOURD HUI", "C EST TOUT POUR AUJOURD HUI",
+    "JE M ARRETE LA", "JE M ARRETE ICI", "JE M ARRETE POUR AUJOURD HUI",
+    "ON S ARRETE LA", "ON S ARRETE ICI", "ON ARRETE LA", "ON ARRETE ICI",
+    "FIN DE SESSION", "FIN DE LA SESSION", "TERMINER LA SESSION", "ARRETER LA SESSION",
+    "JE VAIS DORMIR", "JE DOIS Y ALLER", "JE DOIS PARTIR",
+]
+
+
+def est_message_au_revoir(text):
+    """Vrai si l'eleve termine sa session ("merci, au revoir", "bonne nuit", "je m'arrete la").
+    "j'ai fini" / "terminer" ne comptent pas : en mode examen, ils demandent la correction."""
+    if "?" in (text or ""):
+        return False
+    msg = normalize_for_match(text)
+    if not msg or len(msg.split()) > 10:
+        return False
+    return any(has_expr(msg, expr) for expr in EXPRESSIONS_AU_REVOIR)
+
+
+def _session_bilan_ref(phone):
+    return feedback_db.collection(SESSIONS_BILAN_COLLECTION).document(phone)
+
+
+def charger_session_bilan(phone):
+    try:
+        snapshot = _session_bilan_ref(phone).get()
+        return snapshot.to_dict() if snapshot.exists else None
+    except Exception as e:
+        print(f"Erreur charger_session_bilan: {repr(e)}", flush=True)
+        return None
+
+
+def sauver_session_bilan(phone, session):
+    try:
+        _session_bilan_ref(phone).set(session)
+    except Exception as e:
+        print(f"Erreur sauver_session_bilan: {repr(e)}", flush=True)
+
+
+def fermer_session_bilan(phone, raison):
+    try:
+        _session_bilan_ref(phone).update({"bilan_envoye": True, "bilan_source": raison})
+    except Exception as e:
+        print(f"Erreur fermer_session_bilan: {repr(e)}", flush=True)
+
+
+def reserver_bilan(phone, source, min_echanges=1):
+    """Marque la session "bilan envoye" dans une transaction et la renvoie (None si
+    rien a resumer ou si le bilan est deja parti) : un bilan n'est jamais envoye deux fois."""
+    reference = _session_bilan_ref(phone)
+    transaction = feedback_db.transaction()
+
+    @firestore.transactional
+    def reserver(tx):
+        snapshot = reference.get(transaction=tx)
+        session = snapshot.to_dict() if snapshot.exists else None
+        if not session or session.get("bilan_envoye") or int(session.get("nb_echanges", 0)) < min_echanges:
+            return None
+        tx.update(reference, {
+            "bilan_envoye": True,
+            "bilan_source": source,
+            "bilan_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return session
+
+    try:
+        return reserver(transaction)
+    except Exception as e:
+        print(f"Erreur reserver_bilan: {repr(e)}", flush=True)
+        return None
+
+
+def lister_sessions_en_attente(limite=200):
+    try:
+        docs = (
+            feedback_db.collection(SESSIONS_BILAN_COLLECTION)
+            .where("bilan_envoye", "==", False)
+            .limit(limite)
+            .stream()
+        )
+        return [(doc.id, doc.to_dict() or {}) for doc in docs]
+    except Exception as e:
+        print(f"Erreur lister_sessions_en_attente: {repr(e)}", flush=True)
+        return []
+
+
+def journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve, reponse, now=None):
+    """Garde le fil de la session en cours (jusqu'a 40 messages) pour le bilan de fin.
+    Une nouvelle session commence apres un bilan, un changement de matiere/mode ou 30 min de pause."""
+    now = now or datetime.now(timezone.utc)
+    profile = profile or {}
+    session = charger_session_bilan(phone)
+    derniere = parse_datetime((session or {}).get("derniere_activite"))
+    if (
+        not session
+        or session.get("bilan_envoye")
+        or session.get("conversation_key") != conversation_key
+        or not derniere
+        or now - derniere > timedelta(minutes=SESSION_INACTIVITE_MINUTES)
+    ):
+        session = {"conversation_key": conversation_key, "debut": now.isoformat(), "messages": [], "nb_echanges": 0}
+
+    messages = list(session.get("messages") or [])
+    messages.append({"role": "user", "content": str(texte_eleve or "")[:1000]})
+    messages.append({"role": "assistant", "content": str(reponse or "")[:1500]})
+    session.update({
+        "messages": messages[-SESSION_MAX_MESSAGES:],
+        "nb_echanges": int(session.get("nb_echanges", 0)) + 1,
+        "derniere_activite": now.isoformat(),
+        "bilan_envoye": False,
+        "matiere": profile.get("matiere"),
+        "serie": profile.get("serie"),
+        "type_examen": profile.get("type_examen"),
+        "mode": mode or profile.get("mode") or "etude",
+    })
+    sauver_session_bilan(phone, session)
+    return session
+
+
+def generer_bilan_session(session, source):
+    """Demande a Akili le bilan personnalise. En cas d'echec, message fixe selon le mode."""
+    mode = (session.get("mode") or "etude").lower()
+    try:
+        res = requests.post(
+            AKILI_BILAN_URL,
+            data={
+                "historique": json.dumps(session.get("messages") or [], ensure_ascii=False),
+                "matiere": session.get("matiere") or "",
+                "serie": session.get("serie") or "",
+                "type_examen": session.get("type_examen") or "",
+                "mode": mode,
+                "source": source,
+            },
+            timeout=90,
+        )
+        data = res.json()
+        texte = (data.get("reponse") or "").strip()
+        if texte:
+            return texte
+        print(f"BILAN_SESSION reponse vide: {str(data)[:300]}", flush=True)
+    except Exception as e:
+        print(f"BILAN_SESSION echec: {repr(e)}", flush=True)
+    if mode == "examen":
+        return "Fin de ton entraînement. Bravo pour tes efforts ! Pour retravailler tes erreurs, passe en mode étude (tape menu)."
+    return "Bravo pour ta séance ! Reviens quand tu veux pour continuer : envoie un exercice, une photo ou le chapitre à travailler."
+
+
+def envoyer_fin_de_session(phone, source="au_revoir"):
+    min_echanges = 1 if source == "au_revoir" else BILAN_MIN_ECHANGES_INACTIVITE
+    session = reserver_bilan(phone, source, min_echanges=min_echanges)
+    if not session:
+        if source == "au_revoir":
+            send_whatsapp(phone, MESSAGE_AU_REVOIR_SIMPLE, allow_audio=False)
+        return False
+    texte = generer_bilan_session(session, source)
+    send_whatsapp(phone, f"{texte}\n\n{MESSAGE_AVIS_FIN_SESSION}", allow_audio=False)
+    print(f"FIN_SESSION envoyee source={source} echanges={session.get('nb_echanges')}", flush=True)
+    return True
+
+
+def traiter_bilans_inactivite(now=None):
+    """Appele par Cloud Scheduler : bilan pour chaque session en pause depuis 30 min."""
+    now = now or datetime.now(timezone.utc)
+    envoyes = fermees = 0
+    for phone, session in lister_sessions_en_attente():
+        if envoyes >= BILAN_MAX_PAR_TACHE:
+            break
+        derniere = parse_datetime(session.get("derniere_activite"))
+        if not derniere:
+            continue
+        pause = now - derniere
+        if pause < timedelta(minutes=SESSION_INACTIVITE_MINUTES):
+            continue
+        if (
+            pause > timedelta(hours=SESSION_FENETRE_WHATSAPP_HEURES)
+            or int(session.get("nb_echanges", 0)) < BILAN_MIN_ECHANGES_INACTIVITE
+        ):
+            fermer_session_bilan(phone, "fermee_sans_bilan")
+            fermees += 1
+            continue
+        if envoyer_fin_de_session(phone, source="inactivite"):
+            envoyes += 1
+    return {"envoyes": envoyes, "fermees": fermees}
+
+
 def save_last_assistant_context(phone, text, profile=None):
     """Persiste le dernier message pedagogique envoye a un utilisateur."""
     try:
@@ -2434,6 +2633,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     conversations[conversation_key].append({"role": "assistant", "content": reponse})
     conversations[conversation_key] = conversations[conversation_key][-10:]
     sauver_historique_conv(conversation_key, conversations[conversation_key])
+    journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve, reponse)
 
     is_teacher = profile.get("user_type") == "ENSEIGNANT"
     send_limit = 1200 if is_teacher else 850
@@ -3025,6 +3225,19 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
         return "Désolé, je rencontre une petite difficulté technique, réessaie dans un instant."
 
 
+@app.post("/taches/bilans-inactivite")
+async def tache_bilans_inactivite(request: Request):
+    """Appele toutes les 10 min par Cloud Scheduler, avec l'en-tete X-Akili-Tache."""
+    import hmac
+    secret = os.environ.get("TACHES_SECRET", "")
+    fourni = request.headers.get("X-Akili-Tache", "")
+    if not secret or not hmac.compare_digest(secret, fourni):
+        return JSONResponse(status_code=403, content={"status": "forbidden"})
+    resultat = traiter_bilans_inactivite()
+    print(f"TACHE_BILANS_INACTIVITE {resultat}", flush=True)
+    return {"status": "ok", **resultat}
+
+
 @app.get("/")
 def health():
     return {"status": "AfrJigi WhatsApp Bot actif"}
@@ -3214,6 +3427,11 @@ async def receive_message(request: Request):
         command = text.strip().lower()
         onboarding_step = profile.get("onboarding_step")
         print(f"SHORT_DEBUG text={text} is_short={is_short_exercise_answer(text)} is_contextual={is_contextual_exercise_answer(text)} onboarding={onboarding_step}", flush=True)
+        if not onboarding_step and is_profile_ready(profile) and est_message_au_revoir(text):
+            envoyer_fin_de_session(phone, source="au_revoir")
+            track_inbound("fin_session_au_revoir", profile)
+            return {"status": "ok", "reason": "fin_session"}
+
         if is_contextual_exercise_answer(text) and not profile.get("onboarding_step"):
             if not short_answer_has_exercise_context(phone):
                 send_whatsapp(

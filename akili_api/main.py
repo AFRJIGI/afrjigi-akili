@@ -1062,6 +1062,96 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
         print(f"❌ Erreur détaillée ({type(e).__module__}.{type(e).__name__}) : {e}", flush=True)
         return {"error": f"Erreur lors de la génération : {str(e)}"}
 
+# ─── BILAN DE FIN DE SESSION (appele par le bot WhatsApp) ───
+BILAN_REGLES_COMMUNES = """- Appuie-toi UNIQUEMENT sur l'historique ci-dessous. N'invente aucune notion, aucune note, aucune erreur qui n'y figure pas.
+- Tutoie l'eleve. Ton chaleureux et sincere, sans exageration ni compliment vide.
+- Message court pour WhatsApp : 600 caracteres maximum.
+- Pour les listes, utilise des numeros (1. 2. 3.), chaque numero sur sa propre ligne. Pas de tirets, pas de LaTeX, pas de symbole $.
+- Pour le gras, un seul asterisque de chaque cote (*mot*)."""
+
+BILAN_ETUDE = """L'eleve termine une seance de travail en MODE ETUDE.
+Redige son message de fin de seance, dans cet ordre :
+1. Une phrase d'encouragement qui cite la matiere.
+2. "Aujourd'hui tu as vu :" puis 1 a 3 notions reellement travaillees dans l'historique.
+3. "À revoir la prochaine fois :" une notion ou l'eleve a hesite ou s'est trompe. S'il n'y en a pas, propose la suite logique de ce qu'il a travaille.
+4. Une courte invitation a revenir."""
+
+BILAN_EXAMEN = """L'eleve termine un entrainement en MODE EXAMEN.
+Redige son message de fin d'entraînement, dans cet ordre :
+1. "Fin de ton entraînement."
+2. "Note :" suivie UNIQUEMENT des notes que tu as explicitement attribuees dans l'historique (par exercice, et le total si plusieurs exercices ont ete notes). Si aucune note n'a ete attribuee (copie pas encore envoyee ou pas corrigee), ecris que l'exercice n'a pas encore ete corrige et invite l'eleve a envoyer la photo de sa copie la prochaine fois. N'invente JAMAIS une note.
+3. "Points à retravailler :" 1 a 3 erreurs relevees dans tes corrections (s'il y en a).
+4. "Conseil : passe en mode étude sur ces points (tape menu)." """
+
+BILAN_INACTIVITE = """Contexte : l'eleve n'a plus ecrit depuis un moment, il a sans doute fait une pause. Commence par une phrase courte du type "Tu as fait une pause, voici où tu en es." et termine par "Quand tu reviens, réponds simplement à ma dernière question pour reprendre." """
+
+
+@app.post("/bilan-session")
+async def bilan_session(
+    historique: str = Form(...),
+    matiere: Optional[str] = Form(None),
+    serie: Optional[str] = Form(None),
+    type_examen: Optional[str] = Form(None),
+    mode: Optional[str] = Form("etude"),
+    source: Optional[str] = Form("au_revoir"),
+):
+    """Redige le bilan de fin de session a partir de l'historique de la session."""
+    try:
+        try:
+            messages = json.loads(historique or "[]")
+        except ValueError:
+            messages = []
+        lignes = [
+            f"{'Eleve' if m.get('role') == 'user' else 'Akili'}: {str(m.get('content', ''))[:1500]}"
+            for m in messages[-40:] if isinstance(m, dict) and m.get("content")
+        ]
+        if not lignes:
+            return {"error": "Historique vide"}
+
+        mode_bilan = "examen" if (mode or "").lower().strip() == "examen" else "etude"
+        consignes = BILAN_EXAMEN if mode_bilan == "examen" else BILAN_ETUDE
+        if (source or "") == "inactivite":
+            consignes = consignes + "\n\n" + BILAN_INACTIVITE
+
+        prompt = (
+            f"Tu es Akili, tuteur de l'eleve (matiere : {matiere or 'non precisee'}, "
+            f"niveau : {type_examen or ''} {serie or ''}).\n\n"
+            f"{consignes}\n\nREGLES :\n{BILAN_REGLES_COMMUNES}\n\n"
+            "HISTORIQUE DE LA SESSION :\n" + "\n".join(lignes)
+        )
+
+        response = None
+        for tentative in range(3):
+            try:
+                response = model.generate_content([prompt])
+                break
+            except Exception as e:
+                if not (isinstance(e, TooManyRequests) or "429" in str(e) or "resource exhausted" in str(e).lower()):
+                    raise
+                print(f"⚠️ Bilan : quota Vertex AI (tentative {tentative + 1}/3)", flush=True)
+                if tentative < 2:
+                    time.sleep(2 * (tentative + 1))
+        if response is None:
+            return {"error": "Quota Vertex AI"}
+
+        try:
+            texte = response.text
+        except ValueError:
+            texte = "".join(
+                (getattr(part, "text", "") or "")
+                for cand in (response.candidates or [])[:1]
+                for part in (cand.content.parts or [])
+            )
+        texte = (texte or "").strip()
+        if not texte:
+            return {"error": "Bilan vide"}
+        print(f"BILAN_SESSION mode={mode_bilan} source={source} messages={len(lignes)}", flush=True)
+        return {"reponse": texte, "mode": mode_bilan}
+    except Exception as e:
+        print(f"❌ Erreur bilan-session ({type(e).__module__}.{type(e).__name__}) : {e}", flush=True)
+        return {"error": f"Erreur lors du bilan : {str(e)}"}
+
+
 @app.get("/")
 def health_check():
     return {"message": "Akili API opérationnelle 🚀", "documents": len(documents)}
