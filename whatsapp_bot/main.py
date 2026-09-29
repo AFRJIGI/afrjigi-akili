@@ -2330,7 +2330,17 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     if message_id:
         send_whatsapp_typing_indicator(message_id)
 
-    if media_file is None and mentions_user_document_without_content(text):
+    # Ce que l'eleve a vraiment tape. Pour une reponse courte ("b"), `text` a ete
+    # reecrit par build_short_answer_prompt (consignes + historique) : la detection
+    # "l'eleve parle d'un document" et l'historique doivent porter sur "b", pas sur
+    # ce prompt, sinon une simple lettre est prise pour une demande sur un fichier
+    # et l'historique s'imbrique a chaque reponse courte.
+    texte_eleve = text
+    marqueur_reponse_courte = "vient de répondre uniquement : "
+    if text.startswith("L'") and marqueur_reponse_courte in text[:80]:
+        texte_eleve = text.split(marqueur_reponse_courte, 1)[1].split("\n", 1)[0]
+
+    if media_file is None and mentions_user_document_without_content(texte_eleve):
         active_document = (prepared_active_session or {}).get("document")
         if active_document and active_document.get("gcs_uri"):
             try:
@@ -2343,7 +2353,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
             media_file = last_media
             print(f"DOCUMENT_CONTEXT reused last media file: {last_media}", flush=True)
 
-    if mentions_user_document_without_content(text) and media_file is None and not profile.get("last_document_text"):
+    if mentions_user_document_without_content(texte_eleve) and media_file is None and not profile.get("last_document_text"):
         send_whatsapp(
             phone,
             "Je n'arrive pas à lire clairement le contenu du fichier. Peux-tu envoyer une image plus nette ou recopier l'énoncé ?"
@@ -2390,7 +2400,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         expected_revision = int((stored_active_session or {}).get("revision", 0))
         next_active_session = transition_after_success(
             prepared_active_session,
-            text,
+            texte_eleve,
             reponse,
             message_id,
             **transition_details,
@@ -2399,7 +2409,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
             print(f"P0: conflit de révision pour {phone}, réponse non renvoyée", flush=True)
             return None
 
-    conversations[conversation_key].append({"role": "user", "content": text})
+    conversations[conversation_key].append({"role": "user", "content": texte_eleve})
     conversations[conversation_key].append({"role": "assistant", "content": reponse})
     conversations[conversation_key] = conversations[conversation_key][-10:]
     sauver_historique_conv(conversation_key, conversations[conversation_key])

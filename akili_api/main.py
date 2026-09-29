@@ -167,6 +167,7 @@ app.add_middleware(
 )
 
 import re
+import unicodedata
 from coefficients import get_toutes_matieres_serie
 
 def serie_match(serie_doc, serie_eleve):
@@ -187,7 +188,7 @@ def serie_match(serie_doc, serie_eleve):
         return "B" in s_doc
     if s_el in ("G1", "G2"):
         return s_el in s_doc
-    if s_el in ("F1", "F2", "F3", "F4"):
+    if s_el in ("F1", "F2", "F3", "F4", "F7"):
         if s_el in s_doc: return True
         if s_doc == "F":  return True
         return False
@@ -197,11 +198,13 @@ def serie_match(serie_doc, serie_eleve):
 ETUDE_TYPES = {
     "COURS_ESSENTIEL": 45,
     "PROGRAMME": 40,
+    "PROGRESSION_ANNUELLE": 38,
     "PROGRESSION_2NDE": 38,
     "PROGRESSION_1ERE": 38,
     "PROGRESSION_TLE": 38,
     "GUIDE": 35,
     "DOCUMENT": 25,
+    "DOCUMENT_ACCOMPAGNEMENT": 30,
     "TP": 25,
     "ANNALE": 10,
     "SUJET": 8,
@@ -225,6 +228,8 @@ EXAMEN_TYPES = {
     "BAREME": 22,
     "SUJET CORRIGÉ": 22,
     "PROGRAMME": 5,
+    "PROGRESSION_ANNUELLE": 5,
+    "DOCUMENT_ACCOMPAGNEMENT": 4,
     "PROGRESSION_2NDE": 5,
     "PROGRESSION_1ERE": 5,
     "PROGRESSION_TLE": 5,
@@ -254,7 +259,7 @@ def normaliser_examen_requete(type_examen=None, serie=None):
 
     if (
         "TECH" in raw
-        or s in {"B", "G1", "G2", "G1G2", "BG1", "BG2", "BG1G2", "F", "F1", "F2", "F3", "F4", "STI"}
+        or s in {"B", "E", "G1", "G2", "G1G2", "BG1", "BG2", "BG1G2", "F", "F1", "F2", "F3", "F4", "F7", "STI"}
     ):
         return "BAC_TECHNIQUE"
 
@@ -322,6 +327,122 @@ def type_priority(type_doc, mode):
     table = EXAMEN_TYPES if mode == "examen" else ETUDE_TYPES
     return table.get(t, 0)
 
+
+def progression_priority(question, doc):
+    """Favorise une progression demandee explicitement, surtout sa version exacte."""
+    q = (question or "").lower()
+    if not any(term in q for term in ["progression", "repartition annuelle", "répartition annuelle"]):
+        return 0
+
+    type_doc = (doc.get("type_doc") or "").upper().strip()
+    if type_doc == "PROGRESSION_ANNUELLE":
+        score = 120
+    elif type_doc.startswith("PROGRESSION_"):
+        score = 90
+    else:
+        return 0
+
+    version = str(doc.get("version") or doc.get("annee") or "").lower()
+    requested_versions = re.findall(r"\b20\d{2}(?:\s*[-–/]\s*20\d{2})?\b", q)
+    if requested_versions:
+        normalized_version = re.sub(r"\s+", "", version).replace("–", "-").replace("/", "-")
+        if any(
+            re.sub(r"\s+", "", item).replace("–", "-").replace("/", "-") == normalized_version
+            for item in requested_versions
+        ):
+            score += 60
+
+    return score
+
+
+def normaliser_libelle_classe(value):
+    value = unicodedata.normalize("NFKD", str(value or ""))
+    return " ".join(value.encode("ascii", "ignore").decode("ascii").upper().split())
+
+
+def extraire_section_progression(doc, question, serie, max_chars=7000):
+    """Extrait les classes pertinentes d'une progression multi-niveaux."""
+    texte = str(doc.get("texte") or "")
+    if (doc.get("type_doc") or "").upper().strip() != "PROGRESSION_ANNUELLE":
+        return texte[:max_chars]
+
+    matches = list(re.finditer(r"(?m)^\*\*Classe:\s*([^*\r\n]+)\*\*\s*$", texte))
+    if not matches:
+        return texte[:max_chars]
+
+    sections = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(texte)
+        sections.append((normaliser_libelle_classe(match.group(1)), texte[match.start():end].strip()))
+
+    question_norm = normaliser_libelle_classe(question)
+    serie_norm = normaliser_libelle_classe(serie)
+    selected_labels = []
+
+    # Une classe citee explicitement dans la question est toujours prioritaire.
+    for label, _ in sections:
+        if label and label in question_norm:
+            selected_labels.append(label)
+
+    if not selected_labels:
+        intermediate = {
+            "6E": "6EME", "5E": "5EME", "4E": "4EME", "3E": "3EME",
+            "6EME": "6EME", "5EME": "5EME", "4EME": "4EME", "3EME": "3EME",
+        }
+        if serie_norm in intermediate:
+            selected_labels = [intermediate[serie_norm]]
+        elif serie_norm in {"A1", "A2", "C", "D"}:
+            selected_labels = [f"TERMINALE {serie_norm}", f"1ERE {serie_norm}"]
+
+    selected = [section for label, section in sections if label in selected_labels]
+    if not selected:
+        return texte[:max_chars]
+
+    per_section = max(1200, max_chars // len(selected))
+    return "\n\n".join(section[:per_section] for section in selected)[:max_chars]
+
+
+def formater_contexte_document(doc, question, serie):
+    type_doc = (doc.get("type_doc") or "").upper().strip()
+    max_chars = 7000 if type_doc == "PROGRESSION_ANNUELLE" else 2800
+    extrait = extraire_section_progression(doc, question, serie, max_chars=max_chars)
+    entete = (
+        f"SOURCE: {doc.get('nom_fichier') or doc.get('id') or 'Document officiel'}\n"
+        f"ORIGINE: {doc.get('source') or 'Source officielle'}\n"
+        f"ANNEE/VERSION: {doc.get('version') or doc.get('annee') or 'Non precisee'}\n"
+        f"MATIERE: {doc.get('matiere') or 'Non precisee'}\n"
+        f"TYPE: {type_doc or 'DOCUMENT'}"
+    )
+    return f"{entete}\n\n{extrait}"
+
+def progression_scope_matches(question, doc):
+    """Respecte les criteres explicites des progressions institutionnelles."""
+    q = normaliser_libelle_classe(question)
+    if "PROGRESSION" not in q:
+        return True
+    institutions = re.findall(r"\b(?:METFPA|DPFC)\b", q)
+    if not institutions:
+        return True
+    institution = str(doc.get("institution") or doc.get("source") or "").upper()
+    if not any(item == institution or institution == item + "_OFFICIEL" for item in institutions):
+        return False
+    if not str(doc.get("type_doc") or "").startswith("PROGRESSION_"):
+        return False
+    versions = re.findall(r"\b20\d{2}\s*[-–/]\s*20\d{2}\b", question)
+    normalize_version = lambda value: re.sub(r"\s+", "", str(value)).replace("–", "-").replace("/", "-")
+    if versions and normalize_version(doc.get("version") or doc.get("annee")) not in [normalize_version(v) for v in versions]:
+        return False
+    # Les documents DPFC multi-classes sont decoupes apres la selection.
+    if "METFPA" in institutions:
+        niveaux = re.findall(r"\b(?:TERMINALE|PREMIERE|SECONDE)\b", q)
+        disciplines = re.findall(r"\b(?:HISTOIRE|GEOGRAPHIE)\b", q)
+        if niveaux and normaliser_libelle_classe(doc.get("niveau")) not in niveaux:
+            return False
+        if disciplines and normaliser_libelle_classe(doc.get("discipline")) not in disciplines:
+            return False
+    return True
+
+
 def chercher_contexte(question, matiere=None, serie=None, examen=None, mode="etude", max_docs=5):
     """Filtre les documents par examen/matière/série et recherche par mots-clés."""
     if not documents or not question:
@@ -331,13 +452,18 @@ def chercher_contexte(question, matiere=None, serie=None, examen=None, mode="etu
     filtered_docs = documents
 
     if examen:
-        filtered_docs = [d for d in filtered_docs if (d.get("examen") or "").upper().strip() == examen]
+        filtered_docs = [
+            d for d in filtered_docs
+            if (d.get("examen") or "").upper().strip() in {examen, "TOUS"}
+        ]
 
     if matiere:
         filtered_docs = [d for d in filtered_docs if (d.get("matiere") or "").upper().strip() == matiere]
 
     if serie:
         filtered_docs = [d for d in filtered_docs if serie_match(d.get("serie"), serie)]
+
+    filtered_docs = [d for d in filtered_docs if progression_scope_matches(question, d)]
 
     mots_cles = [m.lower() for m in re.findall(r"\w+", question) if len(m) > 3]
 
@@ -353,7 +479,12 @@ def chercher_contexte(question, matiere=None, serie=None, examen=None, mode="etu
         meta_score = sum(1 for mot in mots_cles if mot in meta_text)
 
         if keyword_score > 0 or meta_score > 0:
-            score = (keyword_score * 10) + (meta_score * 4) + type_priority(doc.get("type_doc"), mode)
+            score = (
+                (keyword_score * 10)
+                + (meta_score * 4)
+                + type_priority(doc.get("type_doc"), mode)
+                + progression_priority(question, doc)
+            )
             results.append((score, doc))
 
     results.sort(key=lambda x: x[0], reverse=True)
@@ -499,7 +630,9 @@ async def ask_question(
             max_docs=6
         ) if question_recherche else []
 
-        contexte_texte = "\n\n".join([str(d.get('texte', ''))[:3500] for d in contexte_docs])
+        contexte_texte = "\n\n---\n\n".join(
+            formater_contexte_document(d, question, serie) for d in contexte_docs
+        )
         
         matiere_propre = matiere.strip().upper() if matiere else ""
         
