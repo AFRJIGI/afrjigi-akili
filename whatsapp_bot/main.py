@@ -2741,36 +2741,38 @@ FILLER_GREETING_WORDS = {
 
 
 def strip_filler_opening(text):
-    """Supprime les phrases d'accroche/compliment en debut de reponse (garde-fou code, en plus du prompt)."""
+    """Supprime les phrases d'accroche/compliment en debut de reponse (garde-fou code, en plus du prompt).
+
+    Seules les phrases d'accroche du debut sont retirees : le reste du texte est garde
+    tel quel, retours a la ligne compris. (L'ancienne version recollait toutes les
+    phrases avec des espaces, ce qui cassait les listes : "... precedentes. 2. Reponse".)
+    """
     text = str(text or "").strip()
     if not text:
         return text
 
-    sentences = re.split(r'(?<=[.!?])\s+', text)
+    reste = text
+    while reste:
+        fin_phrase = re.search(r"[.!?](?=\s)", reste)
+        premiere = reste[:fin_phrase.end()] if fin_phrase else reste
 
-    while sentences:
-        first = sentences[0].strip()
-        if not first:
-            sentences.pop(0)
-            continue
-
-        first_norm = normalize_for_match(first)
+        first_norm = normalize_for_match(premiere)
         words = first_norm.split()
+
+        # Une validation de reponse ("C'est une tres bonne reponse !", "Exact.") n'est
+        # pas une accroche : l'eleve doit savoir que sa reponse est juste.
+        est_validation = any(kw in first_norm for kw in ("REPONSE", "CORRECT", "EXACT", "JUSTE"))
 
         is_bare_greeting = bool(words) and words[0] in FILLER_GREETING_WORDS and len(words) <= 4
         is_filler_sentence = any(kw in first_norm for kw in FILLER_OPENING_KEYWORDS)
 
-        if is_bare_greeting or is_filler_sentence:
-            sentences.pop(0)
-            continue
+        if est_validation or not (is_bare_greeting or is_filler_sentence):
+            break
+        if not fin_phrase:
+            return text  # tout le message est une accroche : on le garde tel quel
+        reste = reste[fin_phrase.end():].lstrip()
 
-        break
-
-    if not sentences:
-        return text
-
-    result = " ".join(s.strip() for s in sentences if s.strip()).strip()
-    return result if result else text
+    return reste if reste else text
 
 
 def get_akili_response(question, matiere, serie, history, phone="whatsapp_user", type_examen=None,
