@@ -14,7 +14,7 @@ model = GenerativeModel("gemini-2.5-flash")
 # Liste des gros documents a ingerer (lus depuis GCS).
 # upload_path = chemin GCS source (cle anti-doublon, comme pipeline_bepc.py)
 FICHIERS = [
-    {"upload_path": "ingestion_annales/COEFFICIENTS/DPFC_OFFICIEL_COEFFICIENTS_SECONDAIRE_GENERAL.pdf", "matiere": "ORIENTATION", "serie": "TOUTES", "annee": "2026", "type_doc": "COEFFICIENTS"},
+    {"upload_path": "resources/maths/docs_enseignants/tle_d/Fiche lecon 1 - Limites et continuite - Tle D_4.pdf", "matiere": "MATHS", "serie": "D", "annee": "TERMINALE", "type_doc": "FICHE"},
 ]
 
 def load_database():

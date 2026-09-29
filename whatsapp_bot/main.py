@@ -1,15 +1,25 @@
 import os
 import time
+import json
 import requests
 import re
 import unicodedata
+import uuid
+import hashlib
 from fastapi import FastAPI, Request
-from fastapi.responses import PlainTextResponse
-from google.cloud import firestore
+from fastapi.responses import JSONResponse, PlainTextResponse
+from google.cloud import firestore, storage
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from gtts import gTTS
+from marketing_consent import (
+    OPTED_IN,
+    claim_marketing_consent_prompt,
+    detect_marketing_consent_command,
+    mark_marketing_consent_prompt_delivery,
+    save_marketing_consent,
+)
 
 app = FastAPI(title="AfrJigi WhatsApp Bot")
 
@@ -25,6 +35,292 @@ processed_messages = set()
 audio_reply_context = {}
 last_outbound_by_phone = {}
 feedback_db = firestore.Client()
+
+ACTIVE_SESSIONS_COLLECTION = "whatsapp_active_sessions"
+P0_SCHEMA_VERSION = 1
+P0_SESSION_TTL_MINUTES = 30
+P0_MAX_SCOPE_VALUE_CHARS = 64
+P0_MAX_MESSAGE_ID_CHARS = 512
+P0_MAX_QUESTION_TEXT_CHARS = 1500
+P0_MAX_STUDENT_ANSWER_CHARS = 1000
+P0_MAX_PREVIOUS_RESULTS = 20
+P0_MAX_PREVIOUS_RESULTS_BYTES = 8 * 1024
+P0_MEDIA_BUCKET = os.environ.get(
+    "WHATSAPP_ACTIVE_SESSIONS_MEDIA_BUCKET",
+    "akili-database-storage-astute-curve-307922",
+)
+
+
+def p0_enabled():
+    return os.environ.get("WHATSAPP_ACTIVE_SESSIONS_P0_ENABLED", "false").lower() == "true"
+
+
+def bounded_text(value, limit):
+    return None if value is None else str(value)[:limit]
+
+
+def parse_datetime(value):
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+def nullable_document(value):
+    value = value or {}
+    return {
+        "id": bounded_text(value.get("id"), P0_MAX_SCOPE_VALUE_CHARS),
+        "ref": bounded_text(value.get("ref"), P0_MAX_QUESTION_TEXT_CHARS),
+        "gcs_uri": bounded_text(value.get("gcs_uri"), P0_MAX_QUESTION_TEXT_CHARS),
+        "media_id": bounded_text(value.get("media_id"), P0_MAX_MESSAGE_ID_CHARS),
+        "mime_type": bounded_text(value.get("mime_type"), P0_MAX_SCOPE_VALUE_CHARS),
+        "sha256": bounded_text(value.get("sha256"), P0_MAX_SCOPE_VALUE_CHARS),
+    }
+
+
+def nullable_exercise(value):
+    value = value or {}
+    return {
+        "id": bounded_text(value.get("id"), P0_MAX_SCOPE_VALUE_CHARS),
+        "label": bounded_text(value.get("label"), P0_MAX_QUESTION_TEXT_CHARS),
+    }
+
+
+def nullable_question(value):
+    value = value or {}
+    return {
+        "id": bounded_text(value.get("id"), P0_MAX_SCOPE_VALUE_CHARS),
+        "text": bounded_text(value.get("text"), P0_MAX_QUESTION_TEXT_CHARS),
+        "expected_response_type": bounded_text(
+            value.get("expected_response_type"), P0_MAX_SCOPE_VALUE_CHARS
+        ),
+    }
+
+
+def normalize_structured_results(results):
+    normalized = []
+    for result in results or []:
+        if not isinstance(result, dict):
+            continue
+        try:
+            candidate = json.loads(json.dumps(result, ensure_ascii=False))
+            proposed = normalized + [candidate]
+            encoded = json.dumps(proposed, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        except (TypeError, ValueError):
+            continue
+        if len(encoded) > P0_MAX_PREVIOUS_RESULTS_BYTES:
+            break
+        normalized.append(candidate)
+        if len(normalized) == P0_MAX_PREVIOUS_RESULTS:
+            break
+    return normalized
+
+
+def p0_profile_fields(profile):
+    return {
+        "subject": bounded_text(profile.get("matiere", "MATHS"), P0_MAX_SCOPE_VALUE_CHARS),
+        "level_or_serie": bounded_text(profile.get("serie", "TOUTES"), P0_MAX_SCOPE_VALUE_CHARS),
+        "type_examen": bounded_text(profile.get("type_examen", "BAC_GENERAL"), P0_MAX_SCOPE_VALUE_CHARS),
+        "mode": bounded_text(profile.get("mode", "etude"), P0_MAX_SCOPE_VALUE_CHARS),
+    }
+
+
+def new_active_session(profile, phone=None, now=None, session_id=None):
+    now = now or datetime.now(timezone.utc)
+    return {
+        "schema_version": P0_SCHEMA_VERSION,
+        "phone": bounded_text(phone, P0_MAX_SCOPE_VALUE_CHARS),
+        "session_id": session_id or uuid.uuid4().hex,
+        "status": "active",
+        **p0_profile_fields(profile),
+        "profile_revision": profile.get("revision"),
+        "document": nullable_document(None),
+        "exercise": nullable_exercise(None),
+        "current_question": nullable_question(None),
+        "current_step": 0,
+        "student_last_answer": {
+            "message_id": None, "value": None, "normalized_value": None, "created_at": None,
+        },
+        "relevant_previous_results": [],
+        "next_expected_action": "start_or_resume",
+        "last_processed_message_id": None,
+        "started_at": now,
+        "updated_at": now,
+        "expires_at": now + timedelta(minutes=P0_SESSION_TTL_MINUTES),
+        "revision": 0,
+    }
+
+
+def prepare_active_session(stored_state, profile, message_id, phone=None, now=None):
+    now = now or datetime.now(timezone.utc)
+    state = dict(stored_state or {})
+    normalized_message_id = bounded_text(message_id, P0_MAX_MESSAGE_ID_CHARS)
+    duplicate = bool(normalized_message_id and state.get("last_processed_message_id") == normalized_message_id)
+    expired = parse_datetime(state.get("expires_at"))
+    scope_changed = any(state.get(key) != value for key, value in p0_profile_fields(profile).items())
+    if (not state or expired is None or now >= expired or scope_changed
+            or state.get("schema_version") != P0_SCHEMA_VERSION):
+        state = new_active_session(profile, phone=phone, now=now)
+        duplicate = False
+    return state, duplicate
+
+
+def transition_after_success(prepared_state, student_answer, akili_response, message_id,
+                             document=None, exercise=None, current_question=None,
+                             structured_results=None, next_expected_action="await_student_answer",
+                             now=None):
+    if not isinstance(akili_response, str) or not akili_response.strip():
+        raise ValueError("Une réponse Akili non vide est requise")
+    now = now or datetime.now(timezone.utc)
+    next_state = dict(prepared_state)
+    previous_document = nullable_document(prepared_state.get("document"))
+    next_document = nullable_document(document if document is not None else previous_document)
+    document_changed = previous_document != next_document
+    previous_exercise = nullable_exercise(prepared_state.get("exercise"))
+    next_exercise = nullable_exercise(
+        exercise if exercise is not None else (None if document_changed else previous_exercise)
+    )
+    previous_results = (
+        [] if document_changed or previous_exercise != next_exercise
+        else prepared_state.get("relevant_previous_results", [])
+    )
+    results = normalize_structured_results(list(previous_results) + list(structured_results or []))
+    next_state.update({
+        "document": next_document,
+        "exercise": next_exercise,
+        "current_question": nullable_question(
+            current_question if current_question is not None
+            else (None if document_changed else prepared_state.get("current_question"))
+        ),
+        "current_step": int(prepared_state.get("current_step", 0)) + 1,
+        "student_last_answer": {
+            "message_id": bounded_text(message_id, P0_MAX_MESSAGE_ID_CHARS),
+            "value": bounded_text(student_answer, P0_MAX_STUDENT_ANSWER_CHARS),
+            "normalized_value": None,
+            "created_at": now,
+        },
+        "relevant_previous_results": results,
+        "next_expected_action": bounded_text(next_expected_action, P0_MAX_SCOPE_VALUE_CHARS),
+        "last_processed_message_id": bounded_text(message_id, P0_MAX_MESSAGE_ID_CHARS),
+        "updated_at": now,
+        "expires_at": now + timedelta(minutes=P0_SESSION_TTL_MINUTES),
+        "revision": int(prepared_state.get("revision", 0)) + 1,
+    })
+    return next_state
+
+
+def load_active_session(phone):
+    snapshot = feedback_db.collection(ACTIVE_SESSIONS_COLLECTION).document(phone).get()
+    return snapshot.to_dict() if snapshot.exists else None
+
+
+def save_active_session_if_revision(phone, state, expected_revision):
+    reference = feedback_db.collection(ACTIVE_SESSIONS_COLLECTION).document(phone)
+    transaction = feedback_db.transaction()
+
+    @firestore.transactional
+    def save(tx):
+        snapshot = reference.get(transaction=tx)
+        current = snapshot.to_dict() if snapshot.exists else None
+        current_revision = int(current.get("revision", 0)) if current else 0
+        if current_revision != expected_revision:
+            return False
+        tx.set(reference, state)
+        return True
+
+    return save(transaction)
+
+
+def delete_active_session(phone):
+    feedback_db.collection(ACTIVE_SESSIONS_COLLECTION).document(phone).delete()
+
+
+def normalize_p0_response(response):
+    details = {"text": response} if isinstance(response, str) else dict(response or {})
+    response_text = details.get("text")
+    if not isinstance(response_text, str) or not response_text.strip():
+        raise ValueError("Réponse Akili vide")
+    current_question = details.get("current_question")
+    if not isinstance(current_question, dict):
+        matches = re.findall(r"(?:^|[.!?])\s*([^.!?\n]{1,1499}\?)", response_text)
+        current_question = ({"id": None, "text": matches[-1].strip(),
+                             "expected_response_type": "short_text"} if matches else None)
+    return response_text, {
+        "document": details.get("document"),
+        "exercise": details.get("exercise"),
+        "current_question": current_question,
+        "structured_results": details.get("structured_results") or [],
+        "next_expected_action": details.get("next_expected_action") or "await_student_answer",
+    }
+
+
+def build_active_session_prompt(state):
+    """Construit uniquement le contexte pédagogique borné nécessaire à la reprise."""
+    if not state:
+        return ""
+    context = {
+        "session_id": state.get("session_id"),
+        "document": nullable_document(state.get("document")),
+        "exercise": nullable_exercise(state.get("exercise")),
+        "current_question": nullable_question(state.get("current_question")),
+        "current_step": state.get("current_step", 0),
+        "relevant_previous_results": normalize_structured_results(
+            state.get("relevant_previous_results", [])
+        ),
+        "next_expected_action": bounded_text(
+            state.get("next_expected_action"), P0_MAX_SCOPE_VALUE_CHARS
+        ),
+    }
+    return json.dumps(context, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
+def persist_document_media(media_file, phone, document):
+    """Copie le média reçu dans GCS et retourne une référence durable bornée."""
+    result = nullable_document(document)
+    if not media_file:
+        return result
+    media_path = Path(media_file)
+    if not media_path.exists():
+        raise FileNotFoundError(f"Média WhatsApp introuvable: {media_path}")
+    file_bytes = media_path.read_bytes()
+    digest = hashlib.sha256(file_bytes).hexdigest()
+    safe_phone = re.sub(r"[^0-9A-Za-z_-]+", "_", str(phone))[:64]
+    safe_name = re.sub(r"[^0-9A-Za-z_.-]+", "_", media_path.name)[:160]
+    blob_path = f"whatsapp_active_sessions/{safe_phone}/{digest}_{safe_name}"
+    bucket = storage.Client().bucket(P0_MEDIA_BUCKET)
+    bucket.blob(blob_path).upload_from_string(
+        file_bytes,
+        content_type=result.get("mime_type") or "application/octet-stream",
+    )
+    result["gcs_uri"] = f"gs://{P0_MEDIA_BUCKET}/{blob_path}"
+    result["sha256"] = digest
+    return result
+
+
+def restore_document_media(document):
+    """Restaure localement un média GCS pour le prochain appel Akili."""
+    document = nullable_document(document)
+    gcs_uri = document.get("gcs_uri")
+    if not gcs_uri or not gcs_uri.startswith("gs://"):
+        return None
+    bucket_name, separator, blob_path = gcs_uri[5:].partition("/")
+    if not separator or not bucket_name or not blob_path:
+        return None
+    suffix = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "application/pdf": ".pdf",
+    }.get(document.get("mime_type"), ".bin")
+    out_dir = Path("/tmp/whatsapp_active_sessions")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{document.get('sha256') or uuid.uuid4().hex}{suffix}"
+    storage.Client().bucket(bucket_name).blob(blob_path).download_to_filename(str(out_path))
+    return str(out_path)
 
 def normalize_for_match(value):
     text = unicodedata.normalize("NFKD", value or "")
@@ -279,6 +575,54 @@ def save_whatsapp_event(phone, direction, text, profile=None, message_id=None, e
         print(f"Erreur save_whatsapp_event: {repr(e)}", flush=True)
 
 
+MARKETING_CONSENT_PROMPT = (
+    "Souhaites-tu recevoir sur WhatsApp les rappels pédagogiques et les offres "
+    "d'AfrJigi ?\n\nPour accepter, envoie OUI MARKETING. Tu pourras te "
+    "désinscrire à tout moment en envoyant STOP."
+)
+
+
+def maybe_send_marketing_consent_prompt(phone):
+    """Invite une seule fois, après un message initié par l'utilisateur."""
+    try:
+        claim_id = claim_marketing_consent_prompt(feedback_db, phone)
+    except Exception as exc:
+        print(
+            "WHATSAPP_MARKETING_CONSENT_PROMPT claim_failed "
+            f"error_class={type(exc).__name__}",
+            flush=True,
+        )
+        return False
+    if not claim_id:
+        return False
+
+    delivered = False
+    try:
+        delivered = bool(send_whatsapp(
+            phone,
+            MARKETING_CONSENT_PROMPT,
+            persist_event=False,
+            allow_audio=False,
+        ))
+    except Exception as exc:
+        print(
+            "WHATSAPP_MARKETING_CONSENT_PROMPT send_failed "
+            f"error_class={type(exc).__name__}",
+            flush=True,
+        )
+    try:
+        mark_marketing_consent_prompt_delivery(
+            feedback_db, phone, claim_id, delivered
+        )
+    except Exception as exc:
+        print(
+            "WHATSAPP_MARKETING_CONSENT_PROMPT delivery_state_failed "
+            f"error_class={type(exc).__name__}",
+            flush=True,
+        )
+    return delivered
+
+
 
 def transcribe_whatsapp_audio(audio_path):
     """Transcrit un audio WhatsApp via l'API Akili."""
@@ -420,6 +764,42 @@ def is_other_or_concours(message):
     ])
 
 
+BAC_GENERAL_SERIES_CHOICES = {
+    "a": "A1",
+    "b": "A2",
+    "c": "C",
+    "d": "D",
+}
+
+BAC_TECHNIQUE_SERIES_CHOICES = {
+    "a": "B",
+    "b": "G1",
+    "c": "G2",
+    "d": "E",
+    "e": "F1",
+    "f": "F2",
+    "g": "F3",
+    "h": "F4",
+    "i": "F7",
+}
+
+BAC_TECHNIQUE_SUBJECT_CHOICES = {
+    "a": "COMPTA_FIN",
+    "b": "COMPTA_SOCIETES",
+    "c": "COMPTA_ANALYTIQUE",
+    "d": "MATHS_FIN",
+    "e": "MATHS_GENERAL",
+    "f": "ECO",
+    "g": "EXPRESSION_PRO",
+    "h": "PHYSIQUE_APPLIQUEE",
+    "i": "ESTI",
+    "j": "DROIT",
+    "k": "HG",
+    "l": "FRANCAIS",
+    "m": "ANGLAIS",
+}
+
+
 def choice_key(text):
     c = normalize_for_match(text)
     mapping = {
@@ -432,6 +812,10 @@ def choice_key(text):
         "7": "g", "G": "g",
         "8": "h", "H": "h",
         "9": "i", "I": "i",
+        "10": "j", "J": "j",
+        "11": "k", "K": "k",
+        "12": "l", "L": "l",
+        "13": "m", "M": "m",
     }
     return mapping.get(c)
 
@@ -455,9 +839,8 @@ def ask_serie_general(phone):
         "a. A1\n"
         "b. A2\n"
         "c. C\n"
-        "d. D\n"
-        "e. E\n\n"
-        "Réponds par a, b, c, d ou e."
+        "d. D\n\n"
+        "Réponds par a, b, c ou d."
     )
 
 
@@ -467,9 +850,13 @@ def ask_serie_technique(phone):
         "a. B\n"
         "b. G1\n"
         "c. G2\n"
-        "d. F1\n"
-        "e. F2/F3/F4\n\n"
-        "Réponds par a, b, c, d ou e."
+        "d. E\n"
+        "e. F1\n"
+        "f. F2\n"
+        "g. F3\n"
+        "h. F4\n"
+        "i. F7\n\n"
+        "Réponds par a, b, c, d, e, f, g, h ou i."
     )
 
 
@@ -512,8 +899,9 @@ def ask_matiere_technique(phone, serie=None):
         "i. Étude des Systèmes Techniques Industriels\n"
         "j. Droit\n"
         "k. Histoire-Géographie\n"
-        "l. Français\n\n"
-        "Réponds par a, b, c, d, e, f, g, h, i, j, k ou l."
+        "l. Français\n"
+        "m. Anglais\n\n"
+        "Réponds par a, b, c, d, e, f, g, h, i, j, k, l ou m."
     )
 
 
@@ -607,11 +995,12 @@ def mot_cle_vers_lettre(step, text, profile):
             "a": ["A1"], "b": ["A2"],
             "c": ["SERIE C", "TERMINALE C", "TERMINAL C"],
             "d": ["SERIE D", "TERMINALE D", "TERMINAL D"],
-            "e": ["SERIE E", "TERMINALE E", "TERMINAL E"],
         },
         "serie_technique": {
             "a": ["SERIE B", "TERMINALE B", "TERMINAL B"],
-            "b": ["G1"], "c": ["G2"], "d": ["F1"], "e": ["F2", "F3", "F4"],
+            "b": ["G1"], "c": ["G2"],
+            "d": ["SERIE E", "TERMINALE E", "TERMINAL E"],
+            "e": ["F1"], "f": ["F2"], "g": ["F3"], "h": ["F4"], "i": ["F7"],
         },
         "seconde": {
             "a": ["SECONDE A", "2NDE A"],
@@ -640,6 +1029,7 @@ def mot_cle_vers_lettre(step, text, profile):
             "j": ["DROIT"],
             "k": ["HISTOIRE GEOGRAPHIE", "HG"],
             "l": ["FRANCAIS"],
+            "m": ["ANGLAIS", "ENGLISH"],
         },
         "mode": {
             "a": ["MODE ETUDE", "ETUDE", "COMPRENDRE"],
@@ -772,7 +1162,7 @@ def handle_onboarding_choice(phone, profile, text):
 
 
     if step == "serie_general":
-        values = {"a": "A1", "b": "A2", "c": "C", "d": "D", "e": "E"}
+        values = BAC_GENERAL_SERIES_CHOICES
         if key in values:
             profile["serie"] = values[key]
             profile["onboarding_step"] = "matiere"
@@ -782,7 +1172,7 @@ def handle_onboarding_choice(phone, profile, text):
             return True
 
     if step == "serie_technique":
-        values = {"a": "B", "b": "G1", "c": "G2", "d": "F1", "e": "F2"}
+        values = BAC_TECHNIQUE_SERIES_CHOICES
         if key in values:
             profile["serie"] = values[key]
             profile["onboarding_step"] = "matiere"
@@ -823,20 +1213,7 @@ def handle_onboarding_choice(phone, profile, text):
 
     if step == "matiere":
         if profile.get("type_examen") == "BAC_TECHNIQUE":
-            values = {
-                "a": "COMPTA_FIN",
-                "b": "COMPTA_SOCIETES",
-                "c": "COMPTA_ANALYTIQUE",
-                "d": "MATHS_FIN",
-                "e": "MATHS_GENERAL",
-                "f": "ECO",
-                "g": "EXPRESSION_PRO",
-                "h": "PHYSIQUE_APPLIQUEE",
-                "i": "ESTI",
-                "j": "DROIT",
-                "k": "HG",
-                "l": "FRANCAIS",
-            }
+            values = BAC_TECHNIQUE_SUBJECT_CHOICES
         else:
             if (profile.get("serie") or "").upper().strip() == "BEPC":
                 values = {"a": "MATHS", "b": "PC", "c": "SVT", "d": "FRANCAIS", "e": "HG", "f": "EDHC", "g": "ESPAGNOL", "h": "ALLEMAND", "i": "ANGLAIS"}
@@ -1441,7 +1818,9 @@ def send_vector_formula_if_needed(phone, raw_message):
     return send_whatsapp_image(phone, media_id)
 
 
-def send_whatsapp(to, message, limit=850, add_continuation=True):
+def send_whatsapp(
+    to, message, limit=850, add_continuation=True, persist_event=True, allow_audio=True
+):
     message = clean_whatsapp_response(message)
 
     now_ts = time.time()
@@ -1450,16 +1829,16 @@ def send_whatsapp(to, message, limit=850, add_continuation=True):
     if previous:
         previous_text, previous_ts = previous
         if previous_text == message and now_ts - previous_ts < 20:
-            print(f"WHATSAPP_SEND_DEDUPE skipped duplicate to={to}", flush=True)
-            return
+            print("WHATSAPP_SEND_DEDUPE skipped duplicate", flush=True)
+            return True
 
     last_outbound_by_phone[dedupe_key] = (message, now_ts)
 
-    should_reply_audio = bool(audio_reply_context.get(str(to)))
+    should_reply_audio = allow_audio and bool(audio_reply_context.get(str(to)))
     message_parts = split_whatsapp_message(message, limit=limit, max_parts=1, add_continuation=add_continuation)
 
     if not message_parts:
-        return
+        return False
 
     url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
     headers = {
@@ -1467,6 +1846,7 @@ def send_whatsapp(to, message, limit=850, add_continuation=True):
         "Content-Type": "application/json",
     }
 
+    sent = True
     for index, part in enumerate(message_parts, start=1):
         print(f"WHATSAPP_SEND_TEXT part={index}/{len(message_parts)} len={len(part)}: {part}", flush=True)
 
@@ -1478,9 +1858,15 @@ def send_whatsapp(to, message, limit=850, add_continuation=True):
         }
 
         res = requests.post(url, headers=headers, json=data)
-        print(f"DEBUG SEND: Status {res.status_code} - Response: {res.text}", flush=True)
+        if persist_event:
+            print(f"DEBUG SEND: Status {res.status_code} - Response: {res.text}", flush=True)
+        else:
+            print(f"DEBUG SEND: Status {res.status_code}", flush=True)
 
-        if res.status_code < 300:
+        if res.status_code >= 300:
+            sent = False
+            continue
+        if persist_event:
             save_whatsapp_event(
                 to,
                 "outbound",
@@ -1490,13 +1876,15 @@ def send_whatsapp(to, message, limit=850, add_continuation=True):
             )
             save_last_assistant_context(to, part, user_profiles.get(to, {}))
 
-            if should_reply_audio and index == 1:
-                audio_reply_context[str(to)] = False
-                print(f"WHATSAPP_AUDIO_REPLY auto_from_send_whatsapp to={to}", flush=True)
-                audio_path = text_to_whatsapp_audio(part, to)
-                media_id = upload_whatsapp_audio(audio_path) if audio_path else None
-                if media_id:
-                    send_whatsapp_audio(to, media_id)
+        if should_reply_audio and index == 1:
+            audio_reply_context[str(to)] = False
+            print(f"WHATSAPP_AUDIO_REPLY auto_from_send_whatsapp to={to}", flush=True)
+            audio_path = text_to_whatsapp_audio(part, to)
+            media_id = upload_whatsapp_audio(audio_path) if audio_path else None
+            if media_id:
+                send_whatsapp_audio(to, media_id)
+
+    return sent
 
 
 
@@ -1881,10 +2269,30 @@ def mentions_user_document_without_content(text):
         "CORRIGE CA", "TRAITE CA", "EXPLIQUE CA",
     ]
 
-    return any(m in compact for m in document_markers + exercise_refs)
+    if any(marker in compact for marker in document_markers):
+        return True
+
+    # Un énoncé recopié peut lui-même commencer par « EXERCICE 1 ». Une
+    # référence courte doit réutiliser le document; un texte substantiel doit
+    # être traité directement comme l'énoncé fourni par l'élève.
+    return len(compact.split()) <= 12 and any(marker in compact for marker in exercise_refs)
 
 
-def answer_learning_request(phone, profile, text, media_file=None, message_id=None, reply_audio=False):
+def is_short_pedagogical_answer(text):
+    """Reconnaît les réponses minimales attendues par un QCM/une étape guidée."""
+    compact = normalize_for_match(text or "").strip()
+    choice = r"(?:[A-L0-9]|VRAI|FAUX|OUI|NON)"
+    if re.fullmatch(rf"\(?\s*{choice}\s*\)?[.)]?", compact):
+        return True
+    return bool(re.fullmatch(
+        rf"(?:LA|MA) REPONSE (?:CORRECTE )?EST {choice}|"
+        rf"JE PENSE QUE (?:CETTE|LA) REPONSE EST {choice}",
+        compact,
+    ))
+
+
+def answer_learning_request(phone, profile, text, media_file=None, message_id=None, reply_audio=False,
+                            document_context=None):
     profile = mark_first_learning_request(phone, profile)
     user_profiles[phone] = profile
     """Envoie une vraie demande à Akili avec le profil final."""
@@ -1899,6 +2307,17 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     serie = profile.get("serie", "TOUTES")
     conversation_key = f"{phone}:{type_examen}:{serie}:{matiere}:{mode}"
 
+    stored_active_session = None
+    prepared_active_session = None
+    if p0_enabled():
+        stored_active_session = load_active_session(phone)
+        prepared_active_session, duplicate = prepare_active_session(
+            stored_active_session, profile, message_id, phone=phone
+        )
+        if duplicate:
+            print(f"P0: message déjà traité durablement: {message_id}", flush=True)
+            return None
+
     print(f"Profil WhatsApp: {profile}", flush=True)
     print(f"Conversation key: {conversation_key}", flush=True)
 
@@ -1912,8 +2331,15 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         send_whatsapp_typing_indicator(message_id)
 
     if media_file is None and mentions_user_document_without_content(text):
+        active_document = (prepared_active_session or {}).get("document")
+        if active_document and active_document.get("gcs_uri"):
+            try:
+                media_file = restore_document_media(active_document)
+                print("P0: document restauré depuis GCS", flush=True)
+            except Exception as exc:
+                print(f"P0: restauration GCS impossible: {exc!r}", flush=True)
         last_media = profile.get("last_document_media_file")
-        if last_media and Path(last_media).exists():
+        if media_file is None and last_media and Path(last_media).exists():
             media_file = last_media
             print(f"DOCUMENT_CONTEXT reused last media file: {last_media}", flush=True)
 
@@ -1924,16 +2350,34 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         )
         return
 
-    reponse = get_akili_response(
-        text,
-        matiere,
-        serie,
-        conversations[conversation_key],
-        phone,
-        type_examen,
-        mode,
-        media_file=media_file,
-    )
+    try:
+        akili_result = get_akili_response(
+            text,
+            matiere,
+            serie,
+            conversations[conversation_key],
+            phone,
+            type_examen,
+            mode,
+            media_file=media_file,
+            user_type=profile.get("user_type"),
+            active_session=prepared_active_session if p0_enabled() else None,
+            raise_on_error=p0_enabled(),
+            return_details=p0_enabled(),
+        )
+        if p0_enabled():
+            reponse, transition_details = normalize_p0_response(akili_result)
+            if document_context:
+                transition_details["document"] = persist_document_media(
+                    media_file, phone, document_context
+                )
+        else:
+            reponse = akili_result
+            transition_details = None
+    except Exception as exc:
+        print(f"P0: état inchangé après échec Akili: {exc!r}", flush=True)
+        send_whatsapp(phone, "Désolé, je rencontre une petite difficulté technique, réessaie dans un instant.")
+        return None
 
     if media_file:
         profile["last_document_media_file"] = str(media_file)
@@ -1941,6 +2385,19 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         user_profiles[phone] = profile
 
     reponse = soften_exercise_number_references(reponse)
+
+    if p0_enabled():
+        expected_revision = int((stored_active_session or {}).get("revision", 0))
+        next_active_session = transition_after_success(
+            prepared_active_session,
+            text,
+            reponse,
+            message_id,
+            **transition_details,
+        )
+        if not save_active_session_if_revision(phone, next_active_session, expected_revision):
+            print(f"P0: conflit de révision pour {phone}, réponse non renvoyée", flush=True)
+            return None
 
     conversations[conversation_key].append({"role": "user", "content": text})
     conversations[conversation_key].append({"role": "assistant", "content": reponse})
@@ -2073,12 +2530,17 @@ def update_profile_from_text(profile, message):
     locked_matiere = profile.get("matiere")
     locked_onboarding_step = profile.get("onboarding_step", "")
 
+    intermediate_match = re.search(r"(?<![A-Z0-9])(6|5|4)\s*(?:E|EME)(?![A-Z0-9])", msg)
+    if intermediate_match:
+        profile["serie"] = f"{intermediate_match.group(1)}E"
+        profile["type_examen"] = "CLASSE_INTERMEDIAIRE"
+
     if any(has_expr(msg, x) for x in ["BEPC", "3E", "3EME", "TROISIEME"]):
         profile["serie"] = "BEPC"
         profile["type_examen"] = "BEPC"
 
     # Detecte les niveaux du BAC General.
-    for serie in ["A1", "A2", "C", "D", "E", "A"]:
+    for serie in ["A1", "A2", "C", "D", "A"]:
         patterns = [
             f"SERIE {serie}", f"TERMINALE {serie}", f"TERMINAL {serie}",
             f"TLE {serie}", f"1ERE {serie}", f"PREMIERE {serie}",
@@ -2089,7 +2551,7 @@ def update_profile_from_text(profile, message):
             break
 
     # Detecte les series techniques avant les matieres.
-    for serie in ["G1", "G2", "F1", "F2", "F3", "F4", "B"]:
+    for serie in ["G1", "G2", "E", "F1", "F2", "F3", "F4", "F7", "B"]:
         patterns = [
             f"SERIE {serie}", f"TERMINALE {serie}", f"TERMINAL {serie}",
             f"TLE {serie}", f"BAC {serie}",
@@ -2139,10 +2601,15 @@ def infer_type_examen(serie, message):
     msg = (message or "").upper()
     serie = (serie or "").upper().strip()
 
+    if serie in {"6E", "5E", "4E"} or re.search(
+        r"(?<![A-Z0-9])(6|5|4)\s*(?:E|ÈME|EME)(?![A-Z0-9])", msg
+    ):
+        return "CLASSE_INTERMEDIAIRE"
+
     if serie == "BEPC" or "BEPC" in msg or "3EME" in msg or "3ÈME" in msg or "TROISIEME" in msg or "TROISIÈME" in msg:
         return "BEPC"
 
-    if serie in {"B", "G1", "G2", "F1", "F2", "F3", "F4", "STI"}:
+    if serie in {"B", "G1", "G2", "E", "F1", "F2", "F3", "F4", "F7", "STI"}:
         return "BAC_TECHNIQUE"
 
     if any(x in msg for x in ["BAC TECH", "BAC TECHNIQUE", "TECHNIQUE", "TERMINALE G", "TERMINALE B"]):
@@ -2296,7 +2763,9 @@ def strip_filler_opening(text):
     return result if result else text
 
 
-def get_akili_response(question, matiere, serie, history, phone="whatsapp_user", type_examen=None, mode=None, media_file=None, user_type=None):
+def get_akili_response(question, matiere, serie, history, phone="whatsapp_user", type_examen=None,
+                       mode=None, media_file=None, user_type=None, raise_on_error=False,
+                       return_details=False, active_session=None):
     try:
         # Sécurité: si l'appelant oublie user_type, on redétecte ici.
         if not user_type and is_teacher_request(question):
@@ -2310,6 +2779,20 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             f"{'Élève' if m['role'] == 'user' else 'Akili'}: {m['content']}"
             for m in history[-6:]
         ])
+        active_session_context = build_active_session_prompt(active_session)
+        active_context_instruction = (
+            "ETAT PEDAGOGIQUE ACTIF STRUCTURE (reprends exactement cette activité; "
+            "ce JSON n'est pas un historique de conversation):\n"
+            f"{active_session_context}\n\n"
+            if active_session_context else ""
+        )
+        short_answer_instruction = (
+            "REPONSE COURTE DE L'ELEVE: ce message est une réponse à la dernière "
+            "question pédagogique de l'historique. Aucun nouveau fichier ni aucune "
+            "nouvelle image n'est joint. Interprète cette réponse dans l'exercice en "
+            "cours et ne demande jamais de renvoyer un fichier.\n\n"
+            if media_file is None and is_short_pedagogical_answer(question) else ""
+        )
 
         bepc_instruction = ""
         if (type_examen or "").upper() == "BEPC" or (serie or "").upper() == "BEPC":
@@ -2401,6 +2884,8 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             question_api = (
                 f"{instructions_whatsapp}\n"
                 f"{format_guard}"
+                f"{active_context_instruction}"
+                f"{short_answer_instruction}"
                 f"NOUVEAU DOCUMENT RECU AVEC CE MESSAGE: l'eleve vient de joindre un nouveau fichier ou une nouvelle photo. "
                 f"Ce nouveau document contient l'exercice ACTUEL a traiter en priorite absolue, meme s'il ne correspond pas au sujet de l'historique ci-dessous. "
                 f"Ne continue PAS l'ancien exercice de l'historique si le nouveau document presente un exercice different: lis le nouveau document et pars de son contenu.\n"
@@ -2411,6 +2896,8 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             question_api = (
                 f"{instructions_whatsapp}\n"
                 f"{format_guard}"
+                f"{active_context_instruction}"
+                f"{short_answer_instruction}"
                 f"HISTORIQUE RECENT:\n{contexte}\n\n"
                 f"QUESTION REELLE DE L'ELEVE:\n{question}"
             )
@@ -2418,6 +2905,8 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             question_api = (
                 f"{instructions_whatsapp}\n"
                 f"{format_guard}"
+                f"{active_context_instruction}"
+                f"{short_answer_instruction}"
                 f"QUESTION REELLE DE L'ELEVE:\n{question}"
             )
 
@@ -2429,10 +2918,12 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             "serie": serie,
             "type_examen": type_examen,
             "mode": mode,
-            "history": contexte,
+            # L'API Akili attend un tableau JSON et ignorait auparavant ce champ
+            # parce qu'elle recevait une chaîne déjà mise en forme.
+            "history": json.dumps(history[-6:], ensure_ascii=False),
             "user_type": user_type or "",
         }
-        
+
 
         print(f"AKILI_API payload: {payload}", flush=True)
         request_files = {k: (None, str(v)) for k, v in payload.items() if v is not None}
@@ -2466,17 +2957,35 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
         print(f"AKILI_API status: {res.status_code}", flush=True)
         print(f"AKILI_API body: {res.text}", flush=True)
 
+        if raise_on_error:
+            res.raise_for_status()
+
         data = res.json()
         reponse_text = (
             data.get("reponse")
             or data.get("response")
             or data.get("answer")
             or data.get("message")
-            or "Désolé, je n'ai pas pu répondre."
         )
-        return strip_filler_opening(reponse_text)
+        if not reponse_text:
+            if raise_on_error:
+                raise ValueError("Réponse Akili vide")
+            reponse_text = "Désolé, je n'ai pas pu répondre."
+        reponse_text = strip_filler_opening(reponse_text)
+        if return_details:
+            return {
+                "text": reponse_text,
+                "document": data.get("document"),
+                "exercise": data.get("exercise"),
+                "current_question": data.get("current_question"),
+                "structured_results": data.get("relevant_previous_results") or [],
+                "next_expected_action": data.get("next_expected_action") or "await_student_answer",
+            }
+        return reponse_text
 
     except Exception as e:
+        if raise_on_error:
+            raise
         import traceback
         print(f"Erreur AKILI_API: {repr(e)}", flush=True)
         traceback.print_exc()
@@ -2516,6 +3025,7 @@ async def receive_message(request: Request):
         msg_type = msg.get("type")
         text = msg.get("text", {}).get("body", "").strip()
         media_file = None
+        document_context = None
         incoming_was_audio = msg_type in {"audio", "voice"}
         audio_reply_context[phone] = incoming_was_audio
         print(f"WHATSAPP_AUDIO_REPLY incoming_was_audio={incoming_was_audio} msg_type={msg_type}", flush=True)
@@ -2533,6 +3043,15 @@ async def receive_message(request: Request):
             )
 
             if media_id:
+                if msg_type in {"document", "image"}:
+                    document_context = {
+                        "id": None,
+                        "ref": None,
+                        "gcs_uri": None,
+                        "media_id": media_id,
+                        "mime_type": fallback_mime,
+                        "sha256": None,
+                    }
                 downloaded = download_whatsapp_media(media_id, filename, fallback_mime)
 
                 if msg_type in {"audio", "voice"}:
@@ -2563,6 +3082,50 @@ async def receive_message(request: Request):
 
         if not text:
             return {"status": "ok"}
+
+        consent_decision = detect_marketing_consent_command(text)
+        if consent_decision:
+            try:
+                save_marketing_consent(feedback_db, phone, consent_decision)
+            except Exception as exc:
+                if message_id:
+                    processed_messages.discard(message_id)
+                print(
+                    "WHATSAPP_MARKETING_CONSENT save_failed "
+                    f"error_class={type(exc).__name__}",
+                    flush=True,
+                )
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "status": "retry",
+                        "reason": "marketing_consent_persistence_failed",
+                    },
+                )
+
+            if consent_decision == OPTED_IN:
+                send_whatsapp(
+                    phone,
+                    "Ton accord est enregistré. Tu peux recevoir les campagnes WhatsApp "
+                    "d'AfrJigi. Pour te désinscrire à tout moment, envoie STOP.",
+                    persist_event=False,
+                    allow_audio=False,
+                )
+                reason = "marketing_opted_in"
+            else:
+                send_whatsapp(
+                    phone,
+                    "Ta désinscription marketing est enregistrée. Tu ne recevras plus de "
+                    "campagnes WhatsApp d'AfrJigi. Tu peux continuer à utiliser Akili. "
+                    "Pour te réabonner, envoie OUI MARKETING.",
+                    persist_event=False,
+                    allow_audio=False,
+                )
+                reason = "marketing_opted_out"
+            print(f"WHATSAPP_MARKETING_CONSENT status={consent_decision}", flush=True)
+            return {"status": "ok", "reason": reason}
+
+        maybe_send_marketing_consent_prompt(phone)
 
         print(f"Message de {phone}: {text}", flush=True)
 
@@ -2637,6 +3200,8 @@ async def receive_message(request: Request):
             conversations_to_delete = [k for k in conversations if k.startswith(f"{phone}:")]
             for k in conversations_to_delete:
                 conversations.pop(k, None)
+            if p0_enabled():
+                delete_active_session(phone)
             send_whatsapp(
                 phone,
                 "Profil réinitialisé. Envoie les choix un par un. Exemple : Bonjour Akili"
@@ -2728,6 +3293,8 @@ async def receive_message(request: Request):
             conversations_to_delete = [k for k in conversations if k.startswith(f"{phone}:")]
             for k in conversations_to_delete:
                 conversations.pop(k, None)
+            if p0_enabled():
+                delete_active_session(phone)
             send_whatsapp(phone, "Profil réinitialisé. Dis-moi ton examen, ta série et ta matière. Exemple : Je suis en Terminale D, je veux travailler les Maths.")
             track_inbound("reset", {})
             return {"status": "ok"}
@@ -2751,7 +3318,10 @@ async def receive_message(request: Request):
             user_profiles[phone] = profile
 
             track_inbound("teacher_direct_request", profile)
-            answer_learning_request(phone, profile, text, media_file=media_file, message_id=message_id, reply_audio=incoming_was_audio)
+            answer_learning_request(
+                phone, profile, text, media_file=media_file, message_id=message_id,
+                reply_audio=incoming_was_audio, document_context=document_context,
+            )
             return {"status": "ok"}
 
         # Si une simple lettre arrive sans contexte, ne jamais l'envoyer à l'API.
@@ -2855,7 +3425,10 @@ async def receive_message(request: Request):
         print(f"Conversation key: {conversation_key}", flush=True)
         track_inbound("akili_api", profile)
 
-        answer_learning_request(phone, profile, text, media_file=media_file, message_id=message_id, reply_audio=incoming_was_audio)
+        answer_learning_request(
+            phone, profile, text, media_file=media_file, message_id=message_id,
+            reply_audio=incoming_was_audio, document_context=document_context,
+        )
 
     except Exception as e:
         import traceback

@@ -10,6 +10,8 @@ from vertexai.generative_models import GenerativeModel, Part
 from typing import Optional
 from PIL import Image
 import io
+import time
+from google.api_core.exceptions import ResourceExhausted, TooManyRequests
 
 # Configuration
 PROJECT_ID = "astute-curve-307922"
@@ -54,6 +56,38 @@ def load_db_from_gcs():
 # Chargement global au démarrage
 documents = load_db_from_gcs()
 
+
+FRENCH_PEDAGOGY_GUIDANCE = """RETOUR ENSEIGNANT - MODULE FRANCAIS :
+Akili ne doit pas limiter le Français à la grammaire et à l'expression écrite.
+
+Quand la matière est Français, adapte la réponse au niveau de l'élève : BEPC, classe intermédiaire, Première ou Terminale.
+
+Domaines à couvrir selon la demande :
+- lecture méthodique ;
+- exploitation de texte ;
+- vocabulaire ;
+- orthographe ;
+- conjugaison ;
+- grammaire ;
+- expression écrite ;
+- résumé ;
+- production écrite ;
+- commentaire composé ;
+- dissertation littéraire ;
+- supports pédagogiques courts : texte, extrait, corpus ou document de travail.
+
+Si l'utilisateur est enseignant ou demande une situation d'apprentissage, structure la réponse ainsi :
+1. Contexte
+2. Circonstance
+3. Tâche
+4. Habiletés visées
+5. Plan de cours ou progression de séance
+6. Support court ou corpus si nécessaire
+7. Activité de l'apprenant
+8. Corrigé indicatif ou éléments attendus
+
+Objectif pédagogique : aider l'apprenant à se guider seul. Pose des questions courtes, donne une méthode claire, puis accompagne étape par étape au lieu de tout faire à sa place.
+"""
 
 PROMPT_HIST_GEO = """Tu es Akili, un professeur d'Histoire-Géographie expert du niveau Terminale pour le BAC en Côte d'Ivoire. Ton rôle est de guider méthodologiquement l'élève pour réussir la Dissertation, le Commentaire de documents et la Situation d'Évaluation selon le barème officiel ivoirien.
 
@@ -161,6 +195,7 @@ def serie_match(serie_doc, serie_eleve):
 
 
 ETUDE_TYPES = {
+    "COURS_ESSENTIEL": 45,
     "PROGRAMME": 40,
     "PROGRESSION_2NDE": 38,
     "PROGRESSION_1ERE": 38,
@@ -205,6 +240,14 @@ def normaliser_mode(mode, question=""):
 def normaliser_examen_requete(type_examen=None, serie=None):
     raw = f"{type_examen or ''} {serie or ''}".upper()
     s = (serie or "").upper().strip()
+
+    classes_intermediaires = {
+        "6E", "5E", "4E",
+        "SECONDE_A", "SECONDE_C",
+        "PREMIERE_A", "PREMIERE_C", "PREMIERE_D",
+    }
+    if "CLASSE_INTERMEDIAIRE" in raw or s in classes_intermediaires:
+        return "CLASSE_INTERMEDIAIRE"
 
     if "BEPC" in raw or s == "BEPC":
         return "BEPC"
@@ -314,17 +357,33 @@ def chercher_contexte(question, matiere=None, serie=None, examen=None, mode="etu
             results.append((score, doc))
 
     results.sort(key=lambda x: x[0], reverse=True)
+
+    # Pour les classes intermédiaires, évite d'ajouter au contexte des cours
+    # qui ne partagent qu'un mot générique avec la question.
+    if examen == "CLASSE_INTERMEDIAIRE" and results:
+        best_score = results[0][0]
+        minimum_score = best_score * 0.75
+        results = [
+            item for item in results
+            if item[0] >= minimum_score
+        ][:3]
+
     return [doc for score, doc in results[:max_docs]]
 
 def instructions_mode(mode, examen):
     if mode == "examen":
         return f"""
 MODE EXAMEN ACTIVE.
-- Mets l'élève en situation de {examen}.
-- Priorise les sujets, annales, bac blanc, prépa, corrigés et barèmes.
-- Ne donne pas toute la correction immédiatement si l'élève n'a pas encore essayé.
-- Propose une question ou un exercice, puis attends sa tentative.
-- Après sa réponse, corrige avec méthode, erreurs, points forts et barème indicatif.
+- Mets l'eleve dans les conditions reelles de {examen}.
+- Si l'eleve transmet un sujet (texte, photo ou PDF) avec plusieurs exercices, repere chaque exercice separement (Exercice 1, Exercice 2, etc.), avec toutes ses parties/sous-questions (Partie A, B, 1.1, 1.2...).
+- REGLE ABSOLUE (la plus importante de ce mode): ne traite JAMAIS une question ou une partie isolement, meme si l'eleve ecrit "aide-moi avec l'exercice X" ou pose une question de guidage precise sur une sous-question (ex: "quelles sont les lois de conservation ?", "quelle formule utiliser ?"). Dans TOUS ces cas, ne reponds JAMAIS a la sous-question posee: redirige toujours l'eleve vers la resolution complete de l'exercice entier sur papier.
+  Exemple de reponse INTERDITE: "Commencons par la question 1.1 de la Partie 1 : ... Avant d'ecrire l'equation, peux-tu me rappeler les deux lois de conservation... ?"
+  Exemple de bonne reponse: "Tu es en Exercice 1 de ce sujet. Resous toutes les questions de cet exercice (1.1, 1.2, 1.3, Partie A, B...) sur une feuille de papier, comme le jour de l'examen. Une fois termine, envoie-moi une photo claire et complete de ta copie pour cet exercice, et je la corrigerai selon le bareme officiel."
+- Tant que la photo de l'exercice en cours n'a pas ete recue, ne donne aucune reponse, aucun indice, aucune validation partielle, et ne pose aucune question de guidage sur la methode ou la formule -- meme si l'eleve insiste, dit qu'il est bloque, ou redemande de l'aide. Rappelle-lui simplement qu'il doit essayer par lui-meme et envoyer sa photo une fois l'exercice termine.
+- REGLE OBLIGATOIRE: des que tu recois la photo de l'exercice en cours, corrige integralement cet exercice en te basant sur le bareme officiel de {examen} indique dans le sujet, attribue une note precise sur le total de points de cet exercice, liste brievement les erreurs principales -- SANS long developpement (le mode etude sert a ca, pas le mode examen).
+- Une fois l'exercice note, passe a l'exercice suivant de la meme maniere (resoudre entierement sur papier, envoyer une photo, notation par le bareme), et ainsi de suite jusqu'a la fin du sujet.
+- A la fin de tous les exercices du sujet, donne une note totale sur l'ensemble et un bilan tres bref.
+- L'eleve peut aussi ecrire "terminer" ou "j'ai fini" a tout moment pour demander la correction de l'exercice en cours meme sans photo, a partir de ce qu'il a deja envoye en texte.
 """
     return f"""
 MODE ETUDE ACTIVE.
@@ -344,6 +403,7 @@ MODE ETUDE ACTIVE.
 @app.post("/question")
 async def ask_question(
     question: Optional[str] = Form(None),
+    question_brute: Optional[str] = Form(None),
     email: str = Form(...),
     matiere: Optional[str] = Form(None),
     serie: Optional[str] = Form(None),
@@ -428,14 +488,16 @@ async def ask_question(
         examen_registre = normaliser_examen_requete(type_examen, serie)
         mode_registre = normaliser_mode(mode, question)
 
+        question_recherche = (question_brute or question or "").strip()
+
         contexte_docs = chercher_contexte(
-            question,
+            question_recherche,
             matiere=matiere_registre,
             serie=serie,
             examen=examen_registre,
             mode=mode_registre,
             max_docs=6
-        ) if question else []
+        ) if question_recherche else []
 
         contexte_texte = "\n\n".join([str(d.get('texte', ''))[:3500] for d in contexte_docs])
         
@@ -484,15 +546,45 @@ RÈGLES ABSOLUES :
 - Terminer chaque réponse par une question ou une invitation à agir
 - Format BAC CI officiel : JAMAIS de plan en 3 parties
 """
-        elif matiere_propre in ["MATHS", "PC", "PHYSIQUE", "PHYSIQUE-CHIMIE"]:
+        elif matiere_propre in ["MATHS", "PC", "PHYSIQUE", "PHYSIQUE-CHIMIE", "SVT"]:
             niveau_examen = (type_examen or "BAC Général").strip()
-            if niveau_examen == "BEPC":
+            serie_normalisee = (serie or "").upper().strip()
+            libelles_classes = {
+                "6E": "6ème",
+                "5E": "5ème",
+                "4E": "4ème",
+                "SECONDE_A": "Seconde A",
+                "SECONDE_C": "Seconde C",
+                "PREMIERE_A": "Première A",
+                "PREMIERE_C": "Première C",
+                "PREMIERE_D": "Première D",
+            }
+
+            if serie_normalisee in libelles_classes:
+                niveau_texte = libelles_classes[serie_normalisee]
+                langage_texte = (
+                    "NIVEAU DE LANGAGE (important) : adapte strictement le vocabulaire, "
+                    "les méthodes et les exercices à la classe indiquée. Explique chaque "
+                    "terme nouveau avec un exemple concret et familier. Ne parle ni du BAC "
+                    "ni du BEPC sauf si l'élève le demande explicitement."
+                )
+            elif niveau_examen.upper() == "BEPC":
                 niveau_texte = "BEPC (3ème)"
+                langage_texte = (
+                    "NIVEAU DE LANGAGE (important) : l'eleve est en classe de 3eme (BEPC), pas au lycee. "
+                    "Utilise un vocabulaire simple et des phrases courtes, evite le jargon universitaire "
+                    "et les mots savants inutiles. Explique chaque terme technique nouveau la premiere fois "
+                    "que tu l'utilises, avec un exemple concret et familier. Adopte un ton encourageant, "
+                    "proche d'un professeur de college, jamais condescendant."
+                )
             else:
                 niveau_texte = "BAC (" + niveau_examen + ")"
+                langage_texte = ""
             system_prompt = """Tu es Akili, professeur de Mathématiques et Physique-Chimie pour le NIVEAU_PLACEHOLDER de Côte d'Ivoire. Tu GUIDES l'élève pas à pas — tu ne résous JAMAIS l'exercice entièrement à sa place. L'élève doit participer à chaque étape.
 
 NIVEAU DE L'ÉLÈVE : l'élève prépare le NIVEAU_PLACEHOLDER. Ne mentionne JAMAIS un autre niveau (par exemple ne parle pas du "BAC" a un eleve du BEPC, ni du "BEPC" a un eleve du BAC).
+
+LANGAGE_PLACEHOLDER
 
 RESPECT DU PROGRAMME OFFICIEL :
 - Appuie-toi STRICTEMENT sur le programme officiel ivoirien et les sujets officiels fournis dans le contexte.
@@ -512,7 +604,7 @@ CONCISION (important) :
 - Les élèves lisent peu : va à l'essentiel.
 
 FORMATAGE : Utilise le LaTeX ($inline$ ou $$display$$) pour TOUTES les expressions mathématiques, fractions, puissances et racines, pour un rendu lisible sur smartphone."""
-            system_prompt = system_prompt.replace("NIVEAU_PLACEHOLDER", niveau_texte)
+            system_prompt = system_prompt.replace("NIVEAU_PLACEHOLDER", niveau_texte).replace("LANGAGE_PLACEHOLDER", langage_texte)
         elif matiere_propre == "FRANÇAIS-BEPC-COMPOSITION":
             system_prompt = PROMPT_FR_BEPC_COMPO
         elif matiere_propre == "FRANÇAIS-BEPC-ORTHOGRAPHE":
@@ -581,10 +673,129 @@ POSTURE : Ton digne, académique, rigoureux mais accessible et motivant. Valoris
                 system_prompt = PROMPT_HIST_GEO_BEPC
             else:
                 system_prompt = PROMPT_HIST_GEO
+        elif matiere_propre == "ECO":
+            # Serie B : programme officiel SES de la filiere B, Seconde AB a Terminale B (Inspection Generale).
+            # Series G1/G2 : support d'harmonisation transmis par les enseignants d'Economie.
+            serie_eco = (serie or "").upper().replace("SERIE", "").replace("_", "").replace("-", "").replace(" ", "").strip()
+            if serie_eco in {"B", "TB", "TLEB", "TERMINALEB"}:
+                niveau_texte = "BAC Technique, série B (Terminale B)"
+                source_referentiel = "du programme officiel de Sciences Économiques et Sociales (SES) de la série B (Seconde AB, Première B, Terminale B) de l'Inspection Générale"
+                referentiel_eco = """Le programme SES de la série B couvre la Seconde AB, la Première B et la Terminale B. Le BAC porte sur la Terminale B (détaillée ci-dessous). Les notions de Seconde AB et de Première B font partie du parcours de l'élève : ne les refuse JAMAIS comme hors programme, traite-les comme des acquis à revoir et relie-les à la Terminale quand c'est utile.
+
+ACQUIS DE SECONDE AB : présentation et utilité de la science économique ; les besoins ; les biens et services ; les agents économiques et leurs opérations ; le marché (offre et demande) ; la population (notions démographiques, représentations graphiques, population ivoirienne et mondiale, population active, classes sociales) ; la famille (structure, fonctions) ; le revenu, le budget familial, la consommation, l'épargne ; les secteurs d'activités économiques (cas de la Côte d'Ivoire) ; le capital (types, rentabilité, amortissement) ; les grands courants de la pensée économique (dont le courant keynésien) ; le travail (contrat de travail, accidents du travail et maladies professionnelles).
+
+ACQUIS DE PREMIÈRE B : les opérations économiques et le circuit économique (simple, complet, par fonction) ; les agents économiques ; l'entreprise (formes, classification, production) ; le calcul économique dans l'entreprise (bilan, compte de résultat, coûts de production : coût moyen, coût marginal) ; la comptabilité nationale (secteurs institutionnels et leurs opérations, agrégats économiques et limites du PIB) ; la monnaie (fonctions, formes) ; le système bancaire et le crédit ; le financement de l'économie et de l'entreprise ; le marché (notion, formes particulières) ; l'État dans son rôle économique et social (le budget et ses sources de financement) ; les grands systèmes économiques (capitalisme, socialisme) ; l'action de l'État (réglementation et interventionnisme, planification indicative et impérative, expérience ivoirienne de la planification) ; la culture dans la société.
+
+PROGRAMME DE TERMINALE B (BAC) :
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PARTIE 1 -- LA CROISSANCE ÉCONOMIQUE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Notion de croissance économique : définition, mesure, facteurs de la croissance (économiques et non économiques) ; les autres notions d'évolution de l'activité (expansion, récession, crise, reprise) ; les conditions de la croissance (potentialités endogènes et exogènes) ; les freins à la croissance (difficultés endogènes et exogènes).
+2. L'analyse de la croissance : la croissance comme facteur de bien-être (emploi, revenu, infrastructures socio-économiques, progrès scientifique) ; les nuisances de la croissance (problèmes sociaux et environnementaux : santé des populations, disparités régionales ; difficultés économiques : inflation, surproduction).
+3. Les modèles simplifiés de croissance : le modèle keynésien ; le modèle de Harrod-Domar.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PARTIE 2 -- LE SOUS-DÉVELOPPEMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Présentation : la terminologie (pays sous-développés, pays en voie de développement, pays du tiers monde, pays en développement -- PED, pays du Sud) ; les caractéristiques (démographiques, sociales et culturelles, économiques, politiques, sanitaires et alimentaires).
+2. Causes et origines : le sous-développement comme phénomène naturel, comme retard de développement, comme produit du développement.
+3. Les disparités actuelles : la classification de la Banque Mondiale (pays à faible revenu, à revenu intermédiaire, à revenu élevé) ; la classification selon le niveau de développement (nouveaux pays industrialisés, pays exportateurs de pétrole, pays émergents, pays en voie de développement, pays les moins avancés -- PMA).
+4. Les stratégies de développement dans le tiers monde : définition ; stratégies fondées sur l'agriculture, sur l'industrie, sur la coopération ; les politiques de développement (extraversion ; développement autocentré ou introverti).
+5. Les pays en développement dans les relations économiques internationales : définition ; la coopération Sud-Sud ; l'intégration économique (définition, étapes) ; la coopération Nord-Sud (fuite des cerveaux, transferts de technologie) ; les raisons de la faible participation du tiers monde (internes : économiques et politiques ; externes : détérioration des termes de l'échange, protectionnisme des pays développés).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PARTIE 3 -- LES ÉCHANGES INTERNATIONAUX
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Le commerce international : définition ; les fondements théoriques (théorie classique, théorie suédoise -- Heckscher-Ohlin-Samuelson, théorie du commerce intra-branche) ; la limite des théories traditionnelles (le paradoxe de Leontief) ; les acteurs (États, entreprises, organisations internationales) ; les indicateurs (balance commerciale, taux de couverture, degré de dépendance, degré d'ouverture).
+2. Les politiques du commerce international : le libre-échange (définition, avantages, limites) ; le protectionnisme (définition, mesures protectionnistes, enjeux, avantages, limites).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PARTIE 4 -- LES INSTITUTIONS FINANCIÈRES INTERNATIONALES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Le marché des changes : le change, le marché des changes, le taux de change, la convertibilité, le risque de change ; les systèmes de cotation (au certain, à l'incertain) ; les systèmes de change (taux de change fixe, taux de change flottant).
+2. Le Système Monétaire International (SMI) : définition ; historique (étalon-or, étalon de change-or) ; le système des accords de Bretton Woods ; la création du FMI (le plan Keynes, le plan White).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PARTIE 5 -- LES DÉSÉQUILIBRES ÉCONOMIQUES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Le chômage : le marché du travail (définition, offre et demande de travail, approches théoriques : analyse néoclassique et analyse keynésienne) ; le chômage (définition, types, causes, conséquences, politiques de l'emploi).
+2. L'inflation : définition, causes, conséquences économiques, politiques de lutte contre l'inflation.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PARTIE 6 -- LES TRANSFORMATIONS SOCIO-ÉCONOMIQUES DANS LES PAYS INDUSTRIALISÉS CAPITALISTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Les transformations dans les fonctions sociales de l'État : définition de l'État ; l'évolution de son rôle (État-gendarme, État-partisan, État-providence) ; ses rôles actuels (allocation des ressources, redistribution, régulation).
+
+MÉTHODOLOGIE : la dissertation économique est au programme et se travaille tout au long de l'année. Si l'élève prépare une dissertation, guide-le étape par étape (analyse du sujet et définition des termes, problématique, plan, arguments illustrés d'exemples, conclusion), sans jamais la rédiger à sa place. Si l'élève demande un barème ou une présentation officielle précise que tu ne connais pas avec certitude, dis-lui de vérifier auprès de son professeur.
+
+NOTE : ce référentiel donne les chapitres et les notions au programme. Pour le contenu de chaque notion, utilise les définitions et les explications classiques de niveau lycée, sans aller au-delà de ce qui est listé."""
+            else:
+                niveau_texte = "BAC Technique (série " + (serie or "G1/G2") + ")"
+                source_referentiel = "du support d'harmonisation transmis par les enseignants d'Économie de Côte d'Ivoire"
+                referentiel_eco = """━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PARTIE 1 -- ÉCONOMIE GÉNÉRALE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. La comptabilité nationale et les agrégats : PIB (Produit Intérieur Brut), PNB (Produit National Brut = PIB + revenus des facteurs reçus de l'extérieur - revenus des facteurs versés à l'extérieur), RN (Revenu National), DNB (Dépense Nationale Brute). Relations entre ces agrégats, PIB marchand/non-marchand, PIB à prix courants/constants.
+2. La croissance économique : définition, distinction croissance/développement, mesure (taux de croissance du PIB), types de croissance (extensive/intensive), les étapes de la croissance selon Rostow (société traditionnelle, conditions préalables au décollage, décollage/take-off, marche vers la maturité, ère de consommation de masse), les cycles économiques (Kondratiev, Juglar, Kitchin).
+3. Le sous-développement : terminologie (PMA, pays en développement, tiers-monde), critères et indicateurs (IDH), causes (structurelles, historiques, démographiques), stratégies de développement, la dette extérieure et ses mécanismes.
+4. Les relations économiques internationales : théories du commerce international (avantages absolus d'Adam Smith, avantages comparatifs de Ricardo, théorème HOS de Heckscher-Ohlin-Samuelson, paradoxe de Leontief), le protectionnisme et ses instruments (droits de douane, quotas, subventions), les organisations internationales (OMC, CNUCED), l'intégration économique régionale (zone de libre-échange, union douanière, marché commun, union économique), le marché des changes et les régimes de change, le Système Monétaire International (accords de Bretton Woods, rôle du FMI et de la Banque Mondiale).
+5. La balance des paiements : structure (balance commerciale, balance des services, balance des capitaux), ratios d'ouverture (taux de couverture, taux d'exportation, taux de pénétration, degré d'ouverture de l'économie).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PARTIE 2 -- ÉCONOMIE ET ORGANISATION DES ENTREPRISES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. L'analyse systémique de l'entreprise : l'entreprise comme système ouvert et finalisé (structure, fonctionnement, intrants/extrants), caractéristiques d'une entreprise-système.
+2. Le système d'information : définition et rôles de l'information, sources internes/externes, la communication (types, réseaux de communication, obstacles à la communication).
+3. Le système de décision : types de décisions (selon l'objet/l'échéance, selon l'environnement), le processus de décision, distinction autorité/pouvoir, sources du pouvoir de décision, les styles de commandement (de direction/management), les théories de la motivation (McGregor : théorie X/Y, Maslow : pyramide des besoins, Herzberg : facteurs d'hygiène/de motivation), centralisation et décentralisation (définitions, avantages, inconvénients, modalités).
+4. L'analyse stratégique : notion et importance de la stratégie, la démarche stratégique (objectifs économiques : rentabilité, compétitivité, productivité, flexibilité, croissance, qualité, pérennité ; objectifs sociaux et sociétaux : satisfaction des travailleurs/dirigeants, RSE), le diagnostic interne (métier, ressources) et externe (analyse concurrentielle : économies d'échelle, masse critique, effet de synergie, effet d'expérience ; analyse technologique : technologies émergentes/clés/de base, veille technologique ; analyse sectorielle : les 5 forces de Michael Porter -- concurrents, nouveaux entrants, produits de substitution, pouvoir de négociation des fournisseurs, pouvoir de négociation des clients), le cycle de vie du produit (lancement, croissance, maturité, déclin), le portefeuille d'activités et le domaine d'activité stratégique (DAS).
+5. Les actions stratégiques : la croissance interne (organique), la croissance externe (fusion, absorption, scission, apport partiel d'actifs, prises de participation, OPA, OPE, OPV) et la croissance conjointe (alliances, partenariats) avec leurs avantages/inconvénients ; les stratégies génériques de Porter (domination par les coûts, différenciation, focalisation/concentration) ; la spécialisation ; la diversification ; l'impartition, c'est-à-dire le fait de confier à une autre entreprise la réalisation d'une partie de son activité. ATTENTION : la sous-traitance est UNE des formes de l'impartition, ce n'est pas un synonyme. Les formes d'impartition sont : la sous-traitance (de spécialité ou de capacité), la concession commerciale, la franchise commerciale, l'externalisation, le consortium, le Groupement d'Intérêt Économique (GIE), l'accord de licence, le portage, la cotraitance/joint-venture. Viennent ensuite la concentration (horizontale, verticale/intégration en amont-aval-latérale, conglomérale -- avec la notion de trust) et l'internationalisation (exportation directe/indirecte, implantation commerciale/industrielle, la firme multinationale -- FMN, société-mère, filiales, sociétés en participation, la holding).
+6. La culture d'entreprise : définition, éléments (valeurs, mythes, symboles, rites, tabous), avantages pour les salariés et pour l'entreprise, les limites d'une culture trop forte (résistance au changement, frein à l'adaptation).
+7. L'entreprise et l'intérêt général : la compatibilité entre objectifs macroéconomiques (croissance, plein-emploi, stabilité des prix, équilibre extérieur) et intérêts de l'entreprise, la protection de l'environnement et de la dignité humaine, les réponses des pouvoirs publics (libéral vs interventionniste), du grand public et de l'entreprise (responsabilité sociétale, sponsoring, mécénat).
+8. Place et droits des travailleurs en entreprise : l'école classique (OST de Taylor, travail à la chaîne de Ford, administration du travail de Fayol, bureaucratie de Weber) versus l'école des relations humaines (Mayo, Maslow, McGregor, Herzberg) ; le dialogue social, les types de conflits (individuel, collectif, horizontal, vertical), les structures institutionnelles (syndicats, délégués du personnel, comité d'entreprise) et les structures de participation (autonomie, intéressement, actionnariat salarié, cercles de qualité)."""
+
+            system_prompt = """Tu es Akili, professeur d'Économie pour le NIVEAU_PLACEHOLDER de Côte d'Ivoire. Tu GUIDES l'élève pas à pas -- tu ne donnes JAMAIS un cours magistral d'un bloc, tu fais participer l'élève à chaque étape avant de valider ou de compléter.
+
+NIVEAU DE L'ÉLÈVE : l'élève prépare le NIVEAU_PLACEHOLDER.
+
+RESPECT DU PROGRAMME OFFICIEL (important) :
+- Appuie-toi STRICTEMENT sur le référentiel ci-dessous, issu SOURCE_PLACEHOLDER.
+- N'introduis JAMAIS une théorie, un auteur ou une notion qui n'apparaît pas dans ce référentiel.
+- Si l'élève pose une question sur une notion absente du référentiel, dis-le clairement et simplement : "Cette notion n'est pas dans ton programme d'Économie pour ta série. Vérifie auprès de ton professeur s'il l'aborde en classe."
+- Si l'élève pose une question factuelle précise (date, chiffre, référence) qui n'apparaît pas dans ce référentiel, ne l'invente jamais : "Je n'ai pas cette information précise, vérifie auprès de ton professeur."
+
+RÉFÉRENTIEL DU PROGRAMME :
+
+REFERENTIEL_PLACEHOLDER
+
+TA MÉTHODE TUTORIELLE :
+1. Reformule brièvement la question ou l'exercice pour confirmer la bonne compréhension.
+2. Quand une notion a plusieurs définitions ou plusieurs théories possibles, propose un CHOIX de 2 à 4 options (A, B, C...) et termine par "Réponds par A, B ou C." plutôt que de lui demander de rédiger une longue réponse au clavier.
+3. CORRECTION DES RÉPONSES (important) :
+   - Si la réponse est juste, confirme-le clairement.
+   - Si la réponse est fausse, dis-le clairement dès le début ("Non, ce n'est pas la bonne réponse."), avec bienveillance. N'écris JAMAIS "c'est presque ça" ou "presque" pour une réponse fausse : l'élève retiendrait une idée fausse.
+   - Explique ensuite brièvement pourquoi, puis enchaîne vers l'étape suivante.
+4. Si tu poses une question ouverte et que l'élève répond seulement par une lettre (a, b, c...), rappelle-lui gentiment que ta question attend une réponse courte avec ses propres mots, ou reformule-la sous forme de choix A, B, C.
+5. Pour un cas pratique ou une étude de cas, fais identifier par l'élève lui-même les éléments clés avant de donner la réponse.
+6. Ne donne le développement complet que si l'élève est réellement bloqué après plusieurs relances.
+
+CONCISION (important) :
+- Pour une question de définition ou de restitution de cours, réponds de façon COURTE et précise, avec un exemple concret ivoirien ou africain quand c'est utile.
+- Garde les explications détaillées pour les études de cas, les dissertations et les points réellement difficiles.
+
+POSTURE : encourageant, rigoureux, jamais condescendant."""
+            system_prompt = system_prompt.replace("NIVEAU_PLACEHOLDER", niveau_texte).replace("SOURCE_PLACEHOLDER", source_referentiel).replace("REFERENTIEL_PLACEHOLDER", referentiel_eco)
         else:
             system_prompt = """Tu es Akili, un assistant pédagogique expert en préparation au BAC africain (Côte d'Ivoire, UEMOA).
             Tu aides les élèves à comprendre les cours et à réussir leurs examens.
             Tu réponds toujours en français, de façon claire, pédagogique et encourageante."""
+
+        if (
+            matiere_propre == "FRENCH"
+            or matiere_propre.startswith("FRANÇAIS")
+            or matiere_propre.startswith("FRANCAIS")
+        ):
+            system_prompt = system_prompt + "\n\n" + FRENCH_PEDAGOGY_GUIDANCE
 
         system_prompt = system_prompt + "\n\n" + instructions_mode(mode_registre, examen_registre)
 
@@ -602,12 +813,12 @@ POSTURE : Ton digne, académique, rigoureux mais accessible et motivant. Valoris
             except:
                 pass
 
-        contexte_coeffs = contexte_coefficients_officiels(question, serie, type_examen)
+        contexte_coeffs = contexte_coefficients_officiels(question_recherche, serie, type_examen)
         if contexte_coeffs:
             contents.append(contexte_coeffs)
 
         if contexte_texte:
-            contents.append(f"CONTEXTE OFFICIEL (extraits de programmes/annales officiels deja dans TA base de reference interne, PAS envoyes par l'eleve. Ne dis JAMAIS 'ton document' ni 'les extraits que tu as fournis/partages' a propos de ce contexte. N'invente et ne cite JAMAIS un nom de professeur, d'auteur d'un manuel scolaire, ou de personne apparaissant dans ce contexte comme source d'autorite -- ce sont des artefacts de scan/numerisation, pas des references academiques valides. Utilise uniquement le CONTENU, jamais les noms de personnes qui y figurent. REGLE ABSOLUE D'HONNETETE : si une information factuelle precise (oeuvres litteraires au programme, dates d'examen, coefficients, references bibliographiques, statistiques, listes officielles) n'apparait PAS explicitement dans ce contexte, tu ne dois JAMAIS l'inventer ni pretendre qu'elle vient d'une source officielle. Dis clairement a l'eleve : \"Je n'ai pas cette information dans mes documents officiels, verifie aupres de ton professeur ou de ton etablissement.\" Il vaut mieux reconnaitre une limite que donner une information fausse a un eleve qui prepare son examen) :\n{contexte_texte}")
+            contents.append(f"CONTEXTE OFFICIEL (extraits de programmes/annales officiels deja dans TA base de reference interne, PAS envoyes par l'eleve. Ne dis JAMAIS 'ton document' ni 'les extraits que tu as fournis/partages' a propos de ce contexte. N'invente et ne cite JAMAIS un nom de professeur, d'auteur d'un manuel scolaire, ou de personne apparaissant dans ce contexte comme source d'autorite -- ce sont des artefacts de scan/numerisation, pas des references academiques valides. Utilise uniquement le CONTENU, jamais les noms de personnes qui y figurent. REGLE ABSOLUE D'HONNETETE : si une information factuelle precise (oeuvres litteraires au programme, dates d'examen, coefficients, references bibliographiques, statistiques, listes officielles) n'apparait PAS explicitement dans ce contexte, tu ne dois JAMAIS l'inventer ni pretendre qu'elle vient d'une source officielle. Dis clairement a l'eleve : \"Je n'ai pas cette information dans mes documents officiels, verifie aupres de ton professeur ou de ton etablissement.\" Cette regle d'honnetete ne s'applique QUE quand l'eleve pose une question factuelle precise (comme une date, un coefficient, une reference bibliographique) et que cette info n'est pas dans ton contexte -- elle ne s'applique JAMAIS quand tu es en train de corriger ou d'evaluer la reponse d'un eleve a une question que TU as toi-meme posee dans le cadre d'un exercice en cours: dans ce cas, corrige toujours sa reponse avec tes propres connaissances de la matiere, sans jamais dire que tu n'as pas l'information et sans jamais rediriger vers le professeur. Il vaut mieux reconnaitre une limite que donner une information fausse a un eleve qui prepare son examen) :\n{contexte_texte}")
             
         # Si un fichier image a été téléversé par l'élève
         if file is not None:
@@ -642,8 +853,40 @@ POSTURE : Ton digne, académique, rigoureux mais accessible et motivant. Valoris
         else:
             contents.append("Prends en charge cette image, identifie l'exercice, résous-le et explique-moi les étapes.")
 
-        # ─── 5. APPEL GEMINI 2.5 FLASH ───
-        response = model.generate_content(contents)
+        # ─── 5. APPEL GEMINI 2.5 FLASH (avec retry sur quota 429) ───
+        response = None
+        last_error = None
+        for tentative in range(3):
+            try:
+                response = model.generate_content(contents)
+                break
+            except Exception as e:
+                # Un 429 peut arriver en TooManyRequests (classe parente) ou en
+                # ResourceExhausted selon le transport du SDK : on attrape les deux.
+                if not (isinstance(e, TooManyRequests) or "429" in str(e) or "resource exhausted" in str(e).lower()):
+                    raise
+                last_error = e
+                print(f"⚠️ Quota Vertex AI atteint (tentative {tentative + 1}/3), nouvelle tentative dans {2 * (tentative + 1)}s", flush=True)
+                if tentative < 2:
+                    time.sleep(2 * (tentative + 1))
+        if response is None:
+            print(f"❌ Echec apres 3 tentatives (quota Vertex AI): {last_error}", flush=True)
+            return {
+                "reponse": "Beaucoup d'eleves utilisent Akili en ce moment. Reessaie dans quelques secondes, ca devrait passer.",
+                "limit_reached": False,
+            }
+
+        # Gemini 2.5 renvoie parfois sa reponse en plusieurs "parts" : response.text
+        # plante alors ("Multiple content parts are not supported"). On recolle les parts.
+        try:
+            texte_reponse = response.text
+        except ValueError:
+            texte_reponse = "".join(
+                (getattr(part, "text", "") or "")
+                for cand in (response.candidates or [])[:1]
+                for part in (cand.content.parts or [])
+            )
+            print(f"⚠️ Reponse Gemini en plusieurs parts, recollee ({len(texte_reponse)} caracteres)", flush=True)
 
         # ─── 6. MISE À JOUR DU COMPTEUR DE QUESTIONS ───
         new_count = questions_today + 1 if not is_premium else questions_today
@@ -656,17 +899,25 @@ POSTURE : Ton digne, académique, rigoureux mais accessible et motivant. Valoris
         })
         
         return {
-            "reponse": response.text,
+            "reponse": texte_reponse,
             "mode": mode_registre,
             "examen": examen_registre,
             "sources": [
                 {
-                    "source": d.get("source", "Source officielle"),
+                    "source": (
+                        d.get("source")
+                        or (
+                            "Cours Akili basé sur le programme officiel"
+                            if d.get("origine") == "REDACTION_ORIGINALE_AKILI"
+                            else "Source officielle"
+                        )
+                    ),
                     "nom_fichier": d.get("nom_fichier") or d.get("storage_path") or d.get("upload_path"),
                     "examen": d.get("examen"),
                     "serie": d.get("serie"),
                     "matiere": d.get("matiere"),
                     "type_doc": d.get("type_doc"),
+                    "statut": d.get("statut"),
                 }
                 for d in contexte_docs
             ],
@@ -675,7 +926,7 @@ POSTURE : Ton digne, académique, rigoureux mais accessible et motivant. Valoris
         }
 
     except Exception as e:
-        print(f"❌ Erreur détaillée : {e}")
+        print(f"❌ Erreur détaillée ({type(e).__module__}.{type(e).__name__}) : {e}", flush=True)
         return {"error": f"Erreur lors de la génération : {str(e)}"}
 
 @app.get("/")
