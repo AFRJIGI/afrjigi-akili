@@ -192,5 +192,25 @@ class WebhookEtTacheTests(BaseFinSession):
             self.assertEqual(asyncio.run(main.tache_bilans_inactivite(FauxRequete(headers={}))).status_code, 403)
 
 
+class LibelleMatiereTests(unittest.TestCase):
+    def test_bilan_envoie_le_nom_lisible_de_la_matiere(self):
+        envoye = {}
+
+        class Reponse:
+            def json(self):
+                return {"reponse": "Bravo !"}
+
+        def faux_post(url, data=None, timeout=None):
+            envoye.update(data)
+            return Reponse()
+
+        session = {"matiere": "ECO", "serie": "B", "type_examen": "BAC_TECHNIQUE", "mode": "etude",
+                   "messages": [{"role": "user", "content": "PIB ?"}]}
+        with mock.patch.object(main.requests, "post", side_effect=faux_post):
+            self.assertEqual(main.generer_bilan_session(session, "au_revoir"), "Bravo !")
+        self.assertEqual(envoye["matiere"], "Économie")
+        self.assertEqual(main.libelle_matiere("CODE_INCONNU"), "CODE_INCONNU")
+
+
 if __name__ == "__main__":
     unittest.main()

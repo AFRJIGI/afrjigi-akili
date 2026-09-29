@@ -2098,6 +2098,24 @@ def journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve,
     return session
 
 
+LIBELLES_MATIERES = {
+    "MATHS": "Mathématiques", "PC": "Physique-Chimie", "SVT": "SVT", "FRANCAIS": "Français",
+    "FRENCH": "Français", "PHILO": "Philosophie", "HG": "Histoire-Géographie", "ANGLAIS": "Anglais",
+    "ALLEMAND": "Allemand", "ESPAGNOL": "Espagnol", "EDHC": "EDHC",
+    "COMPTA_FIN": "Comptabilité financière", "COMPTA_SOCIETES": "Comptabilité des sociétés",
+    "COMPTA_ANALYTIQUE": "Comptabilité analytique", "COMPTA": "Comptabilité",
+    "MATHS_FIN": "Mathématiques financières", "MATHS_GENERAL": "Mathématiques générales",
+    "ECO": "Économie", "EXPRESSION_PRO": "Expression professionnelle",
+    "PHYSIQUE_APPLIQUEE": "Physique appliquée", "ESTI": "Étude des systèmes techniques industriels",
+    "DROIT": "Droit",
+}
+
+
+def libelle_matiere(code):
+    code = (code or "").strip()
+    return LIBELLES_MATIERES.get(code.upper(), code)
+
+
 def generer_bilan_session(session, source):
     """Demande a Akili le bilan personnalise. En cas d'echec, message fixe selon le mode."""
     mode = (session.get("mode") or "etude").lower()
@@ -2106,7 +2124,7 @@ def generer_bilan_session(session, source):
             AKILI_BILAN_URL,
             data={
                 "historique": json.dumps(session.get("messages") or [], ensure_ascii=False),
-                "matiere": session.get("matiere") or "",
+                "matiere": libelle_matiere(session.get("matiere")),
                 "serie": session.get("serie") or "",
                 "type_examen": session.get("type_examen") or "",
                 "mode": mode,
