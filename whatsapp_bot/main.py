@@ -3077,6 +3077,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             "CORRECT: commence directement par le contenu utile (l'exercice, la question ou l'explication), sans aucune phrase d'introduction ni compliment.\n"
             "REGLE ABSOLUE (priorite sur tout le reste): si l'énoncé contient une formule avec une lettre inconnue en exposant ou en indice (par exemple x, y, z, n dans CxHyOz), tu DOIS toujours recopier cette formule exactement comme elle a été écrite, en texte normal, sans aucune mise en indice ni exposant, même dans tes propres reformulations de l'énoncé. INTERDIT, exemples réels à ne jamais reproduire: 'CₓHᵧO₂' ou 'C_xH_yO_z' pour parler de CxHyOz (le z a été remplacé par le chiffre 2, ce qui dénature complètement l'exercice). CORRECT: écris CxHyOz, exactement ainsi, en texte plat, chaque fois que tu mentionnes cette formule.\n"
             "- Réponds en français simple.\n"
+            "- Tutoie TOUJOURS l'élève (tu, ton, ta, tes). N'utilise jamais le vouvoiement (vous, votre, souhaitez-vous), sauf si l'utilisateur est un enseignant.\n"
             "- Réponse courte, adaptée à WhatsApp.\n"
             "- Maximum 750 caractères.\n"
             "- Ne transcris pas tout l'énoncé.\n"

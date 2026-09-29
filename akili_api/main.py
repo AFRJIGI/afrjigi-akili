@@ -1084,7 +1084,9 @@ Redige son message de fin d'entraînement, dans cet ordre :
 3. "Points à retravailler :" 1 a 3 erreurs relevees dans tes corrections (s'il y en a).
 4. "Conseil : passe en mode étude sur ces points (tape menu)." """
 
-BILAN_INACTIVITE = """Contexte : l'eleve n'a plus ecrit depuis un moment, il a sans doute fait une pause. Commence par une phrase courte du type "Tu as fait une pause, voici où tu en es." et termine par "Quand tu reviens, réponds simplement à ma dernière question pour reprendre." """
+BILAN_INACTIVITE = """Contexte : l'eleve n'a plus ecrit depuis un moment, il a sans doute fait une pause.
+- La toute premiere phrase est exactement : "Tu as fait une pause, voici où tu en es." Ne la fais suivre d'aucune formule d'accueil (interdit : "C'est bien de te remettre a...", "Content de te revoir").
+- La toute derniere phrase est exactement : "Quand tu reviens, réponds simplement à ma dernière question pour reprendre." Elle remplace toute autre invitation a revenir ou formule d'au revoir : n'en ajoute aucune autre."""
 
 
 @app.post("/bilan-session")
@@ -1112,6 +1114,8 @@ async def bilan_session(
         mode_bilan = "examen" if (mode or "").lower().strip() == "examen" else "etude"
         consignes = BILAN_EXAMEN if mode_bilan == "examen" else BILAN_ETUDE
         if (source or "") == "inactivite":
+            # La phrase de reprise remplace l'invitation a revenir du bilan normal.
+            consignes = consignes.replace("\n4. Une courte invitation a revenir.", "")
             consignes = consignes + "\n\n" + BILAN_INACTIVITE
 
         prompt = (

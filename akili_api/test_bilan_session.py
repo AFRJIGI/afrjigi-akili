@@ -72,6 +72,15 @@ class BilanSessionTests(unittest.TestCase):
         self.assertIn("N'invente JAMAIS une note", m.prompts[0])
         self.assertIn("Tu as fait une pause", m.prompts[0])
 
+    def test_pause_une_seule_phrase_de_fin(self):
+        m = FauxModele(["x", "y"])
+        self.appeler(m, source="inactivite")
+        self.assertNotIn("4. Une courte invitation a revenir", m.prompts[0])
+        self.assertIn("remplace toute autre invitation", m.prompts[0])
+        self.assertIn("formule d'accueil", m.prompts[0])
+        self.appeler(m, source="au_revoir")
+        self.assertIn("4. Une courte invitation a revenir", m.prompts[1])
+
     def test_reessaie_sur_429(self):
         m = FauxModele([TooManyRequests("429"), "Bilan"])
         self.assertEqual(self.appeler(m)["reponse"], "Bilan")

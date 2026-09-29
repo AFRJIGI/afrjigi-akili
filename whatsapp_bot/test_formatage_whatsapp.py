@@ -46,5 +46,31 @@ class FormatageListesTests(unittest.TestCase):
         self.assertEqual(main.strip_filler_opening("Voici la suite\n1. a\n2. b"), "Voici la suite\n1. a\n2. b")
 
 
+
+class TutoiementTests(unittest.TestCase):
+    def test_consigne_de_tutoiement_envoyee_a_akili(self):
+        from unittest import mock
+        envoye = {}
+
+        class Reponse:
+            status_code = 200
+            text = '{"reponse": "ok"}'
+
+            def json(self):
+                return {"reponse": "ok"}
+
+            def raise_for_status(self):
+                pass
+
+        def faux_post(url, files=None, timeout=None, **k):
+            envoye["files"] = files
+            return Reponse()
+
+        with mock.patch.object(main.requests, "post", side_effect=faux_post):
+            main.get_akili_response("Explique le PIB", "ECO", "B", [], phone="22500000009",
+                                    type_examen="BAC_TECHNIQUE", mode="etude")
+        self.assertIn("Tutoie TOUJOURS", str(envoye["files"]))
+
+
 if __name__ == "__main__":
     unittest.main()
