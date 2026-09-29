@@ -1421,6 +1421,27 @@ def clean_whatsapp_response(message):
     return text
 
 
+MESSAGE_UNE_MATIERE_A_LA_FOIS = (
+    "Je t'accompagne sur une matière à la fois pour bien suivre ton travail.\n"
+    "Par laquelle veux-tu commencer ? Réponds par une seule lettre.\n\n"
+    "Tu pourras changer quand tu veux en écrivant : changer matière"
+)
+
+
+def veut_plusieurs_matieres(text):
+    """Detecte, a l'etape matiere, un eleve qui choisit plusieurs matieres
+    ("a,b,c,d,e,i", "a et c") ou toutes ("je veux tout", "toutes les matieres")."""
+    tokens = normalize_for_match(text).split()
+    if not tokens:
+        return False
+    if any(t in {"TOUT", "TOUTES", "TOUS"} for t in tokens):
+        return True
+    choix = r"[A-M]|1[0-3]|[1-9]"
+    lettres = {t for t in tokens if re.fullmatch(choix, t)}
+    autres = [t for t in tokens if not re.fullmatch(choix, t) and t not in {"ET", "OU"}]
+    return len(lettres) > 1 and not autres
+
+
 def is_multiple_choice_answer(text):
     """Détecte les réponses du type a,b,c ou d et f pendant l'onboarding."""
     normalized = normalize_for_match(text)
@@ -3348,6 +3369,11 @@ async def receive_message(request: Request):
             ask_exam(phone)
             track_inbound("orphan_choice_restarted_onboarding", profile)
             return {"status": "ok"}
+
+        if profile.get("onboarding_step") == "matiere" and veut_plusieurs_matieres(text):
+            send_whatsapp(phone, MESSAGE_UNE_MATIERE_A_LA_FOIS)
+            track_inbound("multiple_subjects_requested", profile)
+            return {"status": "ok", "reason": "multiple_subjects_requested"}
 
         if profile.get("onboarding_step") and is_multiple_choice_answer(text):
             send_whatsapp(phone, "Choisis une seule option pour continuer. Exemple : a")
