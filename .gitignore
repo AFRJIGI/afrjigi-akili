@@ -37,3 +37,6 @@ Jigi/
 
 # Cache Firebase CLI
 .firebase/
+
+# Exports de donnees eleves (numeros de telephone) : ne jamais publier
+whatsapp_bot/*.csv

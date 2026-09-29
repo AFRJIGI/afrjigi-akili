@@ -1,1 +1,31 @@
-{"hosting": {"site": "afrjigi", "public": ".", "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]}}
+{
+  "hosting": {
+    "site": "afrjigi",
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "cleanUrls": true,
+    "trailingSlash": false,
+    "rewrites": [
+      {
+        "source": "/about",
+        "destination": "/about.html"
+      },
+      {
+        "source": "/contact",
+        "destination": "/contact.html"
+      },
+      {
+        "source": "/privacy",
+        "destination": "/privacy.html"
+      },
+      {
+        "source": "/terms",
+        "destination": "/terms.html"
+      }
+    ]
+  }
+}

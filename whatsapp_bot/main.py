@@ -7,12 +7,19 @@ import unicodedata
 import uuid
 import hashlib
 from fastapi import FastAPI, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from google.cloud import firestore, storage
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from gtts import gTTS
+from marketing_consent import (
+    OPTED_IN,
+    claim_marketing_consent_prompt,
+    detect_marketing_consent_command,
+    mark_marketing_consent_prompt_delivery,
+    save_marketing_consent,
+)
 
 app = FastAPI(title="AfrJigi WhatsApp Bot")
 
@@ -566,6 +573,54 @@ def save_whatsapp_event(phone, direction, text, profile=None, message_id=None, e
         print(f"WHATSAPP_EVENT saved direction={direction} phone={phone}", flush=True)
     except Exception as e:
         print(f"Erreur save_whatsapp_event: {repr(e)}", flush=True)
+
+
+MARKETING_CONSENT_PROMPT = (
+    "Souhaites-tu recevoir sur WhatsApp les rappels pédagogiques et les offres "
+    "d'AfrJigi ?\n\nPour accepter, envoie OUI MARKETING. Tu pourras te "
+    "désinscrire à tout moment en envoyant STOP."
+)
+
+
+def maybe_send_marketing_consent_prompt(phone):
+    """Invite une seule fois, après un message initié par l'utilisateur."""
+    try:
+        claim_id = claim_marketing_consent_prompt(feedback_db, phone)
+    except Exception as exc:
+        print(
+            "WHATSAPP_MARKETING_CONSENT_PROMPT claim_failed "
+            f"error_class={type(exc).__name__}",
+            flush=True,
+        )
+        return False
+    if not claim_id:
+        return False
+
+    delivered = False
+    try:
+        delivered = bool(send_whatsapp(
+            phone,
+            MARKETING_CONSENT_PROMPT,
+            persist_event=False,
+            allow_audio=False,
+        ))
+    except Exception as exc:
+        print(
+            "WHATSAPP_MARKETING_CONSENT_PROMPT send_failed "
+            f"error_class={type(exc).__name__}",
+            flush=True,
+        )
+    try:
+        mark_marketing_consent_prompt_delivery(
+            feedback_db, phone, claim_id, delivered
+        )
+    except Exception as exc:
+        print(
+            "WHATSAPP_MARKETING_CONSENT_PROMPT delivery_state_failed "
+            f"error_class={type(exc).__name__}",
+            flush=True,
+        )
+    return delivered
 
 
 
@@ -1366,6 +1421,27 @@ def clean_whatsapp_response(message):
     return text
 
 
+MESSAGE_UNE_MATIERE_A_LA_FOIS = (
+    "Je t'accompagne sur une matière à la fois pour bien suivre ton travail.\n"
+    "Par laquelle veux-tu commencer ? Réponds par une seule lettre.\n\n"
+    "Tu pourras changer quand tu veux en écrivant : changer matière"
+)
+
+
+def veut_plusieurs_matieres(text):
+    """Detecte, a l'etape matiere, un eleve qui choisit plusieurs matieres
+    ("a,b,c,d,e,i", "a et c") ou toutes ("je veux tout", "toutes les matieres")."""
+    tokens = normalize_for_match(text).split()
+    if not tokens:
+        return False
+    if any(t in {"TOUT", "TOUTES", "TOUS"} for t in tokens):
+        return True
+    choix = r"[A-M]|1[0-3]|[1-9]"
+    lettres = {t for t in tokens if re.fullmatch(choix, t)}
+    autres = [t for t in tokens if not re.fullmatch(choix, t) and t not in {"ET", "OU"}]
+    return len(lettres) > 1 and not autres
+
+
 def is_multiple_choice_answer(text):
     """Détecte les réponses du type a,b,c ou d et f pendant l'onboarding."""
     normalized = normalize_for_match(text)
@@ -1763,7 +1839,9 @@ def send_vector_formula_if_needed(phone, raw_message):
     return send_whatsapp_image(phone, media_id)
 
 
-def send_whatsapp(to, message, limit=850, add_continuation=True):
+def send_whatsapp(
+    to, message, limit=850, add_continuation=True, persist_event=True, allow_audio=True
+):
     message = clean_whatsapp_response(message)
 
     now_ts = time.time()
@@ -1772,16 +1850,16 @@ def send_whatsapp(to, message, limit=850, add_continuation=True):
     if previous:
         previous_text, previous_ts = previous
         if previous_text == message and now_ts - previous_ts < 20:
-            print(f"WHATSAPP_SEND_DEDUPE skipped duplicate to={to}", flush=True)
-            return
+            print("WHATSAPP_SEND_DEDUPE skipped duplicate", flush=True)
+            return True
 
     last_outbound_by_phone[dedupe_key] = (message, now_ts)
 
-    should_reply_audio = bool(audio_reply_context.get(str(to)))
+    should_reply_audio = allow_audio and bool(audio_reply_context.get(str(to)))
     message_parts = split_whatsapp_message(message, limit=limit, max_parts=1, add_continuation=add_continuation)
 
     if not message_parts:
-        return
+        return False
 
     url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
     headers = {
@@ -1789,6 +1867,7 @@ def send_whatsapp(to, message, limit=850, add_continuation=True):
         "Content-Type": "application/json",
     }
 
+    sent = True
     for index, part in enumerate(message_parts, start=1):
         print(f"WHATSAPP_SEND_TEXT part={index}/{len(message_parts)} len={len(part)}: {part}", flush=True)
 
@@ -1800,9 +1879,15 @@ def send_whatsapp(to, message, limit=850, add_continuation=True):
         }
 
         res = requests.post(url, headers=headers, json=data)
-        print(f"DEBUG SEND: Status {res.status_code} - Response: {res.text}", flush=True)
+        if persist_event:
+            print(f"DEBUG SEND: Status {res.status_code} - Response: {res.text}", flush=True)
+        else:
+            print(f"DEBUG SEND: Status {res.status_code}", flush=True)
 
-        if res.status_code < 300:
+        if res.status_code >= 300:
+            sent = False
+            continue
+        if persist_event:
             save_whatsapp_event(
                 to,
                 "outbound",
@@ -1812,13 +1897,15 @@ def send_whatsapp(to, message, limit=850, add_continuation=True):
             )
             save_last_assistant_context(to, part, user_profiles.get(to, {}))
 
-            if should_reply_audio and index == 1:
-                audio_reply_context[str(to)] = False
-                print(f"WHATSAPP_AUDIO_REPLY auto_from_send_whatsapp to={to}", flush=True)
-                audio_path = text_to_whatsapp_audio(part, to)
-                media_id = upload_whatsapp_audio(audio_path) if audio_path else None
-                if media_id:
-                    send_whatsapp_audio(to, media_id)
+        if should_reply_audio and index == 1:
+            audio_reply_context[str(to)] = False
+            print(f"WHATSAPP_AUDIO_REPLY auto_from_send_whatsapp to={to}", flush=True)
+            audio_path = text_to_whatsapp_audio(part, to)
+            media_id = upload_whatsapp_audio(audio_path) if audio_path else None
+            if media_id:
+                send_whatsapp_audio(to, media_id)
+
+    return sent
 
 
 
@@ -1876,6 +1963,223 @@ def charger_historique_conv(conversation_key):
     except Exception as e:
         print(f"Erreur charger_historique_conv: {repr(e)}", flush=True)
     return []
+
+
+# ─── FIN DE SESSION : bilan quand l'eleve dit au revoir, ou apres une pause ───
+SESSIONS_BILAN_COLLECTION = "whatsapp_sessions_bilan"
+SESSION_INACTIVITE_MINUTES = 30
+SESSION_FENETRE_WHATSAPP_HEURES = 23  # WhatsApp n'autorise un message libre que 24 h apres le dernier message de l'eleve
+SESSION_MAX_MESSAGES = 40
+BILAN_MIN_ECHANGES_INACTIVITE = 2
+BILAN_MAX_PAR_TACHE = 20
+AKILI_BILAN_URL = os.environ.get("AKILI_BILAN_URL", AKILI_API_URL.rsplit("/", 1)[0] + "/bilan-session")
+MESSAGE_AVIS_FIN_SESSION = "Ton avis nous aide : réponds « retour: » suivi de ton message."
+MESSAGE_AU_REVOIR_SIMPLE = "À bientôt ! Reviens quand tu veux : envoie un exercice, une photo ou le chapitre à travailler."
+
+EXPRESSIONS_AU_REVOIR = [
+    "AU REVOIR", "AUREVOIR", "A BIENTOT", "A DEMAIN", "A LA PROCHAINE", "A PLUS TARD",
+    "BONNE NUIT", "BONNE SOIREE", "BYE",
+    "C EST FINI POUR AUJOURD HUI", "FINI POUR AUJOURD HUI", "C EST TOUT POUR AUJOURD HUI",
+    "JE M ARRETE LA", "JE M ARRETE ICI", "JE M ARRETE POUR AUJOURD HUI",
+    "ON S ARRETE LA", "ON S ARRETE ICI", "ON ARRETE LA", "ON ARRETE ICI",
+    "FIN DE SESSION", "FIN DE LA SESSION", "TERMINER LA SESSION", "ARRETER LA SESSION",
+    "JE VAIS DORMIR", "JE DOIS Y ALLER", "JE DOIS PARTIR",
+]
+
+
+def est_message_au_revoir(text):
+    """Vrai si l'eleve termine sa session ("merci, au revoir", "bonne nuit", "je m'arrete la").
+    "j'ai fini" / "terminer" ne comptent pas : en mode examen, ils demandent la correction."""
+    if "?" in (text or ""):
+        return False
+    msg = normalize_for_match(text)
+    if not msg or len(msg.split()) > 10:
+        return False
+    return any(has_expr(msg, expr) for expr in EXPRESSIONS_AU_REVOIR)
+
+
+def _session_bilan_ref(phone):
+    return feedback_db.collection(SESSIONS_BILAN_COLLECTION).document(phone)
+
+
+def charger_session_bilan(phone):
+    try:
+        snapshot = _session_bilan_ref(phone).get()
+        return snapshot.to_dict() if snapshot.exists else None
+    except Exception as e:
+        print(f"Erreur charger_session_bilan: {repr(e)}", flush=True)
+        return None
+
+
+def sauver_session_bilan(phone, session):
+    try:
+        _session_bilan_ref(phone).set(session)
+    except Exception as e:
+        print(f"Erreur sauver_session_bilan: {repr(e)}", flush=True)
+
+
+def fermer_session_bilan(phone, raison):
+    try:
+        _session_bilan_ref(phone).update({"bilan_envoye": True, "bilan_source": raison})
+    except Exception as e:
+        print(f"Erreur fermer_session_bilan: {repr(e)}", flush=True)
+
+
+def reserver_bilan(phone, source, min_echanges=1):
+    """Marque la session "bilan envoye" dans une transaction et la renvoie (None si
+    rien a resumer ou si le bilan est deja parti) : un bilan n'est jamais envoye deux fois."""
+    reference = _session_bilan_ref(phone)
+    transaction = feedback_db.transaction()
+
+    @firestore.transactional
+    def reserver(tx):
+        snapshot = reference.get(transaction=tx)
+        session = snapshot.to_dict() if snapshot.exists else None
+        if not session or session.get("bilan_envoye") or int(session.get("nb_echanges", 0)) < min_echanges:
+            return None
+        tx.update(reference, {
+            "bilan_envoye": True,
+            "bilan_source": source,
+            "bilan_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return session
+
+    try:
+        return reserver(transaction)
+    except Exception as e:
+        print(f"Erreur reserver_bilan: {repr(e)}", flush=True)
+        return None
+
+
+def lister_sessions_en_attente(limite=200):
+    try:
+        docs = (
+            feedback_db.collection(SESSIONS_BILAN_COLLECTION)
+            .where("bilan_envoye", "==", False)
+            .limit(limite)
+            .stream()
+        )
+        return [(doc.id, doc.to_dict() or {}) for doc in docs]
+    except Exception as e:
+        print(f"Erreur lister_sessions_en_attente: {repr(e)}", flush=True)
+        return []
+
+
+def journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve, reponse, now=None):
+    """Garde le fil de la session en cours (jusqu'a 40 messages) pour le bilan de fin.
+    Une nouvelle session commence apres un bilan, un changement de matiere/mode ou 30 min de pause."""
+    now = now or datetime.now(timezone.utc)
+    profile = profile or {}
+    session = charger_session_bilan(phone)
+    derniere = parse_datetime((session or {}).get("derniere_activite"))
+    if (
+        not session
+        or session.get("bilan_envoye")
+        or session.get("conversation_key") != conversation_key
+        or not derniere
+        or now - derniere > timedelta(minutes=SESSION_INACTIVITE_MINUTES)
+    ):
+        session = {"conversation_key": conversation_key, "debut": now.isoformat(), "messages": [], "nb_echanges": 0}
+
+    messages = list(session.get("messages") or [])
+    messages.append({"role": "user", "content": str(texte_eleve or "")[:1000]})
+    messages.append({"role": "assistant", "content": str(reponse or "")[:1500]})
+    session.update({
+        "messages": messages[-SESSION_MAX_MESSAGES:],
+        "nb_echanges": int(session.get("nb_echanges", 0)) + 1,
+        "derniere_activite": now.isoformat(),
+        "bilan_envoye": False,
+        "matiere": profile.get("matiere"),
+        "serie": profile.get("serie"),
+        "type_examen": profile.get("type_examen"),
+        "mode": mode or profile.get("mode") or "etude",
+    })
+    sauver_session_bilan(phone, session)
+    return session
+
+
+LIBELLES_MATIERES = {
+    "MATHS": "Mathématiques", "PC": "Physique-Chimie", "SVT": "SVT", "FRANCAIS": "Français",
+    "FRENCH": "Français", "PHILO": "Philosophie", "HG": "Histoire-Géographie", "ANGLAIS": "Anglais",
+    "ALLEMAND": "Allemand", "ESPAGNOL": "Espagnol", "EDHC": "EDHC",
+    "COMPTA_FIN": "Comptabilité financière", "COMPTA_SOCIETES": "Comptabilité des sociétés",
+    "COMPTA_ANALYTIQUE": "Comptabilité analytique", "COMPTA": "Comptabilité",
+    "MATHS_FIN": "Mathématiques financières", "MATHS_GENERAL": "Mathématiques générales",
+    "ECO": "Économie", "EXPRESSION_PRO": "Expression professionnelle",
+    "PHYSIQUE_APPLIQUEE": "Physique appliquée", "ESTI": "Étude des systèmes techniques industriels",
+    "DROIT": "Droit",
+}
+
+
+def libelle_matiere(code):
+    code = (code or "").strip()
+    return LIBELLES_MATIERES.get(code.upper(), code)
+
+
+def generer_bilan_session(session, source):
+    """Demande a Akili le bilan personnalise. En cas d'echec, message fixe selon le mode."""
+    mode = (session.get("mode") or "etude").lower()
+    try:
+        res = requests.post(
+            AKILI_BILAN_URL,
+            data={
+                "historique": json.dumps(session.get("messages") or [], ensure_ascii=False),
+                "matiere": libelle_matiere(session.get("matiere")),
+                "serie": session.get("serie") or "",
+                "type_examen": session.get("type_examen") or "",
+                "mode": mode,
+                "source": source,
+            },
+            timeout=90,
+        )
+        data = res.json()
+        texte = (data.get("reponse") or "").strip()
+        if texte:
+            return texte
+        print(f"BILAN_SESSION reponse vide: {str(data)[:300]}", flush=True)
+    except Exception as e:
+        print(f"BILAN_SESSION echec: {repr(e)}", flush=True)
+    if mode == "examen":
+        return "Fin de ton entraînement. Bravo pour tes efforts ! Pour retravailler tes erreurs, passe en mode étude (tape menu)."
+    return "Bravo pour ta séance ! Reviens quand tu veux pour continuer : envoie un exercice, une photo ou le chapitre à travailler."
+
+
+def envoyer_fin_de_session(phone, source="au_revoir"):
+    min_echanges = 1 if source == "au_revoir" else BILAN_MIN_ECHANGES_INACTIVITE
+    session = reserver_bilan(phone, source, min_echanges=min_echanges)
+    if not session:
+        if source == "au_revoir":
+            send_whatsapp(phone, MESSAGE_AU_REVOIR_SIMPLE, allow_audio=False)
+        return False
+    texte = generer_bilan_session(session, source)
+    send_whatsapp(phone, f"{texte}\n\n{MESSAGE_AVIS_FIN_SESSION}", allow_audio=False)
+    print(f"FIN_SESSION envoyee source={source} echanges={session.get('nb_echanges')}", flush=True)
+    return True
+
+
+def traiter_bilans_inactivite(now=None):
+    """Appele par Cloud Scheduler : bilan pour chaque session en pause depuis 30 min."""
+    now = now or datetime.now(timezone.utc)
+    envoyes = fermees = 0
+    for phone, session in lister_sessions_en_attente():
+        if envoyes >= BILAN_MAX_PAR_TACHE:
+            break
+        derniere = parse_datetime(session.get("derniere_activite"))
+        if not derniere:
+            continue
+        pause = now - derniere
+        if pause < timedelta(minutes=SESSION_INACTIVITE_MINUTES):
+            continue
+        if (
+            pause > timedelta(hours=SESSION_FENETRE_WHATSAPP_HEURES)
+            or int(session.get("nb_echanges", 0)) < BILAN_MIN_ECHANGES_INACTIVITE
+        ):
+            fermer_session_bilan(phone, "fermee_sans_bilan")
+            fermees += 1
+            continue
+        if envoyer_fin_de_session(phone, source="inactivite"):
+            envoyes += 1
+    return {"envoyes": envoyes, "fermees": fermees}
 
 
 def save_last_assistant_context(phone, text, profile=None):
@@ -2264,7 +2568,17 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     if message_id:
         send_whatsapp_typing_indicator(message_id)
 
-    if media_file is None and mentions_user_document_without_content(text):
+    # Ce que l'eleve a vraiment tape. Pour une reponse courte ("b"), `text` a ete
+    # reecrit par build_short_answer_prompt (consignes + historique) : la detection
+    # "l'eleve parle d'un document" et l'historique doivent porter sur "b", pas sur
+    # ce prompt, sinon une simple lettre est prise pour une demande sur un fichier
+    # et l'historique s'imbrique a chaque reponse courte.
+    texte_eleve = text
+    marqueur_reponse_courte = "vient de répondre uniquement : "
+    if text.startswith("L'") and marqueur_reponse_courte in text[:80]:
+        texte_eleve = text.split(marqueur_reponse_courte, 1)[1].split("\n", 1)[0]
+
+    if media_file is None and mentions_user_document_without_content(texte_eleve):
         active_document = (prepared_active_session or {}).get("document")
         if active_document and active_document.get("gcs_uri"):
             try:
@@ -2277,7 +2591,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
             media_file = last_media
             print(f"DOCUMENT_CONTEXT reused last media file: {last_media}", flush=True)
 
-    if mentions_user_document_without_content(text) and media_file is None and not profile.get("last_document_text"):
+    if mentions_user_document_without_content(texte_eleve) and media_file is None and not profile.get("last_document_text"):
         send_whatsapp(
             phone,
             "Je n'arrive pas à lire clairement le contenu du fichier. Peux-tu envoyer une image plus nette ou recopier l'énoncé ?"
@@ -2324,7 +2638,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         expected_revision = int((stored_active_session or {}).get("revision", 0))
         next_active_session = transition_after_success(
             prepared_active_session,
-            text,
+            texte_eleve,
             reponse,
             message_id,
             **transition_details,
@@ -2333,10 +2647,11 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
             print(f"P0: conflit de révision pour {phone}, réponse non renvoyée", flush=True)
             return None
 
-    conversations[conversation_key].append({"role": "user", "content": text})
+    conversations[conversation_key].append({"role": "user", "content": texte_eleve})
     conversations[conversation_key].append({"role": "assistant", "content": reponse})
     conversations[conversation_key] = conversations[conversation_key][-10:]
     sauver_historique_conv(conversation_key, conversations[conversation_key])
+    journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve, reponse)
 
     is_teacher = profile.get("user_type") == "ENSEIGNANT"
     send_limit = 1200 if is_teacher else 850
@@ -2665,36 +2980,38 @@ FILLER_GREETING_WORDS = {
 
 
 def strip_filler_opening(text):
-    """Supprime les phrases d'accroche/compliment en debut de reponse (garde-fou code, en plus du prompt)."""
+    """Supprime les phrases d'accroche/compliment en debut de reponse (garde-fou code, en plus du prompt).
+
+    Seules les phrases d'accroche du debut sont retirees : le reste du texte est garde
+    tel quel, retours a la ligne compris. (L'ancienne version recollait toutes les
+    phrases avec des espaces, ce qui cassait les listes : "... precedentes. 2. Reponse".)
+    """
     text = str(text or "").strip()
     if not text:
         return text
 
-    sentences = re.split(r'(?<=[.!?])\s+', text)
+    reste = text
+    while reste:
+        fin_phrase = re.search(r"[.!?](?=\s)", reste)
+        premiere = reste[:fin_phrase.end()] if fin_phrase else reste
 
-    while sentences:
-        first = sentences[0].strip()
-        if not first:
-            sentences.pop(0)
-            continue
-
-        first_norm = normalize_for_match(first)
+        first_norm = normalize_for_match(premiere)
         words = first_norm.split()
+
+        # Une validation de reponse ("C'est une tres bonne reponse !", "Exact.") n'est
+        # pas une accroche : l'eleve doit savoir que sa reponse est juste.
+        est_validation = any(kw in first_norm for kw in ("REPONSE", "CORRECT", "EXACT", "JUSTE"))
 
         is_bare_greeting = bool(words) and words[0] in FILLER_GREETING_WORDS and len(words) <= 4
         is_filler_sentence = any(kw in first_norm for kw in FILLER_OPENING_KEYWORDS)
 
-        if is_bare_greeting or is_filler_sentence:
-            sentences.pop(0)
-            continue
+        if est_validation or not (is_bare_greeting or is_filler_sentence):
+            break
+        if not fin_phrase:
+            return text  # tout le message est une accroche : on le garde tel quel
+        reste = reste[fin_phrase.end():].lstrip()
 
-        break
-
-    if not sentences:
-        return text
-
-    result = " ".join(s.strip() for s in sentences if s.strip()).strip()
-    return result if result else text
+    return reste if reste else text
 
 
 def get_akili_response(question, matiere, serie, history, phone="whatsapp_user", type_examen=None,
@@ -2760,6 +3077,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             "CORRECT: commence directement par le contenu utile (l'exercice, la question ou l'explication), sans aucune phrase d'introduction ni compliment.\n"
             "REGLE ABSOLUE (priorite sur tout le reste): si l'énoncé contient une formule avec une lettre inconnue en exposant ou en indice (par exemple x, y, z, n dans CxHyOz), tu DOIS toujours recopier cette formule exactement comme elle a été écrite, en texte normal, sans aucune mise en indice ni exposant, même dans tes propres reformulations de l'énoncé. INTERDIT, exemples réels à ne jamais reproduire: 'CₓHᵧO₂' ou 'C_xH_yO_z' pour parler de CxHyOz (le z a été remplacé par le chiffre 2, ce qui dénature complètement l'exercice). CORRECT: écris CxHyOz, exactement ainsi, en texte plat, chaque fois que tu mentionnes cette formule.\n"
             "- Réponds en français simple.\n"
+            "- Tutoie TOUJOURS l'élève (tu, ton, ta, tes). N'utilise jamais le vouvoiement (vous, votre, souhaitez-vous), sauf si l'utilisateur est un enseignant.\n"
             "- Réponse courte, adaptée à WhatsApp.\n"
             "- Maximum 750 caractères.\n"
             "- Ne transcris pas tout l'énoncé.\n"
@@ -2926,6 +3244,19 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
         return "Désolé, je rencontre une petite difficulté technique, réessaie dans un instant."
 
 
+@app.post("/taches/bilans-inactivite")
+async def tache_bilans_inactivite(request: Request):
+    """Appele toutes les 10 min par Cloud Scheduler, avec l'en-tete X-Akili-Tache."""
+    import hmac
+    secret = os.environ.get("TACHES_SECRET", "")
+    fourni = request.headers.get("X-Akili-Tache", "")
+    if not secret or not hmac.compare_digest(secret, fourni):
+        return JSONResponse(status_code=403, content={"status": "forbidden"})
+    resultat = traiter_bilans_inactivite()
+    print(f"TACHE_BILANS_INACTIVITE {resultat}", flush=True)
+    return {"status": "ok", **resultat}
+
+
 @app.get("/")
 def health():
     return {"status": "AfrJigi WhatsApp Bot actif"}
@@ -3017,6 +3348,50 @@ async def receive_message(request: Request):
         if not text:
             return {"status": "ok"}
 
+        consent_decision = detect_marketing_consent_command(text)
+        if consent_decision:
+            try:
+                save_marketing_consent(feedback_db, phone, consent_decision)
+            except Exception as exc:
+                if message_id:
+                    processed_messages.discard(message_id)
+                print(
+                    "WHATSAPP_MARKETING_CONSENT save_failed "
+                    f"error_class={type(exc).__name__}",
+                    flush=True,
+                )
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "status": "retry",
+                        "reason": "marketing_consent_persistence_failed",
+                    },
+                )
+
+            if consent_decision == OPTED_IN:
+                send_whatsapp(
+                    phone,
+                    "Ton accord est enregistré. Tu peux recevoir les campagnes WhatsApp "
+                    "d'AfrJigi. Pour te désinscrire à tout moment, envoie STOP.",
+                    persist_event=False,
+                    allow_audio=False,
+                )
+                reason = "marketing_opted_in"
+            else:
+                send_whatsapp(
+                    phone,
+                    "Ta désinscription marketing est enregistrée. Tu ne recevras plus de "
+                    "campagnes WhatsApp d'AfrJigi. Tu peux continuer à utiliser Akili. "
+                    "Pour te réabonner, envoie OUI MARKETING.",
+                    persist_event=False,
+                    allow_audio=False,
+                )
+                reason = "marketing_opted_out"
+            print(f"WHATSAPP_MARKETING_CONSENT status={consent_decision}", flush=True)
+            return {"status": "ok", "reason": reason}
+
+        maybe_send_marketing_consent_prompt(phone)
+
         print(f"Message de {phone}: {text}", flush=True)
 
         profile = user_profiles[phone] or charger_etat_whatsapp(phone) or {"serie": "TOUTES", "matiere": "MATHS"}
@@ -3071,6 +3446,11 @@ async def receive_message(request: Request):
         command = text.strip().lower()
         onboarding_step = profile.get("onboarding_step")
         print(f"SHORT_DEBUG text={text} is_short={is_short_exercise_answer(text)} is_contextual={is_contextual_exercise_answer(text)} onboarding={onboarding_step}", flush=True)
+        if not onboarding_step and is_profile_ready(profile) and est_message_au_revoir(text):
+            envoyer_fin_de_session(phone, source="au_revoir")
+            track_inbound("fin_session_au_revoir", profile)
+            return {"status": "ok", "reason": "fin_session"}
+
         if is_contextual_exercise_answer(text) and not profile.get("onboarding_step"):
             if not short_answer_has_exercise_context(phone):
                 send_whatsapp(
@@ -3226,6 +3606,11 @@ async def receive_message(request: Request):
             ask_exam(phone)
             track_inbound("orphan_choice_restarted_onboarding", profile)
             return {"status": "ok"}
+
+        if profile.get("onboarding_step") == "matiere" and veut_plusieurs_matieres(text):
+            send_whatsapp(phone, MESSAGE_UNE_MATIERE_A_LA_FOIS)
+            track_inbound("multiple_subjects_requested", profile)
+            return {"status": "ok", "reason": "multiple_subjects_requested"}
 
         if profile.get("onboarding_step") and is_multiple_choice_answer(text):
             send_whatsapp(phone, "Choisis une seule option pour continuer. Exemple : a")

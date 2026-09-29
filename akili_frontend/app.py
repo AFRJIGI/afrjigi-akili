@@ -62,21 +62,54 @@ def increment_questions(email):
     db.collection("users").document(email.strip()).update({"questions_today": firestore.Increment(1)})
 
 def save_message(email, role, content_msg, matiere, type_examen):
-    db.collection("users").document(email.strip()).collection("messages").add({"role": role, "content": content_msg, "timestamp": datetime.now().isoformat(), "matiere": matiere, "type_examen": type_examen})
+    db.collection("users").document(email.strip()).collection("messages").add({
+        "role": role,
+        "content": content_msg,
+        "timestamp": datetime.now().isoformat(),
+        "matiere": matiere,
+        "type_examen": type_examen,
+    })
+
 
 def load_messages(email, matiere, type_examen):
     try:
-        msgs = db.collection("users").document(email.strip()).collection("messages").where("matiere", "==", matiere).where("type_examen", "==", type_examen).order_by("timestamp").limit(50)
+        msgs = (
+            db.collection("users")
+            .document(email.strip())
+            .collection("messages")
+            .where("matiere", "==", matiere)
+            .where("type_examen", "==", type_examen)
+            .order_by("timestamp")
+            .limit(50)
+        )
         return [{"role": m.to_dict()["role"], "content": m.to_dict()["content"]} for m in msgs.stream()]
     except Exception as e:
         print(f"Erreur : {e}")
         st.warning(f"⚠️ Impossible de charger l'historique : {e}")
         return []
 
+
 def clear_messages(email):
     msgs = db.collection("users").document(email.strip()).collection("messages")
     for msg in msgs.stream():
         msg.reference.delete()
+
+
+def save_feedback_web(email, feedback_text, profile=None):
+    """Enregistre un retour utilisateur depuis l'app web."""
+    profile = profile or {}
+    doc_ref = db.collection("feedback_web").add({
+        "email": email.strip(),
+        "feedback": feedback_text.strip(),
+        "source": "app_web",
+        "campaign": "GRAND-PILOTE-2026",
+        "type_examen": profile.get("type_examen", ""),
+        "serie": profile.get("serie", ""),
+        "matiere": profile.get("matiere", ""),
+        "created_at": datetime.now().isoformat(),
+    })
+    print(f"WEB_FEEDBACK saved email={email.strip()} doc_ref={doc_ref}", flush=True)
+
 
 def can_ask_question(user_data):
     if ACCES_GRATUIT_BAC:
@@ -126,6 +159,8 @@ if not st.session_state.user:
                         "genre": user_data.get("genre", ""),
                         "tranche_age": user_data.get("tranche_age", ""),
                         "nom_ecole": user_data.get("nom_ecole", ""),
+                        "ville": user_data.get("ville", ""),
+                        "telephone_whatsapp": user_data.get("telephone_whatsapp", ""),
                         "profil_type": user_data.get("profil_type", ""),
                         "profil_autre": user_data.get("profil_autre", ""),
                     }
@@ -149,7 +184,7 @@ elif not st.session_state.onboarded:
 
     # Type d'examen HORS du form pour permettre le rerun immediat
     # (les series/matieres dependent de ce choix)
-    type_examen = st.selectbox("🎓 Tu prépares...", ["BEPC", "BAC Général", "BAC Technique"], key="type_examen_choice")
+    type_examen = st.selectbox("🎓 Tu prépares...", ["BEPC", "Classe intermédiaire", "BAC Général", "BAC Technique"], key="type_examen_choice")
 
     series_dispo = get_series(type_examen)
 
@@ -170,19 +205,26 @@ elif not st.session_state.onboarded:
                 st.write("📚 Série : BEPC (3ème)")
             tentatives = st.number_input("Nombre de tentatives à l'examen", 0, 5)
             nom_ecole = st.text_input("🏫 Nom de ton école/institution", placeholder="Ex: Lycée Moderne de Cocody")
+            ville = st.text_input("📍 Ville", placeholder="Ex: Abidjan, Bouaké, Korhogo...")
+            telephone_whatsapp = st.text_input("📱 WhatsApp (optionnel)", placeholder="Ex: 0700000000")
             matieres_dispo = get_matieres(type_examen, serie)
             matiere_fatigue = st.selectbox("La matière qui te fatigue le plus", matieres_dispo)
         if st.form_submit_button("✅ Accéder à Akili"):
-            st.session_state.profile = {"type_examen": type_examen, "serie": serie, "matiere_fatigue": matiere_fatigue, "genre": genre, "tranche_age": tranche_age, "nom_ecole": nom_ecole, "profil_type": profil_type, "profil_autre": profil_autre}
+            st.session_state.profile = {"type_examen": type_examen, "serie": serie, "matiere_fatigue": matiere_fatigue, "genre": genre, "tranche_age": tranche_age, "nom_ecole": nom_ecole, "ville": ville, "telephone_whatsapp": telephone_whatsapp, "profil_type": profil_type, "profil_autre": profil_autre}
             db.collection("users").document(user["email"].strip()).update({
                 "type_examen": type_examen,
                 "tranche_age": tranche_age,
                 "nom_ecole": nom_ecole,
+                "ville": ville,
+                "telephone_whatsapp": telephone_whatsapp,
+                "matiere_fatigue": matiere_fatigue,
                 "genre": genre,
                 "serie": serie,
                 "tentatives_bac": tentatives,
                 "profil_type": profil_type,
-                "profil_autre": profil_autre
+                "profil_autre": profil_autre,
+                "source": "web",
+                "last_profile_update": datetime.now().isoformat()
             })
             st.session_state.onboarded = True
             st.rerun()
@@ -237,20 +279,27 @@ else:
         st.divider()
         MATIERE_API_MAP = {
             "Mathématiques": "MATHS",
+            "Mathématique Générale": "MATHS_GENERAL",
+            "Mathématiques financières": "MATHS_FIN",
             "Physique-Chimie": "PC",
             "Physique": "PC",
+            "Physique Appliquée": "PHYSIQUE_APPLIQUEE",
+            "Physique appliquée": "PHYSIQUE_APPLIQUEE",
             "Sciences de la Vie et de la Terre (SVT)": "SVT",
             "SVT": "SVT",
-            "Français": "FRANÇAIS",
-            "Histoire-Géographie": "HISTOIRE-GEOGRAPHIE",
+            "Français": "FRANCAIS",
+            "Histoire-Géographie": "HG",
             "Anglais": "ANGLAIS",
             "Allemand": "ALLEMAND",
             "Espagnol": "ESPAGNOL",
             "Philosophie": "PHILO",
             "Économie": "ECO",
             "Comptabilité": "COMPTA",
-            "Mathématiques financières": "MATHS",
-            "Droit": "DROIT",
+            "Comptabilité Financière": "COMPTA_FIN",
+            "Comptabilité des sociétés": "COMPTA_SOCIETES",
+            "Comptabilité Analytique": "COMPTA_ANALYTIQUE",
+            "Expression Professionnelle": "EXPRESSION_PRO",
+            "Étude des Systèmes Techniques Industriels": "ESTI",
             "Étude de cas": "ETUDE-CAS",
             "Techniques d'organisation": "OC",
             "Outils de communication": "OC",
@@ -258,9 +307,9 @@ else:
             "ESTI": "ESTI",
             "Électronique": "ELECTRO",
             "Électrotechnique": "ELECTRO",
-            "Physique appliquée": "PHY-APP",
             "Mesure": "MESURE",
             "Analyse fonctionnelle": "ANALYSE-FONCT",
+            "Droit": "DROIT",
         }
 
         type_examen_actuel = profile.get("type_examen", "BAC Général")
@@ -457,6 +506,21 @@ else:
             clear_messages(user["email"])
             st.session_state.messages = []
             st.rerun()
+        st.divider()
+        st.markdown("### Grand Pilote AfrJigi 2026–2027")
+        st.caption("Ton avis nous aide à améliorer Akili pour les élèves.")
+        feedback_web = st.text_area(
+            "Donner un retour sur Akili",
+            placeholder="Exemple : Akili explique bien, mais la réponse était trop longue.",
+            key="feedback_web_text",
+        )
+        if st.button("Envoyer mon retour", use_container_width=True):
+            if feedback_web.strip():
+                save_feedback_web(user["email"], feedback_web, profile)
+                st.success("Merci. Ton retour a été enregistré.")
+            else:
+                st.warning("Écris ton retour avant d’envoyer.")
+
         if st.button("🔄 Modifier mon profil"):
             st.session_state.onboarded = False
 
