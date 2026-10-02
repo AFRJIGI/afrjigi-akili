@@ -857,6 +857,54 @@ BAC_TECHNIQUE_SUBJECT_CHOICES = {
     "m": "ANGLAIS",
 }
 
+LETTRES_CHOIX = "abcdefghijklm"
+
+# Liste actuelle (tertiaire + quelques matieres industrielles), pour les series sans liste propre.
+MATIERES_TECHNIQUE_PAR_DEFAUT = [
+    ("COMPTA_FIN", "Comptabilité Financière"),
+    ("COMPTA_SOCIETES", "Comptabilité des sociétés"),
+    ("COMPTA_ANALYTIQUE", "Comptabilité Analytique"),
+    ("MATHS_FIN", "Mathématiques financières"),
+    ("MATHS_GENERAL", "Mathématique Générale"),
+    ("ECO", "Économie"),
+    ("EXPRESSION_PRO", "Expression Professionnelle"),
+    ("PHYSIQUE_APPLIQUEE", "Physique Appliquée"),
+    ("ESTI", "Étude des Systèmes Techniques Industriels"),
+    ("DROIT", "Droit"),
+    ("HG", "Histoire-Géographie"),
+    ("FRANCAIS", "Français"),
+    ("ANGLAIS", "Anglais"),
+]
+
+# Matieres propres a chaque serie (liste fournie par AfrJigi).
+MATIERES_TECHNIQUE_PAR_SERIE = {
+    "F2": [
+        ("MECANIQUE_APPLIQUEE", "Mécanique appliquée"),
+        ("CMI", "Construction mécanique industrielle"),
+        ("FRANCAIS", "Français"),
+        ("ANGLAIS", "Anglais"),
+        ("HG", "Histoire-Géographie"),
+        ("MATHS", "Mathématiques"),
+        ("PHYSIQUE_APPLIQUEE", "Physique appliquée (PCT)"),
+        ("ELECTRONIQUE", "Électronique"),
+        ("DESSIN_INDUSTRIEL", "Dessin industriel / Dessin technique"),
+        ("TECHNO_SCHEMAS", "Technologie et schémas"),
+        ("MECANIQUE", "Mécanique"),
+        ("INFORMATIQUE_INDUSTRIELLE", "Informatique industrielle"),
+    ],
+}
+
+
+def matieres_technique(serie):
+    """Liste (code, libelle) des matieres proposees pour cette serie du BAC Technique."""
+    serie = (serie or "").upper().strip()
+    return MATIERES_TECHNIQUE_PAR_SERIE.get(serie, MATIERES_TECHNIQUE_PAR_DEFAUT)
+
+
+def choix_matieres_technique(serie):
+    """{lettre: code} pour l'etape matiere du BAC Technique."""
+    return {LETTRES_CHOIX[i]: code for i, (code, _) in enumerate(matieres_technique(serie))}
+
 
 def choice_key(text):
     c = normalize_for_match(text)
@@ -943,24 +991,19 @@ def ask_classe_intermediaire(phone):
 
 
 
-def ask_matiere_technique(phone, serie=None):
-    send_whatsapp(phone,
+def menu_matieres_technique(serie=None):
+    matieres = matieres_technique(serie)
+    lettres = LETTRES_CHOIX[:len(matieres)]
+    lignes = "\n".join(f"{lettres[i]}. {libelle}" for i, (_, libelle) in enumerate(matieres))
+    return (
         "Quelle matière veux-tu travailler ?\n\n"
-        "a. Comptabilité Financière\n"
-        "b. Comptabilité des sociétés\n"
-        "c. Comptabilité Analytique\n"
-        "d. Mathématiques financières\n"
-        "e. Mathématique Générale\n"
-        "f. Économie\n"
-        "g. Expression Professionnelle\n"
-        "h. Physique Appliquée\n"
-        "i. Étude des Systèmes Techniques Industriels\n"
-        "j. Droit\n"
-        "k. Histoire-Géographie\n"
-        "l. Français\n"
-        "m. Anglais\n\n"
-        "Réponds par a, b, c, d, e, f, g, h, i, j, k, l ou m."
+        f"{lignes}\n\n"
+        f"Réponds par {', '.join(lettres[:-1])} ou {lettres[-1]}."
     )
+
+
+def ask_matiere_technique(phone, serie=None):
+    send_whatsapp(phone, menu_matieres_technique(serie))
 
 
 def ask_matiere(phone, serie="TOUTES"):
@@ -1144,7 +1187,7 @@ def handle_onboarding_choice(phone, profile, text):
         user_profiles[phone] = profile
         sauver_etat_whatsapp(phone, profile)
         send_whatsapp(phone,
-            f"Profil prêt : {profile.get('type_examen', 'BAC_GENERAL')}, série {profile.get('serie', 'TOUTES')}, {profile.get('matiere', 'MATHS')}, mode {profile.get('mode', 'etude')}.\n\n"
+            f"Profil prêt : {profile.get('type_examen', 'BAC_GENERAL')}, série {profile.get('serie', 'TOUTES')}, {libelle_matiere(profile.get('matiere', 'MATHS'))}, mode {profile.get('mode', 'etude')}.\n\n"
             "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler.\n\n"
                 "Commandes utiles :\n"
                 "- menu : changer de matiere ou de niveau\n"
@@ -1271,7 +1314,7 @@ def handle_onboarding_choice(phone, profile, text):
 
     if step == "matiere":
         if profile.get("type_examen") == "BAC_TECHNIQUE":
-            values = BAC_TECHNIQUE_SUBJECT_CHOICES
+            values = choix_matieres_technique(profile.get("serie"))
         else:
             if (profile.get("serie") or "").upper().strip() == "BEPC":
                 values = {"a": "MATHS", "b": "PC", "c": "SVT", "d": "FRANCAIS", "e": "HG", "f": "EDHC", "g": "ESPAGNOL", "h": "ALLEMAND", "i": "ANGLAIS"}
@@ -1291,7 +1334,7 @@ def handle_onboarding_choice(phone, profile, text):
                 user_profiles[phone] = profile
                 sauver_etat_whatsapp(phone, profile)
                 send_whatsapp(phone,
-                    f"C'est note : {profile.get('type_examen', 'BAC_GENERAL')}, serie {profile.get('serie', 'TOUTES')}, {profile.get('matiere', 'MATHS')}, mode {profile.get('mode', 'etude')}.\n\n"
+                    f"C'est note : {profile.get('type_examen', 'BAC_GENERAL')}, serie {profile.get('serie', 'TOUTES')}, {libelle_matiere(profile.get('matiere', 'MATHS'))}, mode {profile.get('mode', 'etude')}.\n\n"
                     "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre a travailler."
                 )
                 return True
@@ -1323,7 +1366,7 @@ def handle_onboarding_choice(phone, profile, text):
             user_profiles[phone] = profile
             sauver_etat_whatsapp(phone, profile)
             send_whatsapp(phone,
-                f"Profil prêt : {profile.get('type_examen', 'BAC_GENERAL')}, série {profile.get('serie', 'TOUTES')}, {profile.get('matiere', 'MATHS')}, mode {profile.get('mode', 'etude')}.\n\n"
+                f"Profil prêt : {profile.get('type_examen', 'BAC_GENERAL')}, série {profile.get('serie', 'TOUTES')}, {libelle_matiere(profile.get('matiere', 'MATHS'))}, mode {profile.get('mode', 'etude')}.\n\n"
                 "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler.\n\n"
                 "Commandes utiles :\n"
                 "- menu : changer de matiere ou de niveau\n"
@@ -2191,6 +2234,10 @@ LIBELLES_MATIERES = {
     "ECO": "Économie", "EXPRESSION_PRO": "Expression professionnelle",
     "PHYSIQUE_APPLIQUEE": "Physique appliquée", "ESTI": "Étude des systèmes techniques industriels",
     "DROIT": "Droit",
+    "MECANIQUE_APPLIQUEE": "Mécanique appliquée", "CMI": "Construction mécanique industrielle",
+    "ELECTRONIQUE": "Électronique", "DESSIN_INDUSTRIEL": "Dessin industriel",
+    "TECHNO_SCHEMAS": "Technologie et schémas", "MECANIQUE": "Mécanique",
+    "INFORMATIQUE_INDUSTRIELLE": "Informatique industrielle",
 }
 
 
@@ -3726,7 +3773,7 @@ async def _receive_message_impl(request: Request):
         if command in {"profil", "profile"}:
             send_whatsapp(
                 phone,
-                f"Profil actuel : examen={profile.get('type_examen', 'BAC_GENERAL')}, série={profile.get('serie', 'TOUTES')}, matière={profile.get('matiere', 'MATHS')}, mode={profile.get('mode', 'etude')}."
+                f"Profil actuel : examen={profile.get('type_examen', 'BAC_GENERAL')}, série={profile.get('serie', 'TOUTES')}, matière={libelle_matiere(profile.get('matiere', 'MATHS'))}, mode={profile.get('mode', 'etude')}."
             )
             track_inbound("profile_command", profile)
             return {"status": "ok"}
