@@ -10,9 +10,10 @@ class MatieresTechniqueTests(unittest.TestCase):
         menu = main.menu_matieres_technique("F2")
         self.assertIn("a. Mécanique appliquée", menu)
         self.assertIn("j. Technologie et schémas", menu)
-        self.assertIn("l. Informatique industrielle", menu)
+        self.assertIn("k. Informatique industrielle", menu)
+        self.assertNotIn("Mécanique\n", menu)
         self.assertNotIn("Comptabilité", menu)
-        self.assertTrue(menu.endswith("Réponds par a, b, c, d, e, f, g, h, i, j, k ou l."))
+        self.assertTrue(menu.endswith("Réponds par a, b, c, d, e, f, g, h, i, j ou k."))
 
     def test_autres_series_gardent_la_liste_actuelle(self):
         for serie in ["B", "G1", "G2", "E", "F1", "F3", "F4", "F7", None]:
@@ -26,7 +27,8 @@ class MatieresTechniqueTests(unittest.TestCase):
         self.assertEqual(choix["a"], "MECANIQUE_APPLIQUEE")
         self.assertEqual(choix["f"], "MATHS")  # meme code que les documents de maths techniques
         self.assertEqual(choix["h"], "ELECTRONIQUE")
-        self.assertNotIn("m", choix)
+        self.assertNotIn("l", choix)
+        self.assertNotIn("MECANIQUE", choix.values())
 
     def test_etape_matiere_f2(self):
         profil = {"type_examen": "BAC_TECHNIQUE", "serie": "F2", "onboarding_step": "matiere"}

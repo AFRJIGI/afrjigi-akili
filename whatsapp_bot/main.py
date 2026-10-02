@@ -889,7 +889,6 @@ MATIERES_TECHNIQUE_PAR_SERIE = {
         ("ELECTRONIQUE", "Électronique"),
         ("DESSIN_INDUSTRIEL", "Dessin industriel / Dessin technique"),
         ("TECHNO_SCHEMAS", "Technologie et schémas"),
-        ("MECANIQUE", "Mécanique"),
         ("INFORMATIQUE_INDUSTRIELLE", "Informatique industrielle"),
     ],
 }
@@ -2236,7 +2235,7 @@ LIBELLES_MATIERES = {
     "DROIT": "Droit",
     "MECANIQUE_APPLIQUEE": "Mécanique appliquée", "CMI": "Construction mécanique industrielle",
     "ELECTRONIQUE": "Électronique", "DESSIN_INDUSTRIEL": "Dessin industriel",
-    "TECHNO_SCHEMAS": "Technologie et schémas", "MECANIQUE": "Mécanique",
+    "TECHNO_SCHEMAS": "Technologie et schémas",
     "INFORMATIQUE_INDUSTRIELLE": "Informatique industrielle",
 }
 
