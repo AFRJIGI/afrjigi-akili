@@ -878,7 +878,90 @@ MATIERES_TECHNIQUE_PAR_DEFAUT = [
 
 # Matieres propres a chaque serie (liste fournie par AfrJigi).
 MATIERES_TECHNIQUE_PAR_SERIE = {
-    # F1 : d'apres les progressions officielles MET-FPA recensees pour la serie F1.
+    # F2 : liste fournie par AfrJigi. Les autres series : d'apres les progressions
+    # officielles (MET-FPA, DPFC) recensees dans reports/bac_technique_progressions_inventory.json.
+    "B": [
+        ("ECO", "Sciences économiques et sociales (SES)"),
+        ("MATHS", "Mathématiques"),
+        ("FRANCAIS", "Français"),
+        ("ANGLAIS", "Anglais"),
+        ("HG", "Histoire-Géographie"),
+        ("PHILO", "Philosophie"),
+    ],
+    "G1": [
+        ("ECO", "Économie (générale et d'entreprise)"),
+        ("DROIT", "Droit"),
+        ("EXPRESSION_PRO", "Expression professionnelle"),
+        ("MATHS", "Mathématiques"),
+        ("FRANCAIS", "Français"),
+        ("ANGLAIS", "Anglais"),
+        ("HG", "Histoire-Géographie"),
+        ("PHILO", "Philosophie"),
+    ],
+    "G2": [
+        ("COMPTA_FIN", "Comptabilité financière"),
+        ("COMPTA_ANALYTIQUE", "Comptabilité analytique"),
+        ("COMPTA_SOCIETES", "Comptabilité des sociétés"),
+        ("MATHS_FIN", "Mathématiques financières"),
+        ("MATHS", "Mathématiques"),
+        ("ECO", "Économie (générale et d'entreprise)"),
+        ("DROIT", "Droit"),
+        ("EXPRESSION_PRO", "Expression professionnelle"),
+        ("FRANCAIS", "Français"),
+        ("ANGLAIS", "Anglais"),
+        ("HG", "Histoire-Géographie"),
+        ("PHILO", "Philosophie"),
+    ],
+    "E": [
+        ("MATHS", "Mathématiques"),
+        ("PC", "Sciences physiques"),
+        ("CMI", "Construction mécanique industrielle (CMI)"),
+        ("TECHNO_GENERALE", "Technologie générale"),
+        ("AUTOMATISME", "Automatisme"),
+        ("ETUDE_FABRICATION", "Étude de fabrication"),
+        ("FABRICATION", "Fabrication (tournage, fraisage)"),
+        ("FRANCAIS", "Français"),
+        ("ANGLAIS", "Anglais"),
+        ("HG", "Histoire-Géographie"),
+        ("PHILO", "Philosophie"),
+    ],
+    "F3": [
+        ("PHYSIQUE_APPLIQUEE", "Physique appliquée"),
+        ("TECHNO_SCHEMAS", "Technologie et schémas"),
+        ("MESURES_ESSAIS", "Mesures et essais"),
+        ("CABLAGE", "Câblage"),
+        ("CMI", "Construction mécanique industrielle (CMI)"),
+        ("MATHS", "Mathématiques"),
+        ("FRANCAIS", "Français"),
+        ("ANGLAIS", "Anglais"),
+        ("HG", "Histoire-Géographie"),
+        ("PHILO", "Philosophie"),
+    ],
+    "F4": [
+        ("TOPOGRAPHIE", "Topographie appliquée"),
+        ("RDM", "Résistance des matériaux (RDM)"),
+        ("TECHNO_GENIE_CIVIL", "Technologie (génie civil)"),
+        ("METHODES", "Méthodes"),
+        ("LABO_MATERIAUX", "Laboratoire (essais des matériaux)"),
+        ("DESSIN_GENIE_CIVIL", "Dessin technique (génie civil)"),
+        ("LEGISLATION", "Législation"),
+        ("MATHS", "Mathématiques"),
+        ("FRANCAIS", "Français"),
+        ("ANGLAIS", "Anglais"),
+        ("HG", "Histoire-Géographie"),
+        ("PHILO", "Philosophie"),
+    ],
+    "F7": [
+        ("BIOCHIMIE", "Biochimie"),
+        ("MICROBIOLOGIE", "Microbiologie"),
+        ("BIOLOGIE", "Biologie"),
+        ("CHIMIE", "Chimie"),
+        ("MATHS", "Mathématiques"),
+        ("FRANCAIS", "Français"),
+        ("ANGLAIS", "Anglais"),
+        ("HG", "Histoire-Géographie"),
+        ("PHILO", "Philosophie"),
+    ],
     "F1": [
         ("CMI", "Construction mécanique industrielle (CMI)"),
         ("MECANIQUE", "Mécanique"),
@@ -908,6 +991,67 @@ MATIERES_TECHNIQUE_PAR_SERIE = {
         ("INFORMATIQUE_INDUSTRIELLE", "Informatique industrielle"),
     ],
 }
+
+
+# Autres facons d'ecrire une matiere (en plus de son libelle).
+MOTS_CLES_MATIERE_TECHNIQUE = {
+    "COMPTA_FIN": ["COMPTABILITE FINANCIERE", "COMPTA FINANCIERE", "COMPTA FIN"],
+    "COMPTA_SOCIETES": ["COMPTABILITE DES SOCIETES", "COMPTA SOCIETES"],
+    "COMPTA_ANALYTIQUE": ["COMPTABILITE ANALYTIQUE", "COMPTA ANALYTIQUE"],
+    "MATHS_FIN": ["MATHEMATIQUES FINANCIERES", "MATHS FINANCIERES", "MATHS FIN"],
+    "MATHS_GENERAL": ["MATHEMATIQUE GENERALE", "MATHS GENERALE", "MATHS", "MATH", "MATHEMATIQUES"],
+    "MATHS": ["MATHS", "MATH", "MATHEMATIQUES", "MATHEMATIQUE"],
+    "ECO": ["ECONOMIE", "ECO", "SES", "SCIENCES ECONOMIQUES"],
+    "DROIT": ["DROIT"],
+    "EXPRESSION_PRO": ["EXPRESSION PROFESSIONNELLE", "EXPRESSION"],
+    "PHYSIQUE_APPLIQUEE": ["PHYSIQUE APPLIQUEE", "PHYSIQUE", "PCT"],
+    "PC": ["SCIENCES PHYSIQUES", "PHYSIQUE", "PHYSIQUE CHIMIE", "PC"],
+    "ESTI": ["ETUDE DES SYSTEMES", "SYSTEMES TECHNIQUES", "ESTI"],
+    "HG": ["HISTOIRE GEOGRAPHIE", "HG", "HISTOIRE", "GEOGRAPHIE"],
+    "FRANCAIS": ["FRANCAIS", "FRENCH"],
+    "ANGLAIS": ["ANGLAIS", "ENGLISH"],
+    "PHILO": ["PHILOSOPHIE", "PHILO"],
+    "MECANIQUE_APPLIQUEE": ["MECANIQUE APPLIQUEE"],
+    "MECANIQUE": ["MECANIQUE", "MECA"],
+    "CMI": ["CMI", "CONSTRUCTION MECANIQUE"],
+    "ELECTRONIQUE": ["ELECTRONIQUE"],
+    "DESSIN_INDUSTRIEL": ["DESSIN INDUSTRIEL", "DESSIN TECHNIQUE", "DESSIN"],
+    "TECHNO_SCHEMAS": ["TECHNOLOGIE ET SCHEMAS", "TECHNO SCHEMA", "TECHNO SCHEMAS", "SCHEMAS", "SCHEMA"],
+    "INFORMATIQUE_INDUSTRIELLE": ["INFORMATIQUE INDUSTRIELLE", "INFORMATIQUE"],
+    "TECHNO_GENERALE": ["TECHNOLOGIE GENERALE", "TECHNO GENERALE", "TECHNOLOGIE"],
+    "AUTOMATISME": ["AUTOMATISME", "AUTOMATISMES"],
+    "BUREAU_METHODES": ["BUREAU DES METHODES", "METHODES"],
+    "ETUDE_OUTILLAGE": ["ETUDE D OUTILLAGE", "OUTILLAGE"],
+    "ETUDE_FABRICATION": ["ETUDE DE FABRICATION"],
+    "FABRICATION": ["FABRICATION", "TOURNAGE", "FRAISAGE", "AFFUTAGE"],
+    "MESURES_ESSAIS": ["MESURES ET ESSAIS", "MESURES", "ESSAIS"],
+    "CABLAGE": ["CABLAGE"],
+    "TOPOGRAPHIE": ["TOPOGRAPHIE", "TOPO"],
+    "RDM": ["RESISTANCE DES MATERIAUX", "RDM"],
+    "TECHNO_GENIE_CIVIL": ["TECHNOLOGIE", "TECHNO"],
+    "METHODES": ["METHODES"],
+    "LABO_MATERIAUX": ["LABORATOIRE", "LABO", "ESSAIS DES MATERIAUX"],
+    "DESSIN_GENIE_CIVIL": ["DESSIN TECHNIQUE", "DESSIN"],
+    "LEGISLATION": ["LEGISLATION"],
+    "BIOCHIMIE": ["BIOCHIMIE", "BIOCHIMIQUE"],
+    "MICROBIOLOGIE": ["MICROBIOLOGIE", "MICROBIO"],
+    "BIOLOGIE": ["BIOLOGIE", "BIO"],
+    "CHIMIE": ["CHIMIE"],
+}
+
+
+def lettre_matiere_technique(serie, text):
+    """Lettre de la matiere ecrite en toutes lettres ("anglais", "compta analytique"),
+    dans la liste de la serie de l'eleve. L'expression la plus longue gagne
+    ("construction mecanique" -> CMI, pas Mecanique)."""
+    msg = normalize_for_match(text)
+    meilleure, longueur = None, 0
+    for i, (code, libelle) in enumerate(matieres_technique(serie)):
+        for mot in [libelle] + MOTS_CLES_MATIERE_TECHNIQUE.get(code, []):
+            mot_norm = normalize_for_match(mot)
+            if len(mot_norm) > longueur and has_expr(msg, mot_norm):
+                meilleure, longueur = LETTRES_CHOIX[i], len(mot_norm)
+    return meilleure
 
 
 def matieres_technique(serie):
@@ -1087,6 +1231,9 @@ def mot_cle_vers_lettre(step, text, profile):
     une lettre ou un chiffre."""
     msg = normalize_for_match(text)
 
+    if step == "matiere" and profile.get("type_examen") == "BAC_TECHNIQUE":
+        return lettre_matiere_technique(profile.get("serie"), text)
+
     if step == "matiere" and profile.get("type_examen") != "BAC_TECHNIQUE":
         matiere = detect_matiere_from_text(text)
         if matiere:
@@ -1131,21 +1278,6 @@ def mot_cle_vers_lettre(step, text, profile):
             "f": ["PREMIERE A"],
             "g": ["PREMIERE C"],
             "h": ["PREMIERE D"],
-        },
-        "matiere": {
-            "a": ["COMPTABILITE FINANCIERE", "COMPTA FINANCIERE"],
-            "b": ["COMPTABILITE DES SOCIETES", "COMPTA SOCIETES"],
-            "c": ["COMPTABILITE ANALYTIQUE", "COMPTA ANALYTIQUE"],
-            "d": ["MATHEMATIQUES FINANCIERES", "MATHS FINANCIERES"],
-            "e": ["MATHEMATIQUE GENERALE", "MATHS GENERALE"],
-            "f": ["ECONOMIE"],
-            "g": ["EXPRESSION PROFESSIONNELLE"],
-            "h": ["PHYSIQUE APPLIQUEE"],
-            "i": ["ETUDE DES SYSTEMES", "SYSTEMES TECHNIQUES", "ESTI"],
-            "j": ["DROIT"],
-            "k": ["HISTOIRE GEOGRAPHIE", "HG"],
-            "l": ["FRANCAIS"],
-            "m": ["ANGLAIS", "ENGLISH"],
         },
         "mode": {
             "a": ["MODE ETUDE", "ETUDE", "COMPRENDRE"],
@@ -2255,8 +2387,19 @@ LIBELLES_MATIERES = {
     "TECHNO_GENERALE": "Technologie générale", "AUTOMATISME": "Automatisme",
     "BUREAU_METHODES": "Bureau des méthodes", "ETUDE_OUTILLAGE": "Étude d'outillage",
     "FABRICATION": "Fabrication mécanique",
+    "ETUDE_FABRICATION": "Étude de fabrication", "MESURES_ESSAIS": "Mesures et essais",
+    "CABLAGE": "Câblage", "TOPOGRAPHIE": "Topographie appliquée",
+    "RDM": "Résistance des matériaux", "TECHNO_GENIE_CIVIL": "Technologie (génie civil)",
+    "METHODES": "Méthodes", "LABO_MATERIAUX": "Laboratoire (essais des matériaux)",
+    "DESSIN_GENIE_CIVIL": "Dessin technique (génie civil)", "LEGISLATION": "Législation",
+    "BIOCHIMIE": "Biochimie", "MICROBIOLOGIE": "Microbiologie", "BIOLOGIE": "Biologie",
+    "CHIMIE": "Chimie",
     "INFORMATIQUE_INDUSTRIELLE": "Informatique industrielle",
 }
+
+
+# Codes envoyes autrement a l'API (les documents de maths techniques sont sous MATHS).
+CODES_MATIERE_API = {"MATHS_GENERAL": "MATHS"}
 
 
 def libelle_matiere(code):
@@ -3315,7 +3458,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             "email": f"{phone}@afrjigi.com",
             "question": question_api,
             "question_brute": question,
-            "matiere": matiere,
+            "matiere": CODES_MATIERE_API.get(matiere, matiere),
             "serie": serie,
             "type_examen": type_examen,
             "mode": mode,

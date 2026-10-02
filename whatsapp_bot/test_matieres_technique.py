@@ -15,12 +15,50 @@ class MatieresTechniqueTests(unittest.TestCase):
         self.assertNotIn("Comptabilité", menu)
         self.assertTrue(menu.endswith("Réponds par a, b, c, d, e, f, g, h, i, j ou k."))
 
-    def test_autres_series_gardent_la_liste_actuelle(self):
-        for serie in ["B", "G1", "G2", "E", "F3", "F4", "F7", None]:
+    def test_serie_inconnue_garde_la_liste_commune(self):
+        for serie in ["STI", None]:
             menu = main.menu_matieres_technique(serie)
             self.assertIn("a. Comptabilité Financière", menu)
             self.assertTrue(menu.endswith("l ou m."))
-        self.assertEqual(main.choix_matieres_technique("G1"), main.BAC_TECHNIQUE_SUBJECT_CHOICES)
+        self.assertEqual(main.choix_matieres_technique(None), main.BAC_TECHNIQUE_SUBJECT_CHOICES)
+
+    def test_chaque_serie_a_sa_liste(self):
+        for serie in main.BAC_TECHNIQUE_SERIES_CHOICES.values():
+            matieres = main.MATIERES_TECHNIQUE_PAR_SERIE[serie]
+            codes = [c for c, _ in matieres]
+            self.assertLessEqual(len(matieres), 13, serie)
+            self.assertEqual(len(codes), len(set(codes)), serie)
+            for code in ("FRANCAIS", "ANGLAIS", "HG"):
+                self.assertIn(code, codes, serie)
+            self.assertIn("MATHS", codes, serie)  # meme code que les documents de maths
+            for code in codes:
+                self.assertNotEqual(main.libelle_matiere(code), code, code)
+        self.assertNotIn("PHILO", [c for c, _ in main.MATIERES_TECHNIQUE_PAR_SERIE["F2"]])
+        self.assertEqual(main.MATIERES_TECHNIQUE_PAR_SERIE["B"][0][0], "ECO")  # SES
+
+    def test_matiere_ecrite_en_toutes_lettres(self):
+        cas = [
+            ("F1", "anglais", "ANGLAIS"), ("F1", "Philo", "PHILO"),
+            ("F1", "construction mécanique", "CMI"), ("F1", "mécanique", "MECANIQUE"),
+            ("F2", "Mécanique appliquée", "MECANIQUE_APPLIQUEE"), ("F2", "électronique", "ELECTRONIQUE"),
+            ("G2", "compta analytique", "COMPTA_ANALYTIQUE"), ("G2", "maths financières", "MATHS_FIN"),
+            ("G2", "maths", "MATHS"), ("B", "SES", "ECO"), ("F4", "RDM", "RDM"),
+            ("F7", "microbio", "MICROBIOLOGIE"), ("F7", "biochimie", "BIOCHIMIE"),
+        ]
+        for serie, texte, attendu in cas:
+            lettre = main.lettre_matiere_technique(serie, texte)
+            self.assertEqual(main.choix_matieres_technique(serie).get(lettre), attendu, (serie, texte))
+        self.assertIsNone(main.lettre_matiere_technique("F2", "philosophie"))
+
+    def test_anglais_ecrit_en_f1_pendant_l_inscription(self):
+        profil = {"type_examen": "BAC_TECHNIQUE", "serie": "F1", "onboarding_step": "matiere"}
+        with mock.patch.object(main, "send_whatsapp"), mock.patch.object(main, "sauver_etat_whatsapp"):
+            self.assertTrue(main.handle_onboarding_choice("22500000021", profil, "Anglais"))
+        self.assertEqual(main.user_profiles["22500000021"]["matiere"], "ANGLAIS")
+        main.user_profiles.pop("22500000021", None)
+
+    def test_anciens_profils_maths_generales(self):
+        self.assertEqual(main.CODES_MATIERE_API.get("MATHS_GENERAL"), "MATHS")
 
     def test_choix_f2(self):
         choix = main.choix_matieres_technique("f2")
