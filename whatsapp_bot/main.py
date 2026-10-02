@@ -2452,6 +2452,29 @@ LIBELLES_MATIERES = {
 CODES_MATIERE_API = {"MATHS_GENERAL": "MATHS"}
 
 
+LIBELLES_EXAMENS = {
+    "BAC_TECHNIQUE": "BAC Technique", "BAC_GENERAL": "BAC Général", "BEPC": "BEPC",
+    "CLASSE_INTERMEDIAIRE": "classe intermédiaire",
+}
+
+
+def consigne_matiere_choisie(matiere, serie=None, type_examen=None):
+    """Rappelle a Akili la matiere choisie, en toutes lettres : l'API ne connait pas les
+    codes des matieres techniques (CMI, RDM...) et proposait un exercice d'une autre
+    matiere (chimie au lieu de construction mecanique)."""
+    if not matiere:
+        return ""
+    examen = LIBELLES_EXAMENS.get((type_examen or "").upper(), type_examen or "")
+    niveau = ", ".join(x for x in [examen, f"série {serie}" if serie and serie not in {"TOUTES", "BEPC"} else ""] if x)
+    return (
+        f"\nMATIERE CHOISIE PAR L'ELEVE : {libelle_matiere(matiere)}"
+        + (f" ({niveau})" if niveau else "")
+        + ". Reste strictement dans cette matière : chaque exercice, explication ou exemple que tu proposes "
+        "doit porter sur cette matière, jamais sur une autre. Si l'élève envoie un sujet d'une autre matière, "
+        "aide-le quand même sur ce sujet.\n"
+    )
+
+
 def libelle_matiere(code):
     code = (code or "").strip()
     return LIBELLES_MATIERES.get(code.upper(), code)
@@ -3452,6 +3475,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             + teacher_instruction
             + (f"\nGUIDELINES MATIERE:\n{subject_guidelines}\n" if subject_guidelines else "")
         )
+        instructions_whatsapp += consigne_matiere_choisie(matiere, serie, type_examen)
 
         format_guard = ""
         if (user_type or "").upper() == "ENSEIGNANT" and (matiere or "").upper() == "ESPAGNOL":
