@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import vertexai
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -411,6 +411,67 @@ def extraire_section_progression(doc, question, serie, max_chars=7000):
     return "\n\n".join(section[:per_section] for section in selected)[:max_chars]
 
 
+MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+           "septembre", "octobre", "novembre", "décembre"]
+
+
+def niveau_demande(question):
+    """Classe citee par l'eleve ; par defaut Terminale (annee du BAC)."""
+    q = normaliser_libelle_classe(question)
+    if re.search(r"\b(SECONDE|2NDE|2ND)\b", q):
+        return "SECONDE"
+    if re.search(r"\b(PREMIERE|1ERE|1IERE)\b", q):
+        return "PREMIERE"
+    return "TERMINALE"
+
+
+def progression_de_reference(docs, matiere, serie, examen, question=""):
+    """Progression officielle de la matiere, de la serie et de la classe de l'eleve.
+    Elle est ajoutee au contexte meme si la question ne partage aucun mot avec elle
+    ("Propose-moi un exercice"), pour qu'Akili suive le programme de la classe."""
+    if examen != "BAC_TECHNIQUE" or not matiere:
+        return None
+    matiere = matiere.upper().strip()
+    candidats = [
+        d for d in docs
+        if str(d.get("type_doc") or "").upper().startswith("PROGRESSION")
+        and str(d.get("matiere") or "").upper().strip() == matiere
+        and str(d.get("examen") or "").upper().strip() in {examen, "TOUS"}
+        and serie_match(d.get("serie"), serie)
+    ]
+    niveau = niveau_demande(question)
+
+    def rang(doc):
+        n = str(doc.get("niveau") or "").upper()
+        if n == niveau:
+            return 0
+        if niveau in n.split("_"):
+            return 1
+        if n in {"TOUS", ""}:
+            return 2
+        return 3  # autre classe : on ne l'utilise pas
+
+    candidats = [d for d in candidats if rang(d) < 3]
+    if not candidats:
+        return None
+    return sorted(candidats, key=lambda d: (rang(d), -len(str(d.get("texte") or ""))))[0]
+
+
+def consigne_progression(progression, aujourd_hui=None):
+    aujourd_hui = aujourd_hui or datetime.now(timezone.utc)
+    date_txt = f"{aujourd_hui.day} {MOIS_FR[aujourd_hui.month - 1]} {aujourd_hui.year}"
+    niveau = str(progression.get("niveau") or "").replace("_", " et ").lower()
+    return (
+        "PROGRESSION OFFICIELLE A SUIVRE : le CONTEXTE OFFICIEL contient la progression METFPA "
+        f"de cette matiere ({niveau}). Quand l'eleve demande un exercice, une lecon ou une revision "
+        "sans preciser le chapitre, choisis une lecon de cette progression, en priorite celle prevue "
+        f"pour la periode actuelle de l'annee scolaire (nous sommes le {date_txt}) ; si les periodes "
+        "ne sont pas lisibles, prends le debut de la progression. Indique en une ligne la lecon choisie. "
+        "Ne propose pas de notion absente de la progression. Si l'eleve envoie son propre exercice "
+        "ou cite un chapitre, aide-le sur celui-ci."
+    )
+
+
 def formater_contexte_document(doc, question, serie):
     type_doc = (doc.get("type_doc") or "").upper().strip()
     max_chars = 7000 if type_doc == "PROGRESSION_ANNUELLE" else 2800
@@ -638,6 +699,12 @@ async def ask_question(
             mode=mode_registre,
             max_docs=6
         ) if question_recherche else []
+
+        progression = progression_de_reference(
+            documents, matiere_registre, serie, examen_registre, question_recherche
+        )
+        if progression and all(d.get("id") != progression.get("id") for d in contexte_docs):
+            contexte_docs = [progression] + contexte_docs[:5]
 
         contexte_texte = "\n\n---\n\n".join(
             formater_contexte_document(d, question, serie) for d in contexte_docs
@@ -941,6 +1008,8 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
             system_prompt = system_prompt + "\n\n" + FRENCH_PEDAGOGY_GUIDANCE
 
         system_prompt = system_prompt + "\n\n" + instructions_mode(mode_registre, examen_registre)
+        if progression:
+            system_prompt = system_prompt + "\n\n" + consigne_progression(progression)
 
         # ─── 4. PRÉPARATION DU CONTENU MULTIMODAL POUR VERTEX AI ───
         contents = [system_prompt]
