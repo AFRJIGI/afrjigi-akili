@@ -6,6 +6,7 @@ import re
 import unicodedata
 import uuid
 import hashlib
+import contextvars
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from google.cloud import firestore, storage
@@ -455,22 +456,79 @@ def extract_acquisition_tracking(text):
     return clean, source, creative
 
 
+# Telephones dont la derniere lecture Firestore a echoue : on ne remplace pas leur etat en entier.
+_etat_lecture_echouee = set()
+
+
 def charger_etat_whatsapp(phone):
     """Recharge l'etat conversationnel depuis Firestore (survit au scale-to-zero)."""
     try:
         doc = feedback_db.collection("whatsapp_state").document(phone).get()
+        _etat_lecture_echouee.discard(phone)
         if doc.exists:
             return doc.to_dict() or {}
     except Exception as e:
+        _etat_lecture_echouee.add(phone)
         print(f"Erreur charger_etat_whatsapp: {repr(e)}", flush=True)
     return {}
 
 def sauver_etat_whatsapp(phone, profile):
-    """Persiste l'etat conversationnel dans Firestore."""
+    """Persiste l'etat conversationnel dans Firestore. Le profil remplace l'etat en entier,
+    sinon les cles retirees (pending_question, profile_locked...) reviendraient au message suivant."""
     try:
-        feedback_db.collection("whatsapp_state").document(phone).set(dict(profile or {}), merge=True)
+        feedback_db.collection("whatsapp_state").document(phone).set(
+            dict(profile or {}), merge=phone in _etat_lecture_echouee
+        )
     except Exception as e:
         print(f"Erreur sauver_etat_whatsapp: {repr(e)}", flush=True)
+
+
+# ─── DEDOUBLONNAGE : Meta renvoie le meme message si la reponse tarde ───
+# Chaque copie Cloud Run a sa propre memoire : le registre doit etre dans Firestore.
+MESSAGES_TRAITES_COLLECTION = "whatsapp_messages_traites"
+MESSAGES_TRAITES_JOURS = 7
+
+
+def _message_traite_ref(message_id):
+    cle = hashlib.sha256(str(message_id).encode("utf-8")).hexdigest()
+    return feedback_db.collection(MESSAGES_TRAITES_COLLECTION).document(cle)
+
+
+def _est_deja_existant(exc):
+    return any(c.__name__ in {"AlreadyExists", "Conflict"} for c in type(exc).__mro__)
+
+
+def reserver_message_whatsapp(message_id):
+    """Vrai si ce message n'a encore ete pris par aucune copie du bot (create echoue s'il existe)."""
+    if not message_id:
+        return True
+    now = datetime.now(timezone.utc)
+    try:
+        _message_traite_ref(message_id).create({
+            "recu_at": now.isoformat(),
+            "expire_at": now + timedelta(days=MESSAGES_TRAITES_JOURS),
+        })
+        return True
+    except Exception as e:
+        if _est_deja_existant(e):
+            return False
+        # Firestore indisponible : mieux vaut repondre deux fois que jamais.
+        print(f"Erreur reserver_message_whatsapp: {repr(e)}", flush=True)
+        return True
+
+
+def liberer_message_whatsapp(message_id):
+    """Permet a Meta de renvoyer ce message (on a repondu 503 pour qu'il reessaie)."""
+    if not message_id:
+        return
+    try:
+        _message_traite_ref(message_id).delete()
+    except Exception as e:
+        print(f"Erreur liberer_message_whatsapp: {repr(e)}", flush=True)
+
+
+# Telephone dont le profil a ete charge pendant la requete en cours (sauve a la fin).
+_profil_charge_requete = contextvars.ContextVar("profil_charge_requete", default=None)
 
 def effacer_etat_whatsapp(phone):
     """Supprime completement l'etat persiste dans Firestore (vrai reset)."""
@@ -3278,6 +3336,21 @@ async def verify_webhook(request: Request):
 
 @app.post("/whatsapp/webhook")
 async def receive_message(request: Request):
+    """Traite le message puis sauve le profil complet dans Firestore : la copie Cloud Run
+    qui recevra le message suivant repartira de cet etat, pas d'une memoire perimee."""
+    jeton = _profil_charge_requete.set(None)
+    try:
+        return await _receive_message_impl(request)
+    finally:
+        phone = _profil_charge_requete.get()
+        _profil_charge_requete.reset(jeton)
+        if phone:
+            profil = user_profiles.get(phone)
+            if profil:  # vide apres un reset : rien a sauver
+                sauver_etat_whatsapp(phone, profil)
+
+
+async def _receive_message_impl(request: Request):
     body = await request.json()
 
     try:
@@ -3289,6 +3362,12 @@ async def receive_message(request: Request):
         phone = msg["from"]
         msg_type = msg.get("type")
         text = msg.get("text", {}).get("body", "").strip()
+        message_id = msg.get("id")
+        if message_id and (message_id in processed_messages or not reserver_message_whatsapp(message_id)):
+            print(f"Message déjà traité: {message_id}", flush=True)
+            return {"status": "ok", "reason": "duplicate"}
+        if message_id:
+            processed_messages.add(message_id)
         media_file = None
         document_context = None
         incoming_was_audio = msg_type in {"audio", "voice"}
@@ -3332,14 +3411,7 @@ async def receive_message(request: Request):
                     text = caption or "Analyse ce sujet envoyé en fichier et guide-moi pas à pas."
                     media_file = downloaded
 
-        message_id = msg.get("id")
-
-        if message_id in processed_messages:
-            print(f"Message déjà traité: {message_id}", flush=True)
-            return {"status": "ok"}
-
         if message_id:
-            processed_messages.add(message_id)
             send_whatsapp_typing_indicator(message_id)
 
         if len(processed_messages) > 1000:
@@ -3355,6 +3427,7 @@ async def receive_message(request: Request):
             except Exception as exc:
                 if message_id:
                     processed_messages.discard(message_id)
+                    liberer_message_whatsapp(message_id)
                 print(
                     "WHATSAPP_MARKETING_CONSENT save_failed "
                     f"error_class={type(exc).__name__}",
@@ -3394,8 +3467,13 @@ async def receive_message(request: Request):
 
         print(f"Message de {phone}: {text}", flush=True)
 
-        profile = user_profiles[phone] or charger_etat_whatsapp(phone) or {"serie": "TOUTES", "matiere": "MATHS"}
+        etat_firestore = charger_etat_whatsapp(phone)
+        if phone in _etat_lecture_echouee:
+            profile = user_profiles[phone] or etat_firestore or {"serie": "TOUTES", "matiere": "MATHS"}
+        else:
+            profile = etat_firestore or {"serie": "TOUTES", "matiere": "MATHS"}
         user_profiles[phone] = profile
+        _profil_charge_requete.set(phone)
 
         clean_text, acquisition_source, creative = extract_acquisition_tracking(text)
         if acquisition_source:
