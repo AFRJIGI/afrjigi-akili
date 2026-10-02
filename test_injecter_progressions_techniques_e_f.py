@@ -78,5 +78,17 @@ class ExtractionTests(unittest.TestCase):
         self.assertEqual(inj.type_fichier(b"<!DOCTYPE html><html><body>Erreur</body></html>"), "html")
 
 
+class GoogleTests(unittest.TestCase):
+    def test_adresses_de_telechargement_direct(self):
+        ident = "1AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+        self.assertEqual(inj.adresses_google(f"https://docs.google.com/document/d/{ident}/edit"),
+                         [f"https://docs.google.com/document/d/{ident}/export?format=docx"])
+        self.assertEqual(inj.adresses_google(f"https://drive.google.com/file/d/{ident}/view"),
+                         [f"https://drive.usercontent.google.com/download?id={ident}&export=download&confirm=t"])
+        page = f'<a href="https://drive.google.com/uc?export=download&id={ident}">'.encode()
+        self.assertEqual(len(inj.adresses_google("https://accounts.google.com/x", page)), 1)
+        self.assertEqual(inj.adresses_google("https://www.fomesoutra.com/x", b"<html></html>"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

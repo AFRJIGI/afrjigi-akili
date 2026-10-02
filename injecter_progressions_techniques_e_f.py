@@ -163,7 +163,8 @@ def plan_documents(inventaire):
     return plan
 
 
-def telecharger(url, essais=6):
+def _telecharger_brut(url, essais=6):
+    """(contenu, adresse finale apres redirections)."""
     requete = urllib.request.Request(url, headers={
         "User-Agent": "AfrJigi-Akili/1.0", "Accept-Encoding": "identity", "Connection": "close",
     })
@@ -171,13 +172,48 @@ def telecharger(url, essais=6):
     for essai in range(1, essais + 1):
         try:
             with urllib.request.urlopen(requete, timeout=120) as reponse:
-                return reponse.read()
+                return reponse.read(), reponse.geturl()
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             derniere = exc
             if essai == essais:
                 break
             time.sleep(min(5 * essai, 30))
     raise RuntimeError(f"Echec du telechargement : {url}") from derniere
+
+
+def adresses_google(adresse, contenu=b""):
+    """Le miroir renvoie parfois vers Google Drive ou Google Docs, qui affichent une page
+    web au lieu du fichier. On en deduit les adresses de telechargement direct."""
+    texte = adresse + " " + contenu[:200000].decode("utf-8", "ignore")
+    adresses = []
+    for genre, ident in re.findall(r"docs\.google\.com/(document|spreadsheets|presentation)/d/([\w-]{20,})", texte):
+        format_export = {"document": "docx", "spreadsheets": "xlsx", "presentation": "pdf"}[genre]
+        adresses.append(f"https://docs.google.com/{genre}/d/{ident}/export?format={format_export}")
+    for ident in re.findall(r"drive\.google\.com/(?:file/d/|open\?id=|uc\?(?:[^\"' ]*?&)?id=)([\w-]{20,})", texte):
+        adresses.append(f"https://drive.usercontent.google.com/download?id={ident}&export=download&confirm=t")
+    vus = []
+    for a in adresses:
+        if a not in vus:
+            vus.append(a)
+    return vus[:4]
+
+
+def telecharger(url, essais=6):
+    """Contenu du fichier. Suit les renvois vers Google Drive / Google Docs."""
+    contenu, adresse = _telecharger_brut(url, essais)
+    if type_fichier(contenu) != "html":
+        return contenu
+    for alternative in adresses_google(adresse, contenu):
+        try:
+            fichier, _ = _telecharger_brut(alternative, 3)
+        except Exception as exc:
+            print(f"  Google : echec {alternative} ({exc})")
+            continue
+        if type_fichier(fichier) != "html":
+            print(f"  fichier recupere via Google ({type_fichier(fichier)})")
+            return fichier
+    print(f"  adresse finale : {adresse}")
+    return contenu
 
 
 def type_fichier(contenu):
