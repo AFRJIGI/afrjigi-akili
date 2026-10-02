@@ -2007,7 +2007,8 @@ def sauver_historique_conv(conversation_key, historique):
 
 
 def charger_historique_conv(conversation_key):
-    """Recharge l'historique depuis Firestore si la RAM est vide."""
+    """Recharge l'historique depuis Firestore. None si Firestore est en panne
+    (on garde alors la memoire de cette copie), [] s'il n'y a pas d'historique."""
     try:
         if not conversation_key:
             return []
@@ -2020,7 +2021,31 @@ def charger_historique_conv(conversation_key):
                 return hist
     except Exception as e:
         print(f"Erreur charger_historique_conv: {repr(e)}", flush=True)
+        return None
     return []
+
+
+def effacer_traces_conversation(phone):
+    """Reset : efface aussi ce que Firestore garde de l'eleve (historiques de toutes ses
+    matieres, dernier message d'Akili, session en cours pour le bilan). Sinon l'ancien
+    historique revenait apres le reset et Akili reprenait l'ancien exercice ou l'ancien mode."""
+    phone = str(phone)
+    try:
+        docs = (
+            feedback_db.collection("whatsapp_historiques")
+            .where("conversation_key", ">=", f"{phone}:")
+            .where("conversation_key", "<", f"{phone};")
+            .stream()
+        )
+        for doc in docs:
+            doc.reference.delete()
+    except Exception as e:
+        print(f"Erreur effacer historiques: {repr(e)}", flush=True)
+    for collection in ("whatsapp_contexts", "whatsapp_sessions_bilan"):
+        try:
+            feedback_db.collection(collection).document(phone).delete()
+        except Exception as e:
+            print(f"Erreur effacer {collection}: {repr(e)}", flush=True)
 
 
 # ─── FIN DE SESSION : bilan quand l'eleve dit au revoir, ou apres une pause ───
@@ -2617,11 +2642,12 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     print(f"Profil WhatsApp: {profile}", flush=True)
     print(f"Conversation key: {conversation_key}", flush=True)
 
-    if not conversations[conversation_key]:
-        hist_sauve = charger_historique_conv(conversation_key)
-        if hist_sauve:
-            conversations[conversation_key] = hist_sauve
-            print(f"HISTORIQUE recharge depuis Firestore: {len(hist_sauve)} messages", flush=True)
+    # Toujours relire Firestore : la memoire de cette copie Cloud Run peut etre perimee
+    # (reset ou nouveaux echanges traites par une autre copie).
+    hist_sauve = charger_historique_conv(conversation_key)
+    if hist_sauve is not None:
+        conversations[conversation_key] = list(hist_sauve)
+        print(f"HISTORIQUE recharge depuis Firestore: {len(hist_sauve)} messages", flush=True)
 
     if message_id:
         send_whatsapp_typing_indicator(message_id)
@@ -3545,6 +3571,7 @@ async def _receive_message_impl(request: Request):
         if command.startswith("reset\n") or command.startswith("reset\r"):
             user_profiles.pop(phone, None)
             effacer_etat_whatsapp(phone)
+            effacer_traces_conversation(phone)
             conversations_to_delete = [k for k in conversations if k.startswith(f"{phone}:")]
             for k in conversations_to_delete:
                 conversations.pop(k, None)
@@ -3638,6 +3665,7 @@ async def _receive_message_impl(request: Request):
         if command in {"reset", "réinitialiser", "reinitialiser"}:
             user_profiles.pop(phone, None)
             effacer_etat_whatsapp(phone)
+            effacer_traces_conversation(phone)
             conversations_to_delete = [k for k in conversations if k.startswith(f"{phone}:")]
             for k in conversations_to_delete:
                 conversations.pop(k, None)

@@ -237,7 +237,16 @@ EXAMEN_TYPES = {
 }
 
 def normaliser_mode(mode, question=""):
-    txt = f"{mode or ''} {question or ''}".lower()
+    """Le mode envoye par WhatsApp ou le site (choix de l'eleve) fait foi.
+    Les mots-cles ne servent que si aucun mode n'est fourni : avant, le mot "examen"
+    n'importe ou dans le prompt (historique, "le jour de l'examen", "type_examen"...)
+    faisait basculer un eleve en mode etude vers le mode examen."""
+    choix = (mode or "").strip().lower()
+    if choix in {"examen", "exam", "mode examen"}:
+        return "examen"
+    if choix in {"etude", "étude", "mode etude", "mode étude"}:
+        return "etude"
+    txt = (question or "").lower()
     if any(x in txt for x in ["mode examen", "examen", "sujet type", "sujet d'examen", "entraîne", "entrainer", "corrige-moi", "note-moi", "barème", "bareme"]):
         return "examen"
     return "etude"
