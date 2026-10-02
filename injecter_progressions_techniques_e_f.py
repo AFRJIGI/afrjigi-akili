@@ -17,6 +17,7 @@ l'API charge la base au demarrage.
 
 import argparse
 import hashlib
+import html
 import io
 import json
 import re
@@ -24,6 +25,7 @@ import time
 import unicodedata
 import urllib.error
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -32,6 +34,12 @@ LOCATION = "us-central1"
 BUCKET_NAME = "akili-database-storage-astute-curve-307922"
 DB_BLOB = "data/jigi_global_database.json"
 INVENTAIRE = Path(__file__).with_name("reports") / "bac_technique_progressions_inventory.json"
+TYPES_MIME = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "doc": "application/msword",
+}
 TEXTE_MINIMUM = 400  # en dessous, le PDF est sans doute scanne : extraction par Gemini
 
 SERIE_PAR_CATEGORIE = {
@@ -163,16 +171,104 @@ def telecharger(url, essais=6):
     for essai in range(1, essais + 1):
         try:
             with urllib.request.urlopen(requete, timeout=120) as reponse:
-                contenu = reponse.read()
-            if not contenu.startswith(b"%PDF-"):
-                raise ValueError(f"La reponse n'est pas un PDF : {url}")
-            return contenu
+                return reponse.read()
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             derniere = exc
             if essai == essais:
                 break
             time.sleep(min(5 * essai, 30))
     raise RuntimeError(f"Echec du telechargement : {url}") from derniere
+
+
+def type_fichier(contenu):
+    """pdf, docx, xlsx, pptx, doc (Word 97-2003), html ou inconnu, d'apres les premiers octets."""
+    if contenu.startswith(b"%PDF-"):
+        return "pdf"
+    if contenu.startswith(b"PK"):
+        try:
+            noms = zipfile.ZipFile(io.BytesIO(contenu)).namelist()
+        except zipfile.BadZipFile:
+            return "inconnu"
+        if "word/document.xml" in noms:
+            return "docx"
+        if any(n.startswith("xl/") for n in noms):
+            return "xlsx"
+        if any(n.startswith("ppt/") for n in noms):
+            return "pptx"
+        return "zip"
+    if contenu.startswith(b"\xd0\xcf\x11\xe0"):
+        return "doc"
+    debut = contenu[:500].lstrip().lower()
+    if debut.startswith(b"<!doctype html") or debut.startswith(b"<html") or b"<html" in debut:
+        return "html"
+    return "inconnu"
+
+
+def _texte_xml(xml, balise_texte, balise_ligne):
+    """Texte d'un XML Office : une ligne par paragraphe (Word) ou par ligne de tableau (Excel)."""
+    lignes = []
+    for bloc in re.findall(rf"<{balise_ligne}[ >].*?</{balise_ligne}>", xml, flags=re.S):
+        morceaux = re.findall(rf"<{balise_texte}(?: [^>]*)?>([^<]*)</{balise_texte}>", bloc)
+        ligne = html.unescape("".join(morceaux)).strip()
+        if ligne:
+            lignes.append(ligne)
+    return lignes
+
+
+def texte_docx(contenu):
+    archive = zipfile.ZipFile(io.BytesIO(contenu))
+    xml = archive.read("word/document.xml").decode("utf-8", "ignore")
+    # Une ligne de tableau Word = une ligne de texte, cellules separees par " | ".
+    def ligne_tableau(m):
+        cellules = []
+        for cellule in re.findall(r"<w:tc[ >].*?</w:tc>", m.group(0), flags=re.S):
+            texte = " ".join(_texte_xml(cellule, "w:t", "w:p"))
+            if texte:
+                cellules.append(texte)
+        return "<w:p><w:t>" + html.escape(" | ".join(cellules)) + "</w:t></w:p>"
+    xml = re.sub(r"<w:tr[ >].*?</w:tr>", ligne_tableau, xml, flags=re.S)
+    return "\n".join(_texte_xml(xml, "w:t", "w:p"))
+
+
+def texte_xlsx(contenu):
+    archive = zipfile.ZipFile(io.BytesIO(contenu))
+    partages = []
+    if "xl/sharedStrings.xml" in archive.namelist():
+        xml = archive.read("xl/sharedStrings.xml").decode("utf-8", "ignore")
+        for si in re.findall(r"<si>.*?</si>", xml, flags=re.S):
+            partages.append(html.unescape("".join(re.findall(r"<t(?: [^>]*)?>([^<]*)</t>", si))))
+    lignes = []
+    for nom in sorted(n for n in archive.namelist() if n.startswith("xl/worksheets/sheet")):
+        xml = archive.read(nom).decode("utf-8", "ignore")
+        for ligne in re.findall(r"<row[ >].*?</row>", xml, flags=re.S):
+            cellules = []
+            for attributs, corps in re.findall(r"<c([^>]*)>(.*?)</c>", ligne, flags=re.S):
+                valeur = re.search(r"<v>([^<]*)</v>", corps)
+                inline = re.findall(r"<t(?: [^>]*)?>([^<]*)</t>", corps)
+                if 't="s"' in attributs and valeur:
+                    index = int(valeur.group(1))
+                    cellules.append(partages[index] if index < len(partages) else "")
+                elif inline:
+                    cellules.append(html.unescape("".join(inline)))
+                elif valeur:
+                    cellules.append(valeur.group(1))
+            texte = " | ".join(c.strip() for c in cellules if c and c.strip())
+            if texte:
+                lignes.append(texte)
+    return "\n".join(lignes)
+
+
+def texte_doc(contenu):
+    """Word 97-2003 : on recupere les suites de texte lisibles (UTF-16 puis cp1252)."""
+    utf16 = "\n".join(m.decode("utf-16-le", "ignore")
+                       for m in re.findall(rb"(?:[\x20-\x7e\xa0-\xff]\x00){4,}", contenu))
+    cp1252 = "\n".join(m.decode("cp1252", "ignore")
+                        for m in re.findall(rb"[\x20-\x7e\xc0-\xff]{6,}", contenu))
+
+    def propre(texte):
+        return "\n".join(l.strip() for l in texte.splitlines() if sum(c.isalpha() for c in l) >= 3)
+
+    return max(propre(utf16), propre(cp1252), key=len)
 
 
 def texte_pypdf(contenu):
@@ -262,9 +358,21 @@ def main():
         if empreinte in empreintes:
             print("  doublon (meme PDF deja dans la base)")
             continue
-        texte = texte_pypdf(contenu)
-        methode = "pypdf"
-        if len(texte) < TEXTE_MINIMUM:
+        sorte = type_fichier(contenu)
+        if sorte in {"html", "inconnu", "zip", "pptx"}:
+            apercu = re.sub(r"\s+", " ", contenu[:300].decode("utf-8", "ignore"))
+            print(f"  ECHEC : fichier recu de type {sorte} ({len(contenu)} octets) : {apercu[:200]}")
+            echecs += 1
+            continue
+        if sorte == "docx":
+            texte, methode = texte_docx(contenu), "docx"
+        elif sorte == "xlsx":
+            texte, methode = texte_xlsx(contenu), "xlsx"
+        elif sorte == "doc":
+            texte, methode = texte_doc(contenu), "doc"
+        else:
+            texte, methode = texte_pypdf(contenu), "pypdf"
+        if sorte == "pdf" and len(texte) < TEXTE_MINIMUM:
             if modele is None:
                 import vertexai
                 from vertexai.generative_models import GenerativeModel
@@ -277,9 +385,9 @@ def main():
             echecs += 1
             continue
 
-        nom = f"METFPA_PROGRESSION_{doc['matiere']}_{doc['serie']}_{doc['niveau']}_{identifiant_source(doc['url'])}.pdf"
+        nom = f"METFPA_PROGRESSION_{doc['matiere']}_{doc['serie']}_{doc['niveau']}_{identifiant_source(doc['url'])}.{sorte}"
         chemin = f"knowledge_base/{doc['matiere']}/{doc['serie']}/{nom}"
-        bucket.blob(chemin).upload_from_string(contenu, content_type="application/pdf")
+        bucket.blob(chemin).upload_from_string(contenu, content_type=TYPES_MIME[sorte])
         docs.append({
             "id": doc["id"],
             "nom_fichier": nom,
@@ -308,6 +416,9 @@ def main():
         print(f"  ajoute ({len(texte)} caracteres, {methode})")
         time.sleep(1)
 
+    if not ajouts:
+        print(f"Termine : aucun ajout, {echecs} echecs. Base inchangee.")
+        return
     data["documents"] = docs
     data["total"] = len(docs)
     data["generated_at"] = datetime.now(timezone.utc).isoformat()

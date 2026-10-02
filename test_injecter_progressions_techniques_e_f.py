@@ -49,5 +49,34 @@ class ClassementTests(unittest.TestCase):
             self.assertIsNone(inj.classer(categorie, titre), titre)
 
 
+class ExtractionTests(unittest.TestCase):
+    def test_types_de_fichiers(self):
+        import io as _io, zipfile
+        b = _io.BytesIO()
+        with zipfile.ZipFile(b, "w") as z:
+            z.writestr("word/document.xml",
+                       "<w:document><w:body><w:p><w:r><w:t>PROGRESSION TOURNAGE TF1</w:t></w:r></w:p>"
+                       "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Septembre</w:t></w:r></w:p></w:tc>"
+                       "<w:tc><w:p><w:r><w:t>Le&#231;on 1 : </w:t></w:r><w:r><w:t>filetage</w:t></w:r></w:p></w:tc>"
+                       "</w:tr></w:tbl></w:body></w:document>")
+        self.assertEqual(inj.type_fichier(b.getvalue()), "docx")
+        self.assertEqual(inj.texte_docx(b.getvalue()), "PROGRESSION TOURNAGE TF1\nSeptembre | Leçon 1 : filetage")
+
+        b = _io.BytesIO()
+        with zipfile.ZipFile(b, "w") as z:
+            z.writestr("xl/sharedStrings.xml", "<sst><si><t>Semaine</t></si><si><t>Leçon</t></si><si><t>Cotation</t></si></sst>")
+            z.writestr("xl/worksheets/sheet1.xml",
+                       '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>'
+                       '<row r="2"><c r="A2"><v>3</v></c><c r="B2" t="s"><v>2</v></c></row></sheetData></worksheet>')
+        self.assertEqual(inj.type_fichier(b.getvalue()), "xlsx")
+        self.assertEqual(inj.texte_xlsx(b.getvalue()), "Semaine | Leçon\n3 | Cotation")
+
+        doc = b"\xd0\xcf\x11\xe0" + b"\x00" * 50 + "PROGRESSION FRAISAGE semaine 1 : surfaçage".encode("utf-16-le")
+        self.assertEqual(inj.type_fichier(doc), "doc")
+        self.assertIn("PROGRESSION FRAISAGE semaine 1 : surfaçage", inj.texte_doc(doc))
+        self.assertEqual(inj.type_fichier(b"%PDF-1.4 ..."), "pdf")
+        self.assertEqual(inj.type_fichier(b"<!DOCTYPE html><html><body>Erreur</body></html>"), "html")
+
+
 if __name__ == "__main__":
     unittest.main()
