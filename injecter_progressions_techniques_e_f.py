@@ -24,6 +24,7 @@ import re
 import time
 import unicodedata
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from datetime import datetime, timezone
@@ -186,6 +187,11 @@ def adresses_google(adresse, contenu=b""):
     web au lieu du fichier. On en deduit les adresses de telechargement direct."""
     texte = adresse + " " + contenu[:200000].decode("utf-8", "ignore")
     adresses = []
+    # Visionneuse Google (docs.google.com/viewer?url=...) : le vrai fichier est dans "url".
+    if "docs.google.com/viewer" in adresse:
+        interne = urllib.parse.parse_qs(urllib.parse.urlparse(adresse).query).get("url", [""])[0]
+        if interne:
+            adresses.append(interne)
     for genre, ident in re.findall(r"docs\.google\.com/(document|spreadsheets|presentation)/d/([\w-]{20,})", texte):
         format_export = {"document": "docx", "spreadsheets": "xlsx", "presentation": "pdf"}[genre]
         adresses.append(f"https://docs.google.com/{genre}/d/{ident}/export?format={format_export}")
@@ -203,7 +209,10 @@ def telecharger(url, essais=6):
     contenu, adresse = _telecharger_brut(url, essais)
     if type_fichier(contenu) != "html":
         return contenu
-    for alternative in adresses_google(adresse, contenu):
+    alternatives = adresses_google(adresse, contenu)
+    if "force_download" not in url:
+        alternatives.append(url + ("&" if "?" in url else "?") + "force_download=1")
+    for alternative in alternatives:
         try:
             fichier, _ = _telecharger_brut(alternative, 3)
         except Exception as exc:

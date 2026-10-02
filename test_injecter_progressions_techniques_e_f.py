@@ -88,6 +88,10 @@ class GoogleTests(unittest.TestCase):
         page = f'<a href="https://drive.google.com/uc?export=download&id={ident}">'.encode()
         self.assertEqual(len(inj.adresses_google("https://accounts.google.com/x", page)), 1)
         self.assertEqual(inj.adresses_google("https://www.fomesoutra.com/x", b"<html></html>"), [])
+        visionneuse = ("https://docs.google.com/viewer?url=https%3A%2F%2Fwww.fomesoutra.com%2Flivres%2F"
+                       "25595-progression-tournage-tf1%2Ffile%3Fforce_download%3D1")
+        self.assertEqual(inj.adresses_google(visionneuse)[0],
+                         "https://www.fomesoutra.com/livres/25595-progression-tournage-tf1/file?force_download=1")
 
 
 if __name__ == "__main__":
