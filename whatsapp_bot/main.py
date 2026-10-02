@@ -878,6 +878,22 @@ MATIERES_TECHNIQUE_PAR_DEFAUT = [
 
 # Matieres propres a chaque serie (liste fournie par AfrJigi).
 MATIERES_TECHNIQUE_PAR_SERIE = {
+    # F1 : d'apres les progressions officielles MET-FPA recensees pour la serie F1.
+    "F1": [
+        ("CMI", "Construction mécanique industrielle (CMI)"),
+        ("MECANIQUE", "Mécanique"),
+        ("TECHNO_GENERALE", "Technologie générale"),
+        ("AUTOMATISME", "Automatisme"),
+        ("BUREAU_METHODES", "Bureau des méthodes"),
+        ("ETUDE_OUTILLAGE", "Étude d'outillage"),
+        ("FABRICATION", "Fabrication (tournage, fraisage, affûtage)"),
+        ("MATHS", "Mathématiques"),
+        ("PHYSIQUE_APPLIQUEE", "Physique appliquée (PCT)"),
+        ("FRANCAIS", "Français"),
+        ("ANGLAIS", "Anglais"),
+        ("HG", "Histoire-Géographie"),
+        ("PHILO", "Philosophie"),
+    ],
     "F2": [
         ("MECANIQUE_APPLIQUEE", "Mécanique appliquée"),
         ("CMI", "Construction mécanique industrielle"),
@@ -2235,7 +2251,10 @@ LIBELLES_MATIERES = {
     "DROIT": "Droit",
     "MECANIQUE_APPLIQUEE": "Mécanique appliquée", "CMI": "Construction mécanique industrielle",
     "ELECTRONIQUE": "Électronique", "DESSIN_INDUSTRIEL": "Dessin industriel",
-    "TECHNO_SCHEMAS": "Technologie et schémas",
+    "TECHNO_SCHEMAS": "Technologie et schémas", "MECANIQUE": "Mécanique",
+    "TECHNO_GENERALE": "Technologie générale", "AUTOMATISME": "Automatisme",
+    "BUREAU_METHODES": "Bureau des méthodes", "ETUDE_OUTILLAGE": "Étude d'outillage",
+    "FABRICATION": "Fabrication mécanique",
     "INFORMATIQUE_INDUSTRIELLE": "Informatique industrielle",
 }
 

@@ -16,7 +16,7 @@ class MatieresTechniqueTests(unittest.TestCase):
         self.assertTrue(menu.endswith("Réponds par a, b, c, d, e, f, g, h, i, j ou k."))
 
     def test_autres_series_gardent_la_liste_actuelle(self):
-        for serie in ["B", "G1", "G2", "E", "F1", "F3", "F4", "F7", None]:
+        for serie in ["B", "G1", "G2", "E", "F3", "F4", "F7", None]:
             menu = main.menu_matieres_technique(serie)
             self.assertIn("a. Comptabilité Financière", menu)
             self.assertTrue(menu.endswith("l ou m."))
@@ -37,9 +37,19 @@ class MatieresTechniqueTests(unittest.TestCase):
         self.assertEqual(main.user_profiles["22500000020"]["matiere"], "ELECTRONIQUE")
         main.user_profiles.pop("22500000020", None)
 
+    def test_menu_f1(self):
+        menu = main.menu_matieres_technique("F1")
+        self.assertIn("a. Construction mécanique industrielle (CMI)", menu)
+        self.assertIn("m. Philosophie", menu)
+        self.assertNotIn("Électronique", menu)
+        self.assertTrue(menu.endswith("k, l ou m."))
+        choix = main.choix_matieres_technique("F1")
+        self.assertEqual((choix["h"], choix["m"]), ("MATHS", "PHILO"))
+
     def test_libelles_lisibles(self):
-        for code, _ in main.MATIERES_TECHNIQUE_PAR_SERIE["F2"]:
-            self.assertNotEqual(main.libelle_matiere(code), code, code)
+        for serie in ("F1", "F2"):
+            for code, _ in main.MATIERES_TECHNIQUE_PAR_SERIE[serie]:
+                self.assertNotEqual(main.libelle_matiere(code), code, code)
 
 
 if __name__ == "__main__":
