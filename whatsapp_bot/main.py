@@ -3642,6 +3642,24 @@ async def verify_webhook(request: Request):
     return PlainTextResponse("Forbidden", status_code=403)
 
 
+def journaliser_statuts_whatsapp(statuts):
+    """Meta confirme chaque envoi (sent, delivered, read) ou signale un echec ("failed").
+    Un envoi accepte (statut 200) peut quand meme ne jamais arriver : seul ce retour le dit."""
+    for statut in statuts:
+        try:
+            if statut.get("status") != "failed":
+                continue
+            for erreur in statut.get("errors") or [{}]:
+                details = (erreur.get("error_data") or {}).get("details", "")
+                print(
+                    f"WHATSAPP_STATUS_FAILED recipient={statut.get('recipient_id')} "
+                    f"code={erreur.get('code')} title={erreur.get('title')} details={details}",
+                    flush=True,
+                )
+        except Exception as e:
+            print(f"Erreur journaliser_statuts_whatsapp: {repr(e)}", flush=True)
+
+
 @app.post("/whatsapp/webhook")
 async def receive_message(request: Request):
     """Traite le message puis sauve le profil complet dans Firestore : la copie Cloud Run
@@ -3662,7 +3680,9 @@ async def _receive_message_impl(request: Request):
     body = await request.json()
 
     try:
-        messages = body["entry"][0]["changes"][0]["value"].get("messages", [])
+        valeur = body["entry"][0]["changes"][0]["value"]
+        journaliser_statuts_whatsapp(valeur.get("statuses") or [])
+        messages = valeur.get("messages", [])
         if not messages:
             return {"status": "ok"}
 
