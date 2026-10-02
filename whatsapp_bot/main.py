@@ -1547,8 +1547,13 @@ def reposer_si_choix_attendu(phone, profile, text):
 
 
 def reposer_question_onboarding(phone, profile):
+    """Renvoie la question de l'etape en cours. Faux si l'etape n'a pas de question a reposer."""
     step = profile.get("onboarding_step")
-    if step == "serie_general":
+    if step == "ville":
+        ask_ville(phone)
+    elif step == "nom_ecole":
+        ask_nom_ecole(phone)
+    elif step == "serie_general":
         ask_serie_general(phone)
     elif step == "serie_technique":
         ask_serie_technique(phone)
@@ -1563,6 +1568,12 @@ def reposer_question_onboarding(phone, profile):
             ask_matiere(phone, profile.get("serie", "TOUTES"))
     elif step == "mode":
         ask_mode(phone)
+    else:
+        return False
+    return True
+
+
+MESSAGE_REPRISE_INSCRIPTION = "Bonjour ! On continue ton inscription là où tu t'es arrêté."
 
 
 def needs_onboarding(phone, profile, text):
@@ -3845,6 +3856,13 @@ async def _receive_message_impl(request: Request):
         welcome_commands = {"bonjour", "bonsoir", "salut", "hello", "hi", "aide", "start"}
         if command in welcome_commands or command in {f"{c} akili" for c in welcome_commands}:
             profile = user_profiles[phone] or {"serie": "TOUTES", "matiere": "MATHS"}
+            # Au milieu de l'inscription, "bonjour" ne fait pas tout recommencer :
+            # on repose la question en cours ("reset" reste la commande pour repartir de zero).
+            if profile.get("onboarding_step") in ETAPES_A_REPOSER | {"ville", "nom_ecole"}:
+                send_whatsapp(phone, MESSAGE_REPRISE_INSCRIPTION)
+                reposer_question_onboarding(phone, profile)
+                track_inbound("welcome_onboarding_resumed", profile)
+                return {"status": "ok", "reason": "onboarding_resumed"}
             profile["onboarding_step"] = "exam"
             user_profiles[phone] = profile
             ask_exam(phone)

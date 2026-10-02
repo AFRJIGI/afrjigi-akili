@@ -49,5 +49,59 @@ class ChoixNonComprisTests(unittest.TestCase):
             self.assertFalse(main.handle_onboarding_choice(PHONE, profil, "explique moi le tournage pour mon exercice de demain"))
 
 
+class FauxRequete:
+    def __init__(self, texte):
+        self._body = {"entry": [{"changes": [{"value": {"messages": [
+            {"from": PHONE, "id": f"wamid.reprise.{texte}", "type": "text", "text": {"body": texte}}
+        ]}}]}]}
+
+    async def json(self):
+        return self._body
+
+
+class BonjourPendantInscriptionTests(unittest.TestCase):
+    def setUp(self):
+        self.envoyes = []
+        self.etat = {}
+        noop = lambda *a, **k: None
+        self.patches = [
+            mock.patch.object(main, "send_whatsapp", side_effect=lambda phone, msg, *a, **k: self.envoyes.append(msg)),
+            mock.patch.object(main, "send_whatsapp_typing_indicator", side_effect=noop),
+            mock.patch.object(main, "reserver_message_whatsapp", return_value=True),
+            mock.patch.object(main, "charger_etat_whatsapp", side_effect=lambda phone: dict(self.etat)),
+            mock.patch.object(main, "sauver_etat_whatsapp", side_effect=lambda phone, p: self.etat.update(p)),
+            mock.patch.object(main, "save_whatsapp_event", side_effect=noop),
+            mock.patch.object(main, "maybe_send_marketing_consent_prompt", side_effect=noop),
+        ]
+        for p in self.patches:
+            p.start()
+        main.processed_messages.clear()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        main.user_profiles.pop(PHONE, None)
+        main.processed_messages.clear()
+
+    def envoyer(self, texte):
+        import asyncio
+        return asyncio.run(main.receive_message(FauxRequete(texte)))
+
+    def test_bonjour_a_la_question_du_mode_garde_l_inscription(self):
+        self.etat = {"type_examen": "BAC_TECHNIQUE", "serie": "F1", "matiere": "ANGLAIS",
+                     "matiere_confirmed": True, "onboarding_step": "mode"}
+        resultat = self.envoyer("Bonjour")
+        self.assertEqual(resultat.get("reason"), "onboarding_resumed")
+        self.assertEqual(self.envoyes[0], main.MESSAGE_REPRISE_INSCRIPTION)
+        self.assertIn("Mode Étude", self.envoyes[1])
+        self.assertEqual(self.etat["serie"], "F1")
+        self.assertEqual(self.etat["onboarding_step"], "mode")
+
+    def test_bonjour_sans_inscription_en_cours_demarre_akili(self):
+        resultat = self.envoyer("Bonjour Akili")
+        self.assertNotEqual(resultat.get("reason"), "onboarding_resumed")
+        self.assertIn("Quel niveau prépares-tu", self.envoyes[-1])
+
+
 if __name__ == "__main__":
     unittest.main()
