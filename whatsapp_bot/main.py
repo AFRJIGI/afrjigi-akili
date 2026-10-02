@@ -1346,7 +1346,7 @@ def handle_onboarding_choice(phone, profile, text):
 
     key = choice_key(text) or mot_cle_vers_lettre(step, text, profile)
     if not key:
-        return False
+        return reposer_si_choix_attendu(phone, profile, text)
 
     if step == "menu_choice":
         if key == "a":
@@ -1523,7 +1523,46 @@ def handle_onboarding_choice(phone, profile, text):
             )
             return True
 
-    return False
+    return reposer_si_choix_attendu(phone, profile, text)
+
+
+# Etapes ou seule une lettre de la liste est attendue. L'etape "exam" n'y est pas :
+# l'eleve peut y ecrire son profil en toutes lettres ("Je suis en Terminale D...").
+ETAPES_A_REPOSER = {"serie_general", "serie_technique", "seconde", "classe_intermediaire", "matiere", "mode"}
+MESSAGE_CHOIX_NON_COMPRIS = "Je n'ai pas compris ton choix. Réponds seulement avec la lettre de la liste."
+
+
+def reposer_si_choix_attendu(phone, profile, text):
+    """Reponse qui ne correspond a aucun choix ("anglais" a la question du mode) :
+    on repose la question au lieu de l'envoyer a Akili avec un profil incomplet.
+    Une vraie question (longue) continue son chemin habituel."""
+    if profile.get("onboarding_step") not in ETAPES_A_REPOSER:
+        return False
+    nb_mots = len(normalize_for_match(text).split())
+    if nb_mots > 3 and (nb_mots > 6 or is_learning_request(text)):
+        return False
+    send_whatsapp(phone, MESSAGE_CHOIX_NON_COMPRIS)
+    reposer_question_onboarding(phone, profile)
+    return True
+
+
+def reposer_question_onboarding(phone, profile):
+    step = profile.get("onboarding_step")
+    if step == "serie_general":
+        ask_serie_general(phone)
+    elif step == "serie_technique":
+        ask_serie_technique(phone)
+    elif step == "seconde":
+        ask_seconde(phone)
+    elif step == "classe_intermediaire":
+        ask_classe_intermediaire(phone)
+    elif step == "matiere":
+        if profile.get("type_examen") == "BAC_TECHNIQUE":
+            ask_matiere_technique(phone, profile.get("serie"))
+        else:
+            ask_matiere(phone, profile.get("serie", "TOUTES"))
+    elif step == "mode":
+        ask_mode(phone)
 
 
 def needs_onboarding(phone, profile, text):
