@@ -1129,6 +1129,20 @@ def ask_serie_general(phone):
     )
 
 
+CLASSES_TECHNIQUE = {"a": "SECONDE", "b": "PREMIERE", "c": "TERMINALE"}
+LIBELLES_CLASSES = {"SECONDE": "Seconde", "PREMIERE": "Première", "TERMINALE": "Terminale"}
+
+
+def ask_classe_technique(phone):
+    send_whatsapp(phone,
+        "Tu es en quelle classe ?\n\n"
+        "a. Seconde\n"
+        "b. Première\n"
+        "c. Terminale\n\n"
+        "Réponds par a, b ou c."
+    )
+
+
 def ask_serie_technique(phone):
     send_whatsapp(phone,
         "Quelle série du BAC Technique ?\n\n"
@@ -1278,6 +1292,11 @@ def mot_cle_vers_lettre(step, text, profile):
             "a": ["A1"], "b": ["A2"],
             "c": ["SERIE C", "TERMINALE C", "TERMINAL C"],
             "d": ["SERIE D", "TERMINALE D", "TERMINAL D"],
+        },
+        "classe_technique": {
+            "a": ["SECONDE", "2NDE", "2ND"],
+            "b": ["PREMIERE", "1ERE", "1IERE"],
+            "c": ["TERMINALE", "TERMINAL", "TLE"],
         },
         "serie_technique": {
             "a": ["SERIE B", "TERMINALE B", "TERMINAL B"],
@@ -1443,10 +1462,19 @@ def handle_onboarding_choice(phone, profile, text):
         values = BAC_TECHNIQUE_SERIES_CHOICES
         if key in values:
             profile["serie"] = values[key]
+            profile["onboarding_step"] = "classe_technique"
+            user_profiles[phone] = profile
+            sauver_etat_whatsapp(phone, profile)
+            ask_classe_technique(phone)
+            return True
+
+    if step == "classe_technique":
+        if key in CLASSES_TECHNIQUE:
+            profile["classe"] = CLASSES_TECHNIQUE[key]
             profile["onboarding_step"] = "matiere"
             user_profiles[phone] = profile
             sauver_etat_whatsapp(phone, profile)
-            ask_matiere_technique(phone, profile["serie"])
+            ask_matiere_technique(phone, profile.get("serie"))
             return True
 
     if step == "seconde":
@@ -1548,7 +1576,7 @@ def handle_onboarding_choice(phone, profile, text):
 
 # Etapes ou seule une lettre de la liste est attendue. L'etape "exam" n'y est pas :
 # l'eleve peut y ecrire son profil en toutes lettres ("Je suis en Terminale D...").
-ETAPES_A_REPOSER = {"serie_general", "serie_technique", "seconde", "classe_intermediaire", "matiere", "mode"}
+ETAPES_A_REPOSER = {"serie_general", "serie_technique", "classe_technique", "seconde", "classe_intermediaire", "matiere", "mode"}
 MESSAGE_CHOIX_NON_COMPRIS = "Je n'ai pas compris ton choix. Réponds seulement avec la lettre de la liste."
 
 
@@ -1577,6 +1605,8 @@ def reposer_question_onboarding(phone, profile):
         ask_serie_general(phone)
     elif step == "serie_technique":
         ask_serie_technique(phone)
+    elif step == "classe_technique":
+        ask_classe_technique(phone)
     elif step == "seconde":
         ask_seconde(phone)
     elif step == "classe_intermediaire":
@@ -2478,14 +2508,18 @@ LIBELLES_EXAMENS = {
 }
 
 
-def consigne_matiere_choisie(matiere, serie=None, type_examen=None):
+def consigne_matiere_choisie(matiere, serie=None, type_examen=None, classe=None):
     """Rappelle a Akili la matiere choisie, en toutes lettres : l'API ne connait pas les
     codes des matieres techniques (CMI, RDM...) et proposait un exercice d'une autre
     matiere (chimie au lieu de construction mecanique)."""
     if not matiere:
         return ""
     examen = LIBELLES_EXAMENS.get((type_examen or "").upper(), type_examen or "")
-    niveau = ", ".join(x for x in [examen, f"série {serie}" if serie and serie not in {"TOUTES", "BEPC"} else ""] if x)
+    niveau = ", ".join(x for x in [
+        examen,
+        f"série {serie}" if serie and serie not in {"TOUTES", "BEPC"} else "",
+        LIBELLES_CLASSES.get(str(classe or "").upper(), ""),
+    ] if x)
     return (
         f"\nMATIERE CHOISIE PAR L'ELEVE : {libelle_matiere(matiere)}"
         + (f" ({niveau})" if niveau else "")
@@ -2635,6 +2669,143 @@ def commentaire_avis_attendu(profile, text, now=None):
     return attente.get("note") or "non"
 
 
+def noter_session_bilan(phone, champs):
+    try:
+        _session_bilan_ref(phone).update(champs)
+    except Exception as e:
+        print(f"Erreur noter_session_bilan: {repr(e)}", flush=True)
+
+
+# Le lendemain d'une seance, dans les 24 h ou WhatsApp autorise un message libre :
+# un QCM de 2 minutes sur le point "a revoir" du bilan.
+AKILI_REVISION_URL = os.environ.get("AKILI_REVISION_URL", AKILI_API_URL.rsplit("/", 1)[0] + "/revision-lendemain")
+REVISION_APRES_HEURES = 18          # au plus tot 18 h apres le dernier message de l'eleve
+REVISION_AVANT_HEURES = 23          # au plus tard 23 h apres (fenetre WhatsApp de 24 h)
+REVISION_HEURES_ENVOI = range(7, 21)  # heure d'Abidjan (UTC) : pas de message la nuit
+REVISION_MAX_PAR_TACHE = 30
+MESSAGE_ARRET_REVISION = "(Écris « pas de révision » si tu ne veux plus ces petits défis.)"
+COMMANDES_ARRET_REVISION = {"PAS DE REVISION", "PAS DE REVISIONS", "STOP REVISION", "STOP REVISIONS",
+                            "PLUS DE REVISION", "PLUS DE REVISIONS"}
+COMMANDES_REPRISE_REVISION = {"REVISIONS", "REPRENDRE LES REVISIONS", "OUI REVISION", "OUI REVISIONS"}
+
+
+def cle_conversation_profil(phone, profile):
+    profile = profile or {}
+    return (f"{phone}:{profile.get('type_examen')}:{profile.get('serie', 'TOUTES')}:"
+            f"{profile.get('matiere', 'MATHS')}:{profile.get('mode') or 'etude'}")
+
+
+def lister_sessions_pour_revision(now, limite=200):
+    """Sessions dont le dernier message date de 18 a 23 h."""
+    debut = (now - timedelta(hours=REVISION_AVANT_HEURES)).isoformat()
+    fin = (now - timedelta(hours=REVISION_APRES_HEURES)).isoformat()
+    try:
+        docs = (
+            feedback_db.collection(SESSIONS_BILAN_COLLECTION)
+            .where("derniere_activite", ">=", debut)
+            .where("derniere_activite", "<=", fin)
+            .limit(limite)
+            .stream()
+        )
+        return [(doc.id, doc.to_dict() or {}) for doc in docs]
+    except Exception as e:
+        print(f"Erreur lister_sessions_pour_revision: {repr(e)}", flush=True)
+        return []
+
+
+def reserver_revision(phone):
+    """Marque la revision comme envoyee (transaction) : jamais deux revisions pour une seance."""
+    reference = _session_bilan_ref(phone)
+    transaction = feedback_db.transaction()
+
+    @firestore.transactional
+    def reserver(tx):
+        snapshot = reference.get(transaction=tx)
+        session = snapshot.to_dict() if snapshot.exists else None
+        if not session or session.get("revision_envoyee"):
+            return None
+        tx.update(reference, {"revision_envoyee": True, "revision_at": datetime.now(timezone.utc).isoformat()})
+        return session
+
+    try:
+        return reserver(transaction)
+    except Exception as e:
+        print(f"Erreur reserver_revision: {repr(e)}", flush=True)
+        return None
+
+
+def session_eligible_revision(session):
+    return bool(
+        session.get("bilan_envoye")
+        and session.get("bilan_texte")
+        and not session.get("revision_envoyee")
+        and int(session.get("nb_echanges", 0)) >= BILAN_MIN_ECHANGES_INACTIVITE
+    )
+
+
+def generer_revision(session, profile):
+    try:
+        res = requests.post(
+            AKILI_REVISION_URL,
+            data={
+                "historique": json.dumps(session.get("messages") or [], ensure_ascii=False),
+                "bilan": session.get("bilan_texte") or "",
+                "matiere": libelle_matiere(session.get("matiere") or ""),
+                "serie": session.get("serie") or "",
+                "type_examen": session.get("type_examen") or "",
+                "classe": (profile or {}).get("classe") or "",
+            },
+            timeout=90,
+        )
+        texte = (res.json().get("reponse") or "").strip()
+        if not texte:
+            print(f"REVISION reponse vide: {res.text[:200]}", flush=True)
+        return texte
+    except Exception as e:
+        print(f"REVISION echec: {repr(e)}", flush=True)
+        return ""
+
+
+def ajouter_a_historique(conversation_key, texte):
+    """La revision entre dans l'historique : la reponse de l'eleve sera corrigee dans ce contexte."""
+    historique = charger_historique_conv(conversation_key)
+    if historique is None:
+        historique = list(conversations.get(conversation_key) or [])
+    historique = list(historique) + [{"role": "assistant", "content": texte}]
+    conversations[conversation_key] = historique[-10:]
+    sauver_historique_conv(conversation_key, conversations[conversation_key])
+
+
+def traiter_revisions_lendemain(now=None):
+    now = now or datetime.now(timezone.utc)
+    if now.hour not in REVISION_HEURES_ENVOI:
+        return {"revisions": 0}
+    envoyees = 0
+    for phone, session in lister_sessions_pour_revision(now):
+        if envoyees >= REVISION_MAX_PAR_TACHE:
+            break
+        if not session_eligible_revision(session):
+            continue
+        profile = charger_etat_whatsapp(phone) or {}
+        # Pas de revision si l'eleve l'a refusee, ou s'il a change de matiere ou de mode depuis.
+        if profile.get("revisions_off") or cle_conversation_profil(phone, profile) != session.get("conversation_key"):
+            noter_session_bilan(phone, {"revision_envoyee": True, "revision_statut": "ignoree"})
+            continue
+        if not reserver_revision(phone):
+            continue
+        texte = generer_revision(session, profile)
+        if not texte:
+            noter_session_bilan(phone, {"revision_statut": "echec"})
+            continue
+        user_profiles[phone] = profile
+        send_whatsapp(phone, f"{texte}\n\n{MESSAGE_ARRET_REVISION}", allow_audio=False)
+        ajouter_a_historique(session.get("conversation_key"), texte)
+        noter_session_bilan(phone, {"revision_statut": "envoyee"})
+        envoyees += 1
+        print(f"REVISION_LENDEMAIN envoyee matiere={session.get('matiere')}", flush=True)
+    return {"revisions": envoyees}
+
+
 def envoyer_fin_de_session(phone, source="au_revoir"):
     min_echanges = 1 if source == "au_revoir" else BILAN_MIN_ECHANGES_INACTIVITE
     session = reserver_bilan(phone, source, min_echanges=min_echanges)
@@ -2644,6 +2815,7 @@ def envoyer_fin_de_session(phone, source="au_revoir"):
         return False
     texte = generer_bilan_session(session, source)
     send_whatsapp(phone, texte, allow_audio=False)
+    noter_session_bilan(phone, {"bilan_texte": texte[:2000]})
     demander_avis_seance(phone)
     print(f"FIN_SESSION envoyee source={source} echanges={session.get('nb_echanges')}", flush=True)
     return True
@@ -2805,6 +2977,7 @@ def get_recent_phone_context_text(phone, max_items=6):
         if key.startswith(prefix) and items:
             best_items.extend(items[-max_items:])
 
+    last_assistant = load_last_assistant_context(phone)
     if best_items:
         lines = []
         for item in best_items[-max_items:]:
@@ -2812,10 +2985,11 @@ def get_recent_phone_context_text(phone, max_items=6):
             content = item.get("content", "")
             if content:
                 lines.append(f"{role}: {content}")
+        if last_assistant and not any(last_assistant.strip() in str(i.get("content", "")) for i in best_items[-max_items:]):
+            lines.append(f"assistant: {last_assistant}")
         if lines:
             return "\n".join(lines)
 
-    last_assistant = load_last_assistant_context(phone)
     if last_assistant:
         return f"assistant: {last_assistant}"
 
@@ -3105,6 +3279,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
             active_session=prepared_active_session if p0_enabled() else None,
             raise_on_error=p0_enabled(),
             return_details=p0_enabled(),
+            classe=profile.get("classe"),
         )
         if p0_enabled():
             reponse, transition_details = normalize_p0_response(akili_result)
@@ -3509,7 +3684,7 @@ def strip_filler_opening(text):
 
 def get_akili_response(question, matiere, serie, history, phone="whatsapp_user", type_examen=None,
                        mode=None, media_file=None, user_type=None, raise_on_error=False,
-                       return_details=False, active_session=None):
+                       return_details=False, active_session=None, classe=None):
     try:
         # Sécurité: si l'appelant oublie user_type, on redétecte ici.
         if not user_type and is_teacher_request(question):
@@ -3603,7 +3778,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             + teacher_instruction
             + (f"\nGUIDELINES MATIERE:\n{subject_guidelines}\n" if subject_guidelines else "")
         )
-        instructions_whatsapp += consigne_matiere_choisie(matiere, serie, type_examen)
+        instructions_whatsapp += consigne_matiere_choisie(matiere, serie, type_examen, classe)
 
         format_guard = ""
         if (user_type or "").upper() == "ENSEIGNANT" and (matiere or "").upper() == "ESPAGNOL":
@@ -3668,6 +3843,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             # parce qu'elle recevait une chaîne déjà mise en forme.
             "history": json.dumps(history[-6:], ensure_ascii=False),
             "user_type": user_type or "",
+            "classe": classe or "",
         }
 
 
@@ -3747,6 +3923,10 @@ async def tache_bilans_inactivite(request: Request):
     if not secret or not hmac.compare_digest(secret, fourni):
         return JSONResponse(status_code=403, content={"status": "forbidden"})
     resultat = traiter_bilans_inactivite()
+    try:
+        resultat.update(traiter_revisions_lendemain())
+    except Exception as e:
+        print(f"Erreur traiter_revisions_lendemain: {repr(e)}", flush=True)
     print(f"TACHE_BILANS_INACTIVITE {resultat}", flush=True)
     return {"status": "ok", **resultat}
 
@@ -3986,6 +4166,18 @@ async def _receive_message_impl(request: Request):
         command = text.strip().lower()
         onboarding_step = profile.get("onboarding_step")
         print(f"SHORT_DEBUG text={text} is_short={is_short_exercise_answer(text)} is_contextual={is_contextual_exercise_answer(text)} onboarding={onboarding_step}", flush=True)
+        if normalize_for_match(text) in COMMANDES_ARRET_REVISION | COMMANDES_REPRISE_REVISION:
+            arret = normalize_for_match(text) in COMMANDES_ARRET_REVISION
+            profile["revisions_off"] = arret
+            user_profiles[phone] = profile
+            send_whatsapp(phone, (
+                "C'est noté, je ne t'enverrai plus de défi de révision. Écris « révisions » pour les retrouver."
+                if arret else
+                "C'est noté : je t'enverrai un petit défi de révision le lendemain de tes séances."
+            ), allow_audio=False)
+            track_inbound("revisions_off" if arret else "revisions_on", profile)
+            return {"status": "ok", "reason": "revisions_off" if arret else "revisions_on"}
+
         note_en_attente = commentaire_avis_attendu(profile, text)
         if note_en_attente:
             profile.pop("attente_commentaire_avis", None)

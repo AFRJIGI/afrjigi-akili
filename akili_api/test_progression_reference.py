@@ -10,10 +10,11 @@ from pathlib import Path
 SOURCE = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
 VOULUES = {"serie_match", "normaliser_libelle_classe", "niveau_demande",
            "progression_de_reference", "consigne_progression"}
+NOMS = {"MOIS_FR", "CLASSES_CONNUES"}
 ns = {"re": re, "unicodedata": unicodedata, "datetime": datetime, "timezone": timezone}
 noeuds = [n for n in ast.parse(SOURCE).body
           if (isinstance(n, ast.FunctionDef) and n.name in VOULUES)
-          or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "MOIS_FR" for t in n.targets))]
+          or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") in NOMS for t in n.targets))]
 exec(compile(ast.Module(body=noeuds, type_ignores=[]), "main.py", "exec"), ns)
 
 
@@ -46,6 +47,14 @@ class ProgressionReferenceTests(unittest.TestCase):
     def test_classe_citee_par_l_eleve(self):
         self.assertEqual(self.ref("CMI", "F1", "je suis en premiere, un exercice"), "cmi_1f1")
         self.assertEqual(self.ref("CMI", "F3", "exercice de seconde"), "cmi_2t1")
+
+    def test_classe_du_profil(self):
+        ref = lambda question, classe: ns["progression_de_reference"](DOCS, "CMI", "F1", "BAC_TECHNIQUE", question, classe=classe)["id"]
+        self.assertEqual(ref("Propose-moi un exercice", "PREMIERE"), "cmi_1f1")
+        self.assertEqual(ref("Propose-moi un exercice", "SECONDE"), "cmi_2t1")
+        self.assertEqual(ref("un exercice de terminale", "PREMIERE"), "cmi_tf1")
+        self.assertEqual(ref("exercice de seconde", "PREMIERE"), "cmi_2t1")  # la question l'emporte
+        self.assertEqual(ref("Propose-moi un exercice", None), "cmi_tf1")
 
     def test_progressions_multi_classes(self):
         self.assertEqual(self.ref("RDM", "F4"), "rdm_f4")

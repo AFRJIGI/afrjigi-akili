@@ -425,7 +425,10 @@ def niveau_demande(question):
     return "TERMINALE"
 
 
-def progression_de_reference(docs, matiere, serie, examen, question=""):
+CLASSES_CONNUES = {"SECONDE", "PREMIERE", "TERMINALE"}
+
+
+def progression_de_reference(docs, matiere, serie, examen, question="", classe=None):
     """Progression officielle de la matiere, de la serie et de la classe de l'eleve.
     Elle est ajoutee au contexte meme si la question ne partage aucun mot avec elle
     ("Propose-moi un exercice"), pour qu'Akili suive le programme de la classe."""
@@ -439,7 +442,14 @@ def progression_de_reference(docs, matiere, serie, examen, question=""):
         and str(d.get("examen") or "").upper().strip() in {examen, "TOUS"}
         and serie_match(d.get("serie"), serie)
     ]
-    niveau = niveau_demande(question)
+    # Une classe citee dans la question l'emporte, puis la classe du profil, puis Terminale.
+    q = normaliser_libelle_classe(question)
+    if re.search(r"\b(SECONDE|2NDE|2ND|PREMIERE|1ERE|1IERE|TERMINALE|TLE)\b", q):
+        niveau = niveau_demande(question)
+    elif str(classe or "").upper().strip() in CLASSES_CONNUES:
+        niveau = str(classe).upper().strip()
+    else:
+        niveau = "TERMINALE"
 
     def rang(doc):
         n = str(doc.get("niveau") or "").upper()
@@ -612,7 +622,8 @@ async def ask_question(
     file: Optional[UploadFile] = File(None),
     mode_oral: Optional[str] = Form(None),
     history: Optional[str] = Form(None),
-    mode: Optional[str] = Form("etude")
+    mode: Optional[str] = Form("etude"),
+    classe: Optional[str] = Form(None),
 ):
     try:
         if not email:
@@ -701,7 +712,7 @@ async def ask_question(
         ) if question_recherche else []
 
         progression = progression_de_reference(
-            documents, matiere_registre, serie, examen_registre, question_recherche
+            documents, matiere_registre, serie, examen_registre, question_recherche, classe=classe
         )
         if progression and all(d.get("id") != progression.get("id") for d in contexte_docs):
             contexte_docs = [progression] + contexte_docs[:5]
@@ -1233,6 +1244,84 @@ async def bilan_session(
     except Exception as e:
         print(f"❌ Erreur bilan-session ({type(e).__module__}.{type(e).__name__}) : {e}", flush=True)
         return {"error": f"Erreur lors du bilan : {str(e)}"}
+
+
+REVISION_CONSIGNES = """Hier, l'eleve a travaille avec toi. Prepare le message de revision d'aujourd'hui, tres court :
+1. Premiere phrase : "Hier, tu as travaillé " suivi de la notion principale de la seance, en quelques mots.
+2. Puis exactement : "Petit défi de 2 minutes :" suivi d'UNE seule question sur le point "a revoir" du bilan (a defaut, sur la notion principale de la seance).
+3. La question est un QCM a 3 choix, chacun sur sa propre ligne : "a. ...", "b. ...", "c. ...". Une seule bonne reponse.
+4. Derniere ligne exactement : "Réponds par a, b ou c."
+
+REGLES :
+- Ne donne jamais la bonne reponse, ni d'indice, ni d'explication.
+- Appuie-toi UNIQUEMENT sur l'historique et le bilan ci-dessous ; n'invente pas de notion qui n'y figure pas.
+- Tutoie l'eleve. Aucune salutation, aucun compliment.
+- Maximum 500 caracteres.
+- Aucune syntaxe LaTeX : ecris les formules en texte simple (x^2, 1/2, racine carree de x).
+- Pour le gras, un seul asterisque de chaque cote (*mot*), jamais deux."""
+
+
+def generer_texte_gemini(prompt, nom="texte"):
+    """Appel Gemini avec 3 essais en cas de quota ; texte vide si rien n'est produit."""
+    response = None
+    for tentative in range(3):
+        try:
+            response = model.generate_content([prompt])
+            break
+        except Exception as e:
+            if not (isinstance(e, TooManyRequests) or "429" in str(e) or "resource exhausted" in str(e).lower()):
+                raise
+            print(f"⚠️ {nom} : quota Vertex AI (tentative {tentative + 1}/3)", flush=True)
+            if tentative < 2:
+                time.sleep(2 * (tentative + 1))
+    if response is None:
+        return ""
+    try:
+        texte = response.text
+    except ValueError:
+        texte = "".join(
+            (getattr(part, "text", "") or "")
+            for cand in (response.candidates or [])[:1]
+            for part in (cand.content.parts or [])
+        )
+    return (texte or "").strip()
+
+
+@app.post("/revision-lendemain")
+async def revision_lendemain(
+    historique: str = Form(...),
+    bilan: Optional[str] = Form(""),
+    matiere: Optional[str] = Form(None),
+    serie: Optional[str] = Form(None),
+    type_examen: Optional[str] = Form(None),
+    classe: Optional[str] = Form(None),
+):
+    """Petit defi de revision envoye le lendemain d'une seance (QCM sur le point a revoir)."""
+    try:
+        try:
+            messages = json.loads(historique or "[]")
+        except ValueError:
+            messages = []
+        lignes = [
+            f"{'Eleve' if m.get('role') == 'user' else 'Akili'}: {str(m.get('content', ''))[:1200]}"
+            for m in messages[-30:] if isinstance(m, dict) and m.get("content")
+        ]
+        if not lignes:
+            return {"error": "Historique vide"}
+        niveau = " ".join(x for x in [type_examen or "", serie or "", classe or ""] if x)
+        prompt = (
+            f"Tu es Akili, tuteur de l'eleve (matiere : {matiere or 'non precisee'}, niveau : {niveau}).\n\n"
+            f"{REVISION_CONSIGNES}\n\nBILAN DE LA SEANCE D'HIER :\n{(bilan or '')[:2000]}\n\n"
+            "HISTORIQUE DE LA SEANCE D'HIER :\n" + "\n".join(lignes)
+        )
+        texte = generer_texte_gemini(prompt, "Revision")
+        if not texte:
+            return {"error": "Revision vide"}
+        print(f"REVISION_LENDEMAIN matiere={matiere} messages={len(lignes)}", flush=True)
+        return {"reponse": texte}
+    except Exception as e:
+        print(f"❌ Erreur revision-lendemain ({type(e).__module__}.{type(e).__name__}) : {e}", flush=True)
+        return {"error": f"Erreur lors de la revision : {str(e)}"}
 
 
 @app.get("/")
