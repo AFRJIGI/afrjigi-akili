@@ -3,6 +3,7 @@
   python3 verifier_progressions_generales.py            # toutes les matieres
   python3 verifier_progressions_generales.py FRENCH     # une matiere
   python3 verifier_progressions_generales.py --voir ANGLAIS 4E   # le debut de la partie retenue
+  python3 verifier_progressions_generales.py --titres ANGLAIS 4E # les titres de classe reperes
 
 Pour chaque matiere et chaque classe : la progression choisie, la longueur de la partie
 retenue et son debut. "AUCUNE" veut dire qu'Akili n'utilisera pas de progression.
@@ -42,6 +43,18 @@ def main():
         examen = dict(CLASSES).get(serie, "BAC_GENERAL")
         p = ns["progression_de_reference"](docs, matiere, serie, examen, "Propose-moi un exercice")
         print(p["texte"][:2500] if p else "AUCUNE")
+        return
+    if len(sys.argv) >= 4 and sys.argv[1] == "--titres":
+        matiere, serie = sys.argv[2], sys.argv[3]
+        examen = dict(CLASSES).get(serie, "BAC_GENERAL")
+        p = ns["progression_de_reference"](docs, matiere, serie, examen, "Propose-moi un exercice")
+        if not p:
+            print("AUCUNE")
+            return
+        original = next(d for d in docs if d.get("id") == p.get("id"))
+        print(f"Document : {original.get('niveau')} ({len(original.get('texte', ''))} car.)")
+        for pos, codes, ligne in ns["titres_de_classes"](original.get("texte", "")):
+            print(f"  {pos:7} {'/'.join(sorted(codes)):12} {ligne[:90]}")
         return
     matieres = sorted({d.get("matiere") for d in docs if d.get("examen") == "TOUS"
                        and str(d.get("type_doc", "")).startswith("PROGRESSION")})

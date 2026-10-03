@@ -484,15 +484,22 @@ def titres_de_classes(texte):
     """[(position, codes des classes, ligne)] des lignes de titre qui annoncent une ou plusieurs
     classes ("Classe de Quatrieme / Troisieme" vaut pour la 4e et la 3e)."""
     plat = aplatir(texte)
+    lignes_plates = plat.split("\n")
+    # La part de majuscules se mesure sur le texte d'origine : "plat" est tout en majuscules,
+    # et une ligne de lecon ("Reading a 5e text") passait pour un titre de classe.
+    lignes_origine = str(texte or "").split("\n")
+    if len(lignes_origine) != len(lignes_plates):
+        lignes_origine = lignes_plates
     titres = []
     position = 0
-    for ligne in plat.split("\n"):
+    for ligne, origine in zip(lignes_plates, lignes_origine):
         propre = ligne.strip(" *#-:|\t")
         if 0 < len(propre) <= 140:
-            lettres = [c for c in propre if c.isalpha()]
+            lettres = [c for c in origine.strip(" *#-:|\t") if c.isalpha()]
+            majuscules = bool(lettres) and sum(c.isupper() for c in lettres) / len(lettres) > 0.9
             titre = (ligne.lstrip().startswith(("**", "#")) or "CLASSE" in propre or "CLASS:" in propre
                      or "PROGRESSION" in propre
-                     or (lettres and sum(c.isupper() for c in lettres) / len(lettres) > 0.9 and len(propre) <= 60))
+                     or (majuscules and len(propre) <= 60))
             if titre:
                 # "TROISIEME TRIMESTRE" ou "PREMIERE SEMAINE" ne sont pas des classes.
                 codes = frozenset(

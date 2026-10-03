@@ -94,6 +94,23 @@ class ProgressionGeneraleTests(unittest.TestCase):
         self.assertIsNone(ref([pc], "PC", "A2", "BAC_GENERAL"))  # pas de PC en Terminale A dans ce document
         self.assertIn("optique D", ref([pc], "PC", "D", "BAC_GENERAL")["texte"])
 
+    def test_ligne_de_lecon_n_est_pas_un_titre(self):
+        # Un tableau d'anglais de 4e cite "a 5e text" ou "the 3e test" : la partie 4e ne doit pas etre coupee.
+        ang = doc("ang1", "ANGLAIS", "1ER_CYCLE",
+                  "PROGRESSION NATIONALE 2026-2027 / CLASSE DE QUATRIEME\n"
+                  "Mois | Semaine | Thèmes | Compétences | Leçons\n---|---|---|---|---\n"
+                  "| 2 | | | 4- Reading a 5e text about environment |\n"
+                  "| | | | Revision of 3e grammar |\n"
+                  "Review of 6e words\n"
+                  "| Octobre | 5 | | | 7- Writing a letter |\n"
+                  "| QUATRIEME |\nsuite 4e\n"
+                  "PROGRESSION NATIONALE 2026-2027 / CLASSE DE TROISIEME\nunit 3e\n")
+        texte = ns["progression_de_reference"]([ang], "ANGLAIS", "4E", "CLASSE_INTERMEDIAIRE")["texte"]
+        self.assertIn("Writing a letter", texte)
+        self.assertIn("suite 4e", texte)  # une ligne de tableau tout en majuscules reste un titre
+        self.assertNotIn("unit 3e", texte)
+        self.assertIn("unit 3e", ns["progression_de_reference"]([ang], "ANGLAIS", "BEPC", "BEPC")["texte"])
+
     def test_jamais_la_progression_d_une_autre_classe(self):
         self.assertIsNone(prog("PHILO", "BEPC", "BEPC"))  # pas de philo au premier cycle
         self.assertIsNone(prog("ANGLAIS", "BEPC", "BEPC"))  # seul le 2nd cycle est dans DOCS
