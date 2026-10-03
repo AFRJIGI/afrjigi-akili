@@ -35,8 +35,14 @@ FR_ADMIN = doc("fr_admin", "FRENCH", "1ER_CYCLE_ADMIN", "**Classe: SIXIÈME**\nc
 FR_PEDAGO = doc("fr_pedago", "FRENCH", "1ER_CYCLE_PEDAGO", "**Classe: Sixième**\nséance conte 6e\n**TROISIEME (3e)**\nséance dialogue argumentatif 3e\n")
 ANGLAIS2 = doc("ang2", "ANGLAIS", "2ND_CYCLE",
                "**Progression Nationale-Secondes A et C**\nunit 1 people\n**PROGRESSION PREMIERES A**\nunit A\n**PROGRESSION PREMIERES C et D**\nunit CD\n")
+MATHS_A = doc("mathsA", "MATHS", "TOUS_CYCLES",
+              "**Classe: 1ère A1**\npremiere A1\n**Classe: 1ère A2**\npremiere A2\n**Classe: 1ère C**\npremiere C\n"
+              "**Classe: Terminale A1**\nterminale A1\n**Classe: Terminale A2**\nterminale A2\n")
+HG = doc("hg", "HG", "TOUS_CYCLES",
+         "**Progression Annuelle d'HISTOIRE - Terminale**\nhistoire terminale\n"
+         "**Progression Annuelle de GEOGRAPHIE - Terminale**\ngeographie terminale\n")
 PHILO = doc("philo", "PHILO", "2ND_CYCLE", "**CLASSES: PREMIERES A1-A2**\nla philosophie\n**CLASSES: TERMINALES A**\nla conscience\n")
-DOCS = [MATHS, EDHC, FR_ADMIN, FR_PEDAGO, ANGLAIS2, PHILO]
+DOCS = [MATHS, EDHC, FR_ADMIN, FR_PEDAGO, ANGLAIS2, PHILO, HG]
 
 
 def prog(matiere, serie, examen):
@@ -67,6 +73,17 @@ class ProgressionGeneraleTests(unittest.TestCase):
         self.assertIn("unit CD", prog("ANGLAIS", "PREMIERE_C", "CLASSE_INTERMEDIAIRE")["texte"])
         self.assertIn("unit 1 people", prog("ANGLAIS", "SECONDE_A", "CLASSE_INTERMEDIAIRE")["texte"])
         self.assertIn("la conscience", prog("PHILO", "A2", "BAC_GENERAL")["texte"])
+
+    def test_series_a1_a2_et_apostrophe(self):
+        docs = [MATHS_A]
+        ref = lambda serie, examen: ns["progression_de_reference"](docs, "MATHS", serie, examen)["texte"]
+        self.assertIn("terminale A2", ref("A2", "BAC_GENERAL"))
+        self.assertNotIn("terminale A1", ref("A2", "BAC_GENERAL"))
+        self.assertIn("premiere A1", ref("PREMIERE_A", "CLASSE_INTERMEDIAIRE"))
+        self.assertNotIn("premiere C", ref("PREMIERE_A", "CLASSE_INTERMEDIAIRE"))
+        hg = prog("HG", "D", "BAC_GENERAL")["texte"]  # "D'HISTOIRE" n'est pas la serie D
+        self.assertIn("histoire terminale", hg)
+        self.assertIn("geographie terminale", hg)
 
     def test_jamais_la_progression_d_une_autre_classe(self):
         self.assertIsNone(prog("PHILO", "BEPC", "BEPC"))  # pas de philo au premier cycle

@@ -517,8 +517,16 @@ def section_de_classe(texte, code, lettre=None):
     if not morceaux:
         return None
     if lettre:
-        avec_lettre = [m for m in morceaux if re.search(rf"(?<![A-Z0-9]){lettre[0]}(?:\d|\b|\s|$)", m[0])]
-        morceaux = avec_lettre or morceaux
+        # Du plus precis au plus large : "A2" exactement, puis "A" seul ("Terminale A"),
+        # puis "A" suivi d'un chiffre ("1ere A1" pour un eleve de Premiere A).
+        # L'apostrophe exclut "D'HISTOIRE", qui n'est pas la serie D.
+        for motif in (rf"(?<![A-Z0-9]){lettre}(?![0-9A-Z'’])",
+                      rf"(?<![A-Z0-9]){lettre[0]}(?![0-9A-Z'’])",
+                      rf"(?<![A-Z0-9]){lettre[0]}\d"):
+            avec_lettre = [m for m in morceaux if re.search(motif, m[0])]
+            if avec_lettre:
+                morceaux = avec_lettre
+                break
     return "\n".join(m[1] for m in morceaux)
 
 
