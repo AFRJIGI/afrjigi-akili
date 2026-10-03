@@ -481,7 +481,8 @@ def classe_generale(serie, examen):
 
 
 def titres_de_classes(texte):
-    """[(position, code classe, ligne)] des lignes de titre qui annoncent une classe."""
+    """[(position, codes des classes, ligne)] des lignes de titre qui annoncent une ou plusieurs
+    classes ("Classe de Quatrieme / Troisieme" vaut pour la 4e et la 3e)."""
     plat = aplatir(texte)
     titres = []
     position = 0
@@ -493,11 +494,13 @@ def titres_de_classes(texte):
                      or "PROGRESSION" in propre
                      or (lettres and sum(c.isupper() for c in lettres) / len(lettres) > 0.9 and len(propre) <= 60))
             if titre:
-                for code, motif in ALIAS_CLASSES.items():
-                    # "TROISIEME TRIMESTRE" ou "PREMIERE SEMAINE" ne sont pas des classes.
-                    if re.search(rf"(?<![A-Z0-9])(?:{motif})(?![A-Z])(?!\s*(?:TRIMESTRE|SEMESTRE|PERIODE|SEMAINE|PARTIE|LECON|SEQUENCE|ANNEE|EVALUATION|DEVOIR))", propre):
-                        titres.append((position, code, propre))
-                        break
+                # "TROISIEME TRIMESTRE" ou "PREMIERE SEMAINE" ne sont pas des classes.
+                codes = frozenset(
+                    code for code, motif in ALIAS_CLASSES.items()
+                    if re.search(rf"(?<![A-Z0-9])(?:{motif})(?![A-Z])(?!\s*(?:TRIMESTRE|SEMESTRE|PERIODE|SEMAINE|PARTIE|LECON|SEQUENCE|ANNEE|EVALUATION|DEVOIR))", propre)
+                )
+                if codes:
+                    titres.append((position, codes, propre))
         position += len(ligne) + 1
     return titres
 
@@ -510,9 +513,9 @@ def section_de_classe(texte, code, lettre=None):
     # Chaque titre de classe ouvre une section (Terminale C puis Terminale D : deux sections).
     debuts = titres
     morceaux = []
-    for i, (pos, c, ligne) in enumerate(debuts):
+    for i, (pos, codes, ligne) in enumerate(debuts):
         fin = debuts[i + 1][0] if i + 1 < len(debuts) else len(texte)
-        if c == code:
+        if code in codes:
             morceaux.append((ligne, texte[pos:fin]))
     if not morceaux:
         return None
@@ -527,6 +530,12 @@ def section_de_classe(texte, code, lettre=None):
             if avec_lettre:
                 morceaux = avec_lettre
                 break
+        else:
+            # Aucune partie pour cette serie, et chaque partie annonce une autre serie
+            # (Terminale C, Terminale D pour un eleve de Terminale A) : pas de progression.
+            serie_annoncee = r"(?<![A-Z0-9])(?:A1|A2|A|C|D|E)(?![0-9A-Z'’])"
+            if all(re.search(serie_annoncee, m[0]) for m in morceaux):
+                return None
     return "\n".join(m[1] for m in morceaux)
 
 

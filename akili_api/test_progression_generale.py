@@ -85,6 +85,15 @@ class ProgressionGeneraleTests(unittest.TestCase):
         self.assertIn("histoire terminale", hg)
         self.assertIn("geographie terminale", hg)
 
+    def test_titre_de_plusieurs_classes_et_serie_absente(self):
+        eps = doc("eps", "EPS", "1ER_CYCLE", "**SIXIEME - CINQUIEME**\nbasket 6e 5e\n**Classe de Quatrième / Troisième**\nathletisme 4e 3e\n")
+        pc = doc("pc", "PC", "TOUS_CYCLES", "**Classe: TERMINALE C**\nmecanique C\n**Classe: TERMINALE D**\noptique D\n")
+        ref = lambda docs, m, serie, examen: ns["progression_de_reference"](docs, m, serie, examen)
+        self.assertIn("athletisme", ref([eps], "EPS", "BEPC", "BEPC")["texte"])
+        self.assertIn("basket", ref([eps], "EPS", "5E", "CLASSE_INTERMEDIAIRE")["texte"])
+        self.assertIsNone(ref([pc], "PC", "A2", "BAC_GENERAL"))  # pas de PC en Terminale A dans ce document
+        self.assertIn("optique D", ref([pc], "PC", "D", "BAC_GENERAL")["texte"])
+
     def test_jamais_la_progression_d_une_autre_classe(self):
         self.assertIsNone(prog("PHILO", "BEPC", "BEPC"))  # pas de philo au premier cycle
         self.assertIsNone(prog("ANGLAIS", "BEPC", "BEPC"))  # seul le 2nd cycle est dans DOCS
