@@ -52,6 +52,11 @@ Signale chaque probleme avec un de ces types :
 - format : LaTeX, vouvoiement, mise en forme cassee
 - autre
 
+Important : juge uniquement Akili. Une erreur de l'eleve, corrigee par Akili, n'est pas un probleme.
+"[photo]", "[document]" et "[audio]" signalent un fichier reellement envoye par l'eleve.
+Les messages automatiques de l'inscription (niveau, serie, matiere, mode, ville, ecole) ne sont pas a juger
+sur le fond ; signale seulement une vraie boucle ou un choix de l'eleve mal enregistre.
+
 Gravite : "grave" (l'eleve apprend une erreur ou ne peut pas avancer), "moyenne", "faible".
 Reponds UNIQUEMENT en JSON, sans texte autour :
 {{"note": <1 a 5, 5 = excellent>, "resume": "<une phrase>",

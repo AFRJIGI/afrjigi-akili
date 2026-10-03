@@ -1105,6 +1105,112 @@ def choice_key(text):
     return mapping.get(c)
 
 
+MESSAGE_HORS_CHAMP = (
+    "Akili accompagne les élèves de la 6e à la Terminale : BEPC, BAC Général et BAC Technique. "
+    "Si tu es dans l'une de ces classes, choisis ton niveau :"
+)
+
+
+DEMANDES_EXPLICATION = [
+    "EXPLIQUE", "EXPLIQUER", "EXPLIQUEZ", "GUIDE MOI", "GUIDEZ MOI", "GUIDER", "PAS A PAS",
+    "JE NE COMPRENDS PAS", "JE COMPRENDS PAS", "J AI PAS COMPRIS", "JE N AI PAS COMPRIS",
+    "COMMENT ON FAIT", "COMMENT FAIRE", "AIDE MOI", "AIDEZ MOI", "TRAITE MOI", "TRAITE CET EXERCICE",
+    "RESOUS", "RESOUDRE POUR MOI", "DONNE MOI LA REPONSE", "DONNE LA REPONSE", "JE SUIS BLOQUE",
+    "JE NE SAIS PAS", "JE SAIS PAS", "MONTRE MOI",
+]
+OFFRE_MODE_ETUDE = (
+    "En mode examen, Akili ne donne pas d'explication : tu résous seul, puis il corrige et note ta copie.\n\n"
+    "Tu veux plutôt que je t'explique pas à pas ? Passe en mode étude."
+)
+BOUTONS_MODE = [("mode_etude_oui", "Oui, mode étude"), ("mode_examen_garder", "Non, je continue")]
+OFFRE_MODE_PAUSE_MINUTES = 30
+
+
+def demande_explication(text):
+    msg = normalize_for_match(text)
+    if not msg or msg.startswith("ANALYSE CE SUJET ENVOYE"):
+        return False
+    return any(has_expr(msg, expr) for expr in DEMANDES_EXPLICATION)
+
+
+def proposer_mode_etude(phone, profile, text, now=None):
+    """Vrai si on vient de proposer le mode etude (eleve en mode examen qui demande de l'aide)."""
+    now = now or datetime.now(timezone.utc)
+    if (profile.get("mode") or "") != "examen" or not demande_explication(text):
+        return False
+    refus = parse_datetime(profile.get("offre_mode_etude_refusee_at"))
+    if refus and now - refus < timedelta(minutes=OFFRE_MODE_PAUSE_MINUTES):
+        return False
+    profile["demande_mode_etude"] = {"texte": text, "at": now.isoformat()}
+    if not send_whatsapp_boutons(phone, OFFRE_MODE_ETUDE, BOUTONS_MODE):
+        send_whatsapp(phone, OFFRE_MODE_ETUDE + "\n\nPour changer de mode, écris menu.", allow_audio=False)
+    return True
+
+
+def copier_historique(ancienne_cle, nouvelle_cle):
+    """L'exercice commence en mode examen continue en mode etude avec son historique."""
+    if ancienne_cle == nouvelle_cle:
+        return
+    nouveau = charger_historique_conv(nouvelle_cle)
+    if nouveau:
+        return
+    ancien = charger_historique_conv(ancienne_cle) or list(conversations.get(ancienne_cle) or [])
+    if ancien:
+        conversations[nouvelle_cle] = list(ancien)[-10:]
+        sauver_historique_conv(nouvelle_cle, conversations[nouvelle_cle])
+
+
+def traiter_bouton_mode(phone, bouton_id):
+    if bouton_id not in {"mode_etude_oui", "mode_examen_garder"}:
+        return False
+    profile = charger_etat_whatsapp(phone) or user_profiles.get(phone) or {}
+    demande = profile.pop("demande_mode_etude", None) or {}
+    if bouton_id == "mode_examen_garder":
+        profile["offre_mode_etude_refusee_at"] = datetime.now(timezone.utc).isoformat()
+        user_profiles[phone] = profile
+        sauver_etat_whatsapp(phone, profile)
+        send_whatsapp(phone, "D'accord, on reste en mode examen : résous l'exercice sur ta feuille, "
+                             "puis envoie la photo de ta copie.", allow_audio=False)
+        return True
+    ancienne_cle = cle_conversation_profil(phone, profile)
+    profile["mode"] = "etude"
+    copier_historique(ancienne_cle, cle_conversation_profil(phone, profile))
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    send_whatsapp(phone, "C'est noté, on passe en mode étude : je t'explique pas à pas.", allow_audio=False)
+    if demande.get("texte"):
+        answer_learning_request(phone, profile, demande["texte"])
+        sauver_etat_whatsapp(phone, user_profiles.get(phone, profile))
+    return True
+
+
+def recuperer_media_garde(media_info):
+    """Retelecharge la photo envoyee pendant l'inscription (WhatsApp la garde 30 jours)."""
+    if not media_info or not media_info.get("media_id"):
+        return None, None
+    try:
+        fichier = download_whatsapp_media(media_info["media_id"], media_info.get("filename") or "whatsapp_image",
+                                          media_info.get("mime_type") or "image/jpeg")
+    except Exception as e:
+        print(f"Erreur recuperer_media_garde: {repr(e)}", flush=True)
+        return None, None
+    if not fichier:
+        return None, None
+    contexte = {"id": None, "ref": None, "gcs_uri": None, "media_id": media_info["media_id"],
+                "mime_type": media_info.get("mime_type"), "sha256": None}
+    return fichier, contexte
+
+
+def repartir_premiere_question(profile):
+    """Sort un profil "AUTRE" (ancienne option Concours / autre) : retour a la premiere question."""
+    profile = dict(profile or {})
+    for cle in ("type_examen", "classe", "profile_locked", "profile_ready", "matiere_confirmed"):
+        profile.pop(cle, None)
+    profile["serie"] = "TOUTES"
+    profile["onboarding_step"] = "exam"
+    return profile
+
+
 def ask_exam(phone):
     send_whatsapp(phone,
         "Bienvenue sur Akili.\n\n"
@@ -1112,9 +1218,8 @@ def ask_exam(phone):
         "a. BEPC / 3e\n"
         "b. BAC Général\n"
         "c. BAC Technique\n"
-        "d. Classe intermédiaire : 6e, 5e, 4e, Seconde ou Première\n"
-        "e. Concours / autre\n\n"
-        "Réponds par a, b, c, d ou e."
+        "d. Classe intermédiaire : 6e, 5e, 4e, Seconde ou Première\n\n"
+        "Réponds par a, b, c ou d."
     )
 
 
@@ -1236,8 +1341,8 @@ def ask_matiere(phone, serie="TOUTES"):
 def ask_mode(phone):
     send_whatsapp(phone,
         "Tu veux travailler comment ?\n"
-        "a) Mode Étude : comprendre un cours\n"
-        "b) Mode Examen : s'entraîner\n\n"
+        "a) Mode Étude : Akili t'explique pas à pas\n"
+        "b) Mode Examen : tu fais seul, Akili corrige et note\n\n"
         "Réponds par a ou b."
     )
 
@@ -1286,7 +1391,6 @@ def mot_cle_vers_lettre(step, text, profile):
             "b": ["BAC GENERAL", "GENERAL"],
             "c": ["BAC TECHNIQUE", "TECHNIQUE"],
             "d": ["INTERMEDIAIRE", "6E", "5E", "4E", "SECONDE", "PREMIERE"],
-            "e": ["CONCOURS", "AUTRE"],
         },
         "serie_general": {
             "a": ["A1"], "b": ["A2"],
@@ -1438,14 +1542,6 @@ def handle_onboarding_choice(phone, profile, text):
             sauver_etat_whatsapp(phone, profile)
             ask_classe_intermediaire(phone)
             return True
-        if key == "e":
-            profile["type_examen"] = "AUTRE"
-            profile["serie"] = "AUTRE"
-            profile["onboarding_step"] = "autre"
-            user_profiles[phone] = profile
-            sauver_etat_whatsapp(phone, profile)
-            send_whatsapp(phone, "Akili accompagne surtout le collège, le lycée, le BEPC et le BAC. Pour ton concours ou ton niveau supérieur, précise la matière ou le besoin.")
-            return True
 
 
     if step == "serie_general":
@@ -1576,7 +1672,7 @@ def handle_onboarding_choice(phone, profile, text):
 
 # Etapes ou seule une lettre de la liste est attendue. L'etape "exam" n'y est pas :
 # l'eleve peut y ecrire son profil en toutes lettres ("Je suis en Terminale D...").
-ETAPES_A_REPOSER = {"serie_general", "serie_technique", "classe_technique", "seconde", "classe_intermediaire", "matiere", "mode"}
+ETAPES_A_REPOSER = {"exam", "serie_general", "serie_technique", "classe_technique", "seconde", "classe_intermediaire", "matiere", "mode"}
 MESSAGE_CHOIX_NON_COMPRIS = "Je n'ai pas compris ton choix. Réponds seulement avec la lettre de la liste."
 
 
@@ -1587,6 +1683,8 @@ def reposer_si_choix_attendu(phone, profile, text):
     if profile.get("onboarding_step") not in ETAPES_A_REPOSER:
         return False
     nb_mots = len(normalize_for_match(text).split())
+    if profile.get("onboarding_step") == "exam" and not re.fullmatch(r"[A-Za-z]", (text or "").strip()):
+        return False
     if nb_mots > 3 and (nb_mots > 6 or is_learning_request(text)):
         return False
     send_whatsapp(phone, MESSAGE_CHOIX_NON_COMPRIS)
@@ -1597,7 +1695,9 @@ def reposer_si_choix_attendu(phone, profile, text):
 def reposer_question_onboarding(phone, profile):
     """Renvoie la question de l'etape en cours. Faux si l'etape n'a pas de question a reposer."""
     step = profile.get("onboarding_step")
-    if step == "ville":
+    if step == "exam":
+        ask_exam(phone)
+    elif step == "ville":
         ask_ville(phone)
     elif step == "nom_ecole":
         ask_nom_ecole(phone)
@@ -1629,15 +1729,11 @@ MESSAGE_REPRISE_INSCRIPTION = "Bonjour ! On continue ton inscription là où tu 
 def needs_onboarding(phone, profile, text):
     msg = normalize_for_match(text)
 
-    if is_other_or_concours(text):
-        profile["type_examen"] = "AUTRE"
-        profile["serie"] = "AUTRE"
-        profile["onboarding_step"] = "autre"
+    if is_other_or_concours(text) and not is_profile_ready(profile):
+        profile.update(repartir_premiere_question(profile))
         user_profiles[phone] = profile
-        send_whatsapp(phone,
-            "Akili est d'abord conçu pour le BEPC et le BAC.\n\n"
-            "Mais je peux noter ton besoin pour concours / supérieur. Précise ce que tu veux travailler : français, culture générale, raisonnement, biologie, etc."
-        )
+        send_whatsapp(phone, MESSAGE_HORS_CHAMP)
+        ask_exam(phone)
         return True
 
     if has_expr(msg, "SECONDE") and profile.get("serie") in {"TOUTES", "", None}:
@@ -2188,7 +2284,7 @@ def send_vector_formula_if_needed(phone, raw_message):
 
 
 def send_whatsapp(
-    to, message, limit=850, add_continuation=True, persist_event=True, allow_audio=True
+    to, message, limit=1600, add_continuation=True, persist_event=True, allow_audio=True
 ):
     message = clean_whatsapp_response(message)
 
@@ -3015,6 +3111,10 @@ def short_answer_has_exercise_context(phone):
     ]
     if any(m in ctx for m in markers):
         return True
+    # Akili vient de poser une question (calcul, definition...) : la reponse courte s'y rattache.
+    derniere = load_last_assistant_context(phone)
+    if derniere and "?" in derniere[-300:]:
+        return True
     # Reconnaitre un QCM au format a) b) c) d)  ou  a- b- c-  ou  a. b. c.
     import re as _re
     choix = _re.findall(r"(?im)^\s*[a-eA-E1-6]\s*[\)\.\-]", ctx_brut or "")
@@ -3159,6 +3259,12 @@ def enforce_teacher_whatsapp_limit(text, limit=900):
     return shortened
 
 
+MESSAGE_SUJET_INDISPONIBLE = (
+    "Je n'ai plus le sujet de cet exercice. Renvoie-moi la photo du sujet ou recopie l'énoncé, "
+    "et je continue avec toi."
+)
+
+
 def mentions_user_document_without_content(text):
     t = normalize_for_match(text or "")
     compact = " ".join(t.split())
@@ -3261,7 +3367,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     if mentions_user_document_without_content(texte_eleve) and media_file is None and not profile.get("last_document_text"):
         send_whatsapp(
             phone,
-            "Je n'arrive pas à lire clairement le contenu du fichier. Peux-tu envoyer une image plus nette ou recopier l'énoncé ?"
+            MESSAGE_SUJET_INDISPONIBLE
         )
         return
 
@@ -4007,6 +4113,12 @@ async def _receive_message_impl(request: Request):
             processed_messages.add(message_id)
         media_file = None
         document_context = None
+        media_info = None
+        legende = ""
+        try:
+            recu_le = datetime.fromtimestamp(int(msg.get("timestamp")), timezone.utc).isoformat()
+        except (TypeError, ValueError):
+            recu_le = datetime.now(timezone.utc).isoformat()
         incoming_was_audio = msg_type in {"audio", "voice"}
         audio_reply_context[phone] = incoming_was_audio
         print(f"WHATSAPP_AUDIO_REPLY incoming_was_audio={incoming_was_audio} msg_type={msg_type}", flush=True)
@@ -4016,6 +4128,7 @@ async def _receive_message_impl(request: Request):
             media = msg.get(media_key, {})
             media_id = media.get("id")
             caption = (media.get("caption") or "").strip()
+            legende = caption
             filename = media.get("filename") or f"whatsapp_{msg_type}"
             fallback_mime = media.get("mime_type") or (
                 "audio/ogg" if msg_type == "audio" else
@@ -4025,6 +4138,7 @@ async def _receive_message_impl(request: Request):
 
             if media_id:
                 if msg_type in {"document", "image"}:
+                    media_info = {"media_id": media_id, "filename": filename, "mime_type": fallback_mime}
                     document_context = {
                         "id": None,
                         "ref": None,
@@ -4054,6 +4168,8 @@ async def _receive_message_impl(request: Request):
         if bouton_id:
             if traiter_bouton_avis(phone, bouton_id):
                 return {"status": "ok", "reason": "avis_seance"}
+            if traiter_bouton_mode(phone, bouton_id):
+                return {"status": "ok", "reason": "choix_mode"}
             return {"status": "ok", "reason": "bouton_inconnu"}
 
         if len(processed_messages) > 1000:
@@ -4061,6 +4177,14 @@ async def _receive_message_impl(request: Request):
 
         if not text:
             return {"status": "ok"}
+
+        # Ce qui est garde dans le journal : le message tel que l'eleve l'a envoye.
+        if media_info:
+            texte_journal = f"[{'photo' if msg_type == 'image' else 'document'}] {legende}".strip()
+        elif incoming_was_audio:
+            texte_journal = f"[audio] {text}"
+        else:
+            texte_journal = text
 
         consent_decision = detect_marketing_consent_command(text)
         if consent_decision:
@@ -4137,10 +4261,12 @@ async def _receive_message_impl(request: Request):
             save_whatsapp_event(
                 phone,
                 "inbound",
-                text,
+                texte_journal,
                 after,
                 message_id,
                 extra={
+                    "created_at": recu_le,
+                    "texte_traite": text[:1000] if text != texte_journal else "",
                     "processing_stage": stage,
                     "serie_before": profile_before.get("serie", ""),
                     "matiere_before": profile_before.get("matiere", ""),
@@ -4177,6 +4303,12 @@ async def _receive_message_impl(request: Request):
             ), allow_audio=False)
             track_inbound("revisions_off" if arret else "revisions_on", profile)
             return {"status": "ok", "reason": "revisions_off" if arret else "revisions_on"}
+
+        if not onboarding_step and is_profile_ready(profile) and media_file is None \
+                and proposer_mode_etude(phone, profile, text):
+            user_profiles[phone] = profile
+            track_inbound("offre_mode_etude", profile)
+            return {"status": "ok", "reason": "offre_mode_etude"}
 
         note_en_attente = commentaire_avis_attendu(profile, text)
         if note_en_attente:
@@ -4260,7 +4392,7 @@ async def _receive_message_impl(request: Request):
             track_inbound("welcome_onboarding_started", profile)
             return {"status": "ok"}
 
-        if command in {"menu", "menu akili"}:
+        if command in {"menu", "menu akili", "tape menu", "taper menu", "tapez menu", "menu."}:
             profile = user_profiles[phone] or {"serie": "TOUTES", "matiere": "MATHS"}
             profil_complet = (
                 profile.get("type_examen")
@@ -4395,25 +4527,38 @@ async def _receive_message_impl(request: Request):
             if not profile_after_choice.get("onboarding_step") and profile_after_choice.get("pending_question"):
                 pending_question = profile_after_choice.pop("pending_question")
                 pending_question_display = profile_after_choice.pop("pending_question_display", pending_question)
+                pending_media = profile_after_choice.pop("pending_media", None)
                 profile_after_choice = mark_profile_ready_if_complete(profile_after_choice)
                 user_profiles[phone] = profile_after_choice
-                send_whatsapp(phone, f"Je reprends ta question : {pending_question_display}")
-                answer_learning_request(phone, profile_after_choice, pending_question)
+                media_reprise, contexte_reprise = recuperer_media_garde(pending_media)
+                if media_reprise:
+                    send_whatsapp(phone, "Je reprends ton exercice en photo.")
+                else:
+                    send_whatsapp(phone, f"Je reprends ta question : {pending_question_display}")
+                answer_learning_request(phone, profile_after_choice, pending_question,
+                                        media_file=media_reprise, document_context=contexte_reprise)
                 track_inbound("pending_question_answered", profile_after_choice)
 
             return {"status": "ok"}
 
         if is_learning_request(text) and not is_profile_ready(profile) and not is_teacher_request(text):
+            if profile.get("type_examen") == "AUTRE" or profile.get("serie") == "AUTRE":
+                profile = repartir_premiere_question(profile)
             profile["pending_question"] = text
             profile["pending_question_display"] = original_text
-            profile["onboarding_step"] = "exam"
+            if media_info:
+                profile["pending_media"] = media_info
+            etape_en_cours = profile.get("onboarding_step")
+            if etape_en_cours not in ETAPES_A_REPOSER | {"ville", "nom_ecole"}:
+                profile["onboarding_step"] = etape_en_cours = "exam"
             user_profiles[phone] = profile
+            garde = "ta photo et ta question" if media_info else f"ta question : {original_text}"
             send_whatsapp(
                 phone,
-                "Avant de répondre, précise ton profil pour que je t'aide correctement.\n\n"
-                f"J'ai gardé ta question : {original_text}"
+                "Avant de répondre, je dois connaître ton profil pour bien t'aider.\n\n"
+                f"J'ai gardé {garde}. Réponds d'abord à cette question :"
             )
-            ask_exam(phone)
+            reposer_question_onboarding(phone, profile)
             track_inbound("forced_onboarding_pending_question", profile)
             return {"status": "ok"}
 
@@ -4422,11 +4567,10 @@ async def _receive_message_impl(request: Request):
         user_profiles[phone] = profile
 
         if profile.get("serie") == "AUTRE" or profile.get("type_examen") == "AUTRE":
-            send_whatsapp(
-                phone,
-                "Akili accompagne les élèves du collège, du lycée, du BEPC, du BAC Général et du BAC Technique. "
-                "Dis-moi clairement ton besoin : concours, matière et niveau."
-            )
+            profile = repartir_premiere_question(profile)
+            user_profiles[phone] = profile
+            send_whatsapp(phone, MESSAGE_HORS_CHAMP)
+            ask_exam(phone)
             track_inbound("unsupported_exam", profile)
             return {"status": "ok"}
 
@@ -4435,6 +4579,8 @@ async def _receive_message_impl(request: Request):
                 profile_waiting = user_profiles.get(phone, profile)
                 profile_waiting["pending_question"] = text
                 profile_waiting["pending_question_display"] = original_text
+                if media_info:
+                    profile_waiting["pending_media"] = media_info
                 user_profiles[phone] = profile_waiting
                 send_whatsapp(phone, f"J'ai gardé ta question : {original_text}")
                 track_inbound("needs_onboarding_pending_question", profile_waiting)

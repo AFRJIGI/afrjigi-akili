@@ -45,14 +45,14 @@ class ReponseCourteTests(unittest.TestCase):
                         "le prompt reecrit contient bien des mots 'document' (condition du bug)")
         main.answer_learning_request(self.phone, dict(self.profile), texte)
         self.assertTrue(self.akili_mock.called, "Akili doit etre appele")
-        self.assertFalse(any("lire clairement le contenu du fichier" in m for m in self.envoyes))
+        self.assertNotIn(main.MESSAGE_SUJET_INDISPONIBLE, self.envoyes)
         cle = f"{self.phone}:BAC_TECHNIQUE:G1:ECO:etude"
         self.assertEqual(main.conversations[cle][-2], {"role": "user", "content": "B"})
 
     def test_vraie_demande_sur_un_fichier_absent_reste_bloquee(self):
         main.answer_learning_request(self.phone, dict(self.profile), "corrige l'exercice 1 du PDF")
         self.assertFalse(self.akili_mock.called)
-        self.assertTrue(any("lire clairement le contenu du fichier" in m for m in self.envoyes))
+        self.assertIn(main.MESSAGE_SUJET_INDISPONIBLE, self.envoyes)
 
 
 if __name__ == "__main__":
