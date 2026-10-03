@@ -8,12 +8,13 @@ import uuid
 import hashlib
 import contextvars
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from google.cloud import firestore, storage
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from gtts import gTTS
+import tableau_de_bord
 from marketing_consent import (
     OPTED_IN,
     claim_marketing_consent_prompt,
@@ -4020,6 +4021,29 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
         return "Désolé, je rencontre une petite difficulté technique, réessaie dans un instant."
 
 
+@app.post("/taches/sante")
+async def tache_sante(request: Request):
+    """Appele toutes les heures par Cloud Scheduler, avec l'en-tete X-Akili-Tache."""
+    import hmac
+    secret = os.environ.get("TACHES_SECRET", "")
+    if not secret or not hmac.compare_digest(secret, request.headers.get("X-Akili-Tache", "")):
+        return JSONResponse(status_code=403, content={"status": "forbidden"})
+    return verifier_sante()
+
+
+@app.get("/tableau-de-bord")
+async def page_tableau_de_bord(request: Request):
+    """Tableau de bord du jour. Adresse : /tableau-de-bord?cle=<TABLEAU_CLE>."""
+    import hmac
+    cle = os.environ.get("TABLEAU_CLE", "")
+    if not cle or not hmac.compare_digest(cle, request.query_params.get("cle", "")):
+        return PlainTextResponse("Accès refusé", status_code=403)
+    now = datetime.now(timezone.utc)
+    if not _cache_tableau["at"] or now - _cache_tableau["at"] > timedelta(minutes=TABLEAU_CACHE_MINUTES):
+        _cache_tableau.update({"at": now, "page": construire_tableau(now)})
+    return HTMLResponse(_cache_tableau["page"], headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+
 @app.post("/taches/bilans-inactivite")
 async def tache_bilans_inactivite(request: Request):
     """Appele toutes les 10 min par Cloud Scheduler, avec l'en-tete X-Akili-Tache."""
@@ -4056,6 +4080,158 @@ async def verify_webhook(request: Request):
     return PlainTextResponse("Forbidden", status_code=403)
 
 
+SANTE_COLLECTION = "sante"
+SEUIL_ECHECS_JOUR = 20
+
+
+def compter_echec_livraison(now=None):
+    jour = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
+    try:
+        feedback_db.collection(SANTE_COLLECTION).document(f"echecs_{jour}").set(
+            {"jour": jour, "nombre": firestore.Increment(1)}, merge=True)
+    except Exception as e:
+        print(f"Erreur compter_echec_livraison: {repr(e)}", flush=True)
+
+
+def lire_echecs_jour(now=None):
+    jour = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
+    try:
+        doc = feedback_db.collection(SANTE_COLLECTION).document(f"echecs_{jour}").get()
+        return int((doc.to_dict() or {}).get("nombre", 0)) if doc.exists else 0
+    except Exception as e:
+        print(f"Erreur lire_echecs_jour: {repr(e)}", flush=True)
+        return 0
+
+
+def _verifier(nom, fonction):
+    try:
+        ok, detail = fonction()
+    except Exception as e:
+        ok, detail = False, f"{type(e).__name__}: {str(e)[:160]}"
+    return {"nom": nom, "ok": bool(ok), "detail": detail}
+
+
+def _sante_firestore():
+    now = datetime.now(timezone.utc).isoformat()
+    ref = feedback_db.collection(SANTE_COLLECTION).document("ping")
+    ref.set({"at": now})
+    lu = (ref.get().to_dict() or {}).get("at")
+    return lu == now, "lecture et écriture"
+
+
+def _sante_api():
+    base = AKILI_API_URL.rsplit("/", 1)[0]
+    accueil = requests.get(base + "/", timeout=30).json()
+    nb = int(accueil.get("documents", 0))
+    if nb < 1000:
+        return False, f"seulement {nb} documents chargés"
+    gemini = requests.get(base + "/sante", timeout=60).json()
+    if gemini.get("gemini") != "ok":
+        return False, f"Gemini ne répond pas ({gemini.get('detail', '')})"
+    return True, f"{nb} documents, Gemini répond"
+
+
+def _sante_whatsapp():
+    def lire(champs):
+        res = requests.get(
+            f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}",
+            params={"fields": champs},
+            headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"}, timeout=30,
+        )
+        return res, res.json()
+
+    res, data = lire("quality_rating,health_status,messaging_limit_tier")
+    if res.status_code >= 300 and (data.get("error") or {}).get("code") == 100:
+        # Champ health_status inconnu pour cette version de l'API : on verifie sans lui.
+        res, data = lire("quality_rating,messaging_limit_tier")
+    if res.status_code >= 300:
+        return False, f"Meta refuse l'accès : {(data.get('error') or {}).get('message', res.status_code)}"
+    etat = (data.get("health_status") or {}).get("can_send_message", "AVAILABLE")
+    qualite = data.get("quality_rating", "?")
+    if etat != "AVAILABLE":
+        raisons = "; ".join(
+            str(err.get("error_description") or err.get("possible_solution") or err.get("error_code"))
+            for entite in (data.get("health_status") or {}).get("entities", [])
+            for err in entite.get("errors", [])
+        )
+        return False, f"envoi {etat} : {raisons[:200]}"
+    if qualite == "RED":
+        return False, "note de qualité Meta : ROUGE"
+    return True, f"envoi possible, qualité {qualite}"
+
+
+def _sante_livraison():
+    nb = lire_echecs_jour()
+    return nb <= SEUIL_ECHECS_JOUR, f"{nb} message(s) non livré(s) aujourd'hui"
+
+
+def verifier_sante():
+    """Verifications toutes les heures : resultat dans Firestore et une ligne SANTE_OK / SANTE_ECHEC
+    dans les journaux (l'alerte e-mail se declenche sur SANTE_ECHEC)."""
+    verifications = [
+        _verifier("Base de données (Firestore)", _sante_firestore),
+        _verifier("API Akili et Gemini", _sante_api),
+        _verifier("WhatsApp (Meta)", _sante_whatsapp),
+        _verifier("Livraison des messages", _sante_livraison),
+    ]
+    resultat = {"at": datetime.now(timezone.utc).isoformat(), "ok": all(v["ok"] for v in verifications),
+                "verifications": verifications}
+    try:
+        feedback_db.collection(SANTE_COLLECTION).document("derniere").set(resultat)
+    except Exception as e:
+        print(f"Erreur sauvegarde sante: {repr(e)}", flush=True)
+    if resultat["ok"]:
+        print("SANTE_OK", flush=True)
+    else:
+        echecs = " | ".join(f"{v['nom']} : {v['detail']}" for v in verifications if not v["ok"])
+        print(f"SANTE_ECHEC {echecs}", flush=True)
+    return resultat
+
+
+# ─── Tableau de bord (page web protegee par une cle) ───
+_cache_tableau = {"at": None, "page": None}
+TABLEAU_CACHE_MINUTES = 10
+
+
+def _flux(requete, champs):
+    try:
+        return [d.to_dict() or {} for d in requete.select(champs).stream()]
+    except Exception as e:
+        print(f"Erreur tableau de bord: {repr(e)}", flush=True)
+        return []
+
+
+def construire_tableau(now=None):
+    now = now or datetime.now(timezone.utc)
+    debut = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    aujourd_hui = now.strftime("%Y-%m-%d")
+    messages = _flux(feedback_db.collection("whatsapp_messages").where("created_at", ">=", debut),
+                     ["phone", "direction", "created_at", "matiere"])
+    avis = _flux(feedback_db.collection("feedback_whatsapp").where("created_at", ">=", debut),
+                 ["type", "note", "feedback", "statut", "matiere_detectee", "created_at"])
+    revisions = _flux(feedback_db.collection(SESSIONS_BILAN_COLLECTION).where("revision_at", ">=", aujourd_hui),
+                      ["revision_statut"])
+    qualite = None
+    for jour in [aujourd_hui, (now - timedelta(days=1)).strftime("%Y-%m-%d")]:
+        lignes = _flux(feedback_db.collection("controle_qualite").where("jour", "==", jour), ["note", "problemes"])
+        notes = [l["note"] for l in lignes if isinstance(l.get("note"), (int, float))]
+        if notes:
+            graves = sum(1 for l in lignes for p in (l.get("problemes") or []) if p.get("gravite") == "grave")
+            qualite = {"jour": jour, "moyenne": round(sum(notes) / len(notes), 1), "nb": len(notes), "graves": graves}
+            break
+    try:
+        doc = feedback_db.collection(SANTE_COLLECTION).document("derniere").get()
+        sante = doc.to_dict() if doc.exists else None
+    except Exception:
+        sante = None
+    stats = tableau_de_bord.calculer_stats(messages, avis, now)
+    return tableau_de_bord.rendre_html(
+        stats, sante=sante, echecs_jour=lire_echecs_jour(now), qualite=qualite,
+        revisions_jour=sum(1 for r in revisions if r.get("revision_statut") == "envoyee"),
+        genere_le=now.strftime("%d/%m/%Y %H:%M"), libelle=libelle_matiere,
+    )
+
+
 def journaliser_statuts_whatsapp(statuts):
     """Meta confirme chaque envoi (sent, delivered, read) ou signale un echec ("failed").
     Un envoi accepte (statut 200) peut quand meme ne jamais arriver : seul ce retour le dit."""
@@ -4063,6 +4239,7 @@ def journaliser_statuts_whatsapp(statuts):
         try:
             if statut.get("status") != "failed":
                 continue
+            compter_echec_livraison()
             for erreur in statut.get("errors") or [{}]:
                 details = (erreur.get("error_data") or {}).get("details", "")
                 print(

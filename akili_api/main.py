@@ -1324,6 +1324,18 @@ async def revision_lendemain(
         return {"error": f"Erreur lors de la revision : {str(e)}"}
 
 
+@app.get("/sante")
+def sante():
+    """Verifie que Gemini repond (quota, facturation Google Cloud). Appele toutes les heures."""
+    try:
+        texte = generer_texte_gemini("Reponds uniquement : OK", "Sante")
+        if texte:
+            return {"gemini": "ok", "documents": len(documents)}
+        return {"gemini": "erreur", "detail": "reponse vide", "documents": len(documents)}
+    except Exception as e:
+        return {"gemini": "erreur", "detail": f"{type(e).__name__}: {str(e)[:200]}", "documents": len(documents)}
+
+
 @app.get("/")
 def health_check():
     return {"message": "Akili API opérationnelle 🚀", "documents": len(documents)}
