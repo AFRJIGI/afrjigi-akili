@@ -386,22 +386,42 @@ PHILO_KEYWORDS = [
 
 
 
-def save_feedback_whatsapp(phone, feedback_text, profile=None, original_message=None):
+def prefixe_avis(text):
+    """("retour", "trop long") pour "Retour : trop long" ; None si le message n'est pas un avis.
+    Accepte avis:, retour: et feedback:, avec ou sans espace avant les deux-points."""
+    m = re.match(r"^\s*(avis|retour|feedback)\s*:\s*(.*)$", text or "", flags=re.I | re.S)
+    if not m:
+        return None
+    return m.group(1).lower(), m.group(2).strip()
+
+
+def retour_est_une_reponse(prefixe, contenu, derniere_question):
+    """"Retour: aucune contradiction" juste apres une question d'Akili : c'est la reponse
+    de l'eleve a l'exercice ("retour" se comprend comme "reponse"), pas un avis."""
+    if prefixe != "retour" or not contenu:
+        return False
+    if len(normalize_for_match(contenu).split()) > 8:
+        return False
+    return (derniere_question or "").rstrip().endswith("?")
+
+
+def save_feedback_whatsapp(phone, feedback_text, profile=None, original_message=None, statut="nouveau", type_avis="retour"):
     try:
         profile = profile or {}
         feedback_db.collection("feedback_whatsapp").add({
             "phone": phone,
+            "type": type_avis,
             "feedback": feedback_text,
             "original_message": original_message or "",
             "serie_detectee": profile.get("serie", ""),
             "matiere_detectee": profile.get("matiere", ""),
             "type_examen_detecte": profile.get("type_examen", ""),
             "mode_detecte": profile.get("mode", ""),
-            "statut": "nouveau",
+            "statut": statut,
             "source": "whatsapp",
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
-        print(f"Feedback WhatsApp enregistré pour {phone}", flush=True)
+        print(f"Feedback WhatsApp enregistré pour {phone} type={type_avis}", flush=True)
         return True
     except Exception as e:
         print(f"Erreur feedback WhatsApp: {repr(e)}", flush=True)
@@ -1339,7 +1359,7 @@ def handle_onboarding_choice(phone, profile, text):
                 "Commandes utiles :\n"
                 "- menu : changer de matiere ou de niveau\n"
                 "- changer profil : modifier ton niveau, ta série ou ta matière\n"
-                "- retour: ton avis sur Akili\n\n"
+                "- avis: ton avis sur Akili\n\n"
                 "Pendant le Grand Pilote, ton avis compte beaucoup."
         )
         return True
@@ -1518,7 +1538,7 @@ def handle_onboarding_choice(phone, profile, text):
                 "Commandes utiles :\n"
                 "- menu : changer de matiere ou de niveau\n"
                 "- changer profil : modifier ton niveau, ta série ou ta matière\n"
-                "- retour: ton avis sur Akili\n\n"
+                "- avis: ton avis sur Akili\n\n"
                 "Pendant le Grand Pilote, ton avis compte beaucoup."
             )
             return True
@@ -2296,7 +2316,7 @@ SESSION_MAX_MESSAGES = 40
 BILAN_MIN_ECHANGES_INACTIVITE = 2
 BILAN_MAX_PAR_TACHE = 20
 AKILI_BILAN_URL = os.environ.get("AKILI_BILAN_URL", AKILI_API_URL.rsplit("/", 1)[0] + "/bilan-session")
-MESSAGE_AVIS_FIN_SESSION = "Ton avis nous aide : réponds « retour: » suivi de ton message."
+MESSAGE_AVIS_FIN_SESSION = "Ton avis nous aide : écris « avis: » suivi de ton message."
 MESSAGE_AU_REVOIR_SIMPLE = "À bientôt ! Reviens quand tu veux : envoie un exercice, une photo ou le chapitre à travailler."
 
 EXPRESSIONS_AU_REVOIR = [
@@ -2609,7 +2629,7 @@ def commentaire_avis_attendu(profile, text, now=None):
         profile.pop("attente_commentaire_avis", None)
         return None
     premier_mot = (text or "").strip().lower().split(" ")[0] if (text or "").strip() else ""
-    if premier_mot in MOTS_COMMANDES or premier_mot.startswith(("retour:", "feedback:")):
+    if premier_mot in MOTS_COMMANDES or prefixe_avis(text):
         profile.pop("attente_commentaire_avis", None)
         return None
     return attente.get("note") or "non"
@@ -2698,7 +2718,7 @@ def is_learning_request(text):
     if not command or command in simple_commands:
         return False
 
-    if command.startswith("feedback:") or command.startswith("retour:"):
+    if prefixe_avis(command):
         return False
 
     if len(command) < 8:
@@ -3978,6 +3998,15 @@ async def _receive_message_impl(request: Request):
             track_inbound("commentaire_avis", profile)
             return {"status": "ok", "reason": "commentaire_avis"}
 
+        avis = prefixe_avis(text)
+        if avis and not onboarding_step and retour_est_une_reponse(avis[0], avis[1], load_last_assistant_context(phone)):
+            # On garde une copie a verifier, et la reponse part chez Akili comme les autres.
+            save_feedback_whatsapp(phone, avis[1], profile, text, statut="a_verifier", type_avis="retour_ambigu")
+            print("RETOUR_AMBIGU traite comme reponse a l'exercice", flush=True)
+            text = avis[1]
+            original_text = text
+            command = text.strip().lower()
+
         if not onboarding_step and is_profile_ready(profile) and est_message_au_revoir(text):
             envoyer_fin_de_session(phone, source="au_revoir")
             track_inbound("fin_session_au_revoir", profile)
@@ -4012,9 +4041,9 @@ async def _receive_message_impl(request: Request):
             track_inbound("reset_multiline", {})
             return {"status": "ok"}
 
-        if command.startswith("feedback:") or command.startswith("retour:"):
+        if prefixe_avis(text):
             profile = user_profiles.get(phone, {})
-            feedback_text = text.split(":", 1)[1].strip()
+            feedback_text = prefixe_avis(text)[1]
             ok = save_feedback_whatsapp(phone, feedback_text, profile, text)
             if ok:
                 send_whatsapp(phone, "Merci. Ton retour a été enregistré et nous aide à améliorer Akili.")
