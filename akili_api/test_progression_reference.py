@@ -10,7 +10,8 @@ from pathlib import Path
 SOURCE = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
 VOULUES = {"serie_match", "normaliser_libelle_classe", "niveau_demande",
            "progression_de_reference", "consigne_progression"}
-NOMS = {"MOIS_FR", "CLASSES_CONNUES"}
+NOMS = {"MOIS_FR", "CLASSES_CONNUES", "CLASSES_GENERALES", "ALIAS_CLASSES", "MOIS_MAJ", "_SANS_ACCENT"}
+VOULUES |= {"progression_generale", "classe_generale", "titres_de_classes", "section_de_classe", "aplatir"}
 ns = {"re": re, "unicodedata": unicodedata, "datetime": datetime, "timezone": timezone}
 noeuds = [n for n in ast.parse(SOURCE).body
           if (isinstance(n, ast.FunctionDef) and n.name in VOULUES)

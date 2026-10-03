@@ -87,6 +87,21 @@ Si l'utilisateur est enseignant ou demande une situation d'apprentissage, struct
 8. Corrigé indicatif ou éléments attendus
 
 Objectif pédagogique : aider l'apprenant à se guider seul. Pose des questions courtes, donne une méthode claire, puis accompagne étape par étape au lieu de tout faire à sa place.
+
+POUR UN ELEVE (pas un enseignant) :
+- Quand l'eleve demande un exercice, une lecon ou une revision sans envoyer de texte, choisis une lecon de la progression de sa classe (periode actuelle) et indique en une ligne le domaine travaille (lecture, vocabulaire, grammaire, conjugaison, orthographe, expression ecrite...).
+- Donne d'abord un SUPPORT COURT que tu rediges toi-meme : un texte de 5 a 8 lignes, adapte a son niveau, avec des situations de la vie en Cote d'Ivoire (ecole, quartier, famille, marche, sport). Ne recopie jamais un extrait d'oeuvre ou de manuel.
+- Puis pose UNE seule question sur ce support, et attends la reponse avant de passer a la suivante.
+- Varie les domaines d'une seance a l'autre : ne te limite pas a la grammaire et a l'expression ecrite.
+
+PRODUCTION ECRITE (dialogue, lettre, recit, texte argumentatif) : ne redige jamais le texte a la place de l'eleve. Guide-le dans cet ordre, une etape par message :
+1. Comprendre la consigne : qui parle ou qui ecrit, a qui, ou, quand, dans quel but, quelle longueur.
+2. Choisir la situation et les personnages : propose 3 choix (a, b, c).
+3. Construire le plan : debut (situation), developpement (arguments ou evenements), fin (solution ou conclusion).
+4. Rappeler les regles de presentation du type de texte. Dialogue : guillemets a l'ouverture, tiret a chaque changement d'interlocuteur, verbes de parole varies (repliqua, protesta, s'exclama), ponctuation expressive. Lettre : lieu et date, formule d'appel, corps de la lettre, formule de politesse, signature.
+5. Donner quelques mots de vocabulaire du theme.
+6. Faire ecrire l'eleve partie par partie (une replique ou un paragraphe a la fois) et corriger chaque partie : orthographe, ponctuation, coherence.
+7. A la fin, evaluer avec ces criteres : respect de la consigne, coherence des idees, presentation, correction de la langue.
 """
 
 PROMPT_HIST_GEO = """Tu es Akili, un professeur d'Histoire-Géographie expert du niveau Terminale pour le BAC en Côte d'Ivoire. Ton rôle est de guider méthodologiquement l'élève pour réussir la Dissertation, le Commentaire de documents et la Situation d'Évaluation selon le barème officiel ivoirien.
@@ -428,12 +443,143 @@ def niveau_demande(question):
 CLASSES_CONNUES = {"SECONDE", "PREMIERE", "TERMINALE"}
 
 
+# Classe de l'eleve (hors BAC Technique) : (code, lettre de serie, cycle, libelle).
+CLASSES_GENERALES = {
+    "6E": ("6E", None, "1ER_CYCLE", "6e"), "5E": ("5E", None, "1ER_CYCLE", "5e"),
+    "4E": ("4E", None, "1ER_CYCLE", "4e"), "BEPC": ("3E", None, "1ER_CYCLE", "3e"),
+    "SECONDE_A": ("SECONDE", "A", "2ND_CYCLE", "Seconde A"), "SECONDE_C": ("SECONDE", "C", "2ND_CYCLE", "Seconde C"),
+    "PREMIERE_A": ("PREMIERE", "A", "2ND_CYCLE", "Première A"), "PREMIERE_C": ("PREMIERE", "C", "2ND_CYCLE", "Première C"),
+    "PREMIERE_D": ("PREMIERE", "D", "2ND_CYCLE", "Première D"),
+    "A1": ("TERMINALE", "A1", "2ND_CYCLE", "Terminale A1"), "A2": ("TERMINALE", "A2", "2ND_CYCLE", "Terminale A2"),
+    "C": ("TERMINALE", "C", "2ND_CYCLE", "Terminale C"), "D": ("TERMINALE", "D", "2ND_CYCLE", "Terminale D"),
+}
+# Facons d'ecrire chaque classe dans les titres des progressions (texte sans accents, en majuscules).
+ALIAS_CLASSES = {
+    "6E": r"SIXIEMES?|6\s*(?:EME|E|°|º)",
+    "5E": r"CINQUIEMES?|5\s*(?:EME|E|°|º)",
+    "4E": r"QUATRIEMES?|4\s*(?:EME|E|°|º)",
+    "3E": r"TROISIEMES?|3\s*(?:EME|E|°|º)",
+    "SECONDE": r"SECONDES?|2\s*NDES?",
+    "PREMIERE": r"PREMIERES?|1\s*(?:ERES?|IERES?)",
+    "TERMINALE": r"TERMINALES?|TLE",
+}
+MOIS_MAJ = ["JANVIER", "FEVRIER", "MARS", "AVRIL", "MAI", "JUIN", "JUILLET", "AOUT",
+            "SEPTEMBRE", "OCTOBRE", "NOVEMBRE", "DECEMBRE"]
+_SANS_ACCENT = str.maketrans("ÀÂÄÁÉÈÊËÎÏÍÔÖÓÙÛÜÚÇ", "AAAAEEEEIIIOOOUUUUC")
+
+
+def aplatir(texte):
+    """Majuscules sans accents, MEME longueur que le texte (les positions restent valables)."""
+    return str(texte or "").upper().translate(_SANS_ACCENT)
+
+
+def classe_generale(serie, examen):
+    s = str(serie or "").upper().strip()
+    if examen == "BEPC":
+        s = "BEPC"
+    return CLASSES_GENERALES.get(s)
+
+
+def titres_de_classes(texte):
+    """[(position, code classe, ligne)] des lignes de titre qui annoncent une classe."""
+    plat = aplatir(texte)
+    titres = []
+    position = 0
+    for ligne in plat.split("\n"):
+        propre = ligne.strip(" *#-:|\t")
+        if 0 < len(propre) <= 140:
+            lettres = [c for c in propre if c.isalpha()]
+            titre = (ligne.lstrip().startswith(("**", "#")) or "CLASSE" in propre or "CLASS:" in propre
+                     or "PROGRESSION" in propre
+                     or (lettres and sum(c.isupper() for c in lettres) / len(lettres) > 0.9 and len(propre) <= 60))
+            if titre:
+                for code, motif in ALIAS_CLASSES.items():
+                    # "TROISIEME TRIMESTRE" ou "PREMIERE SEMAINE" ne sont pas des classes.
+                    if re.search(rf"(?<![A-Z0-9])(?:{motif})(?![A-Z])(?!\s*(?:TRIMESTRE|SEMESTRE|PERIODE|SEMAINE|PARTIE|LECON|SEQUENCE|ANNEE|EVALUATION|DEVOIR))", propre):
+                        titres.append((position, code, propre))
+                        break
+        position += len(ligne) + 1
+    return titres
+
+
+def section_de_classe(texte, code, lettre=None):
+    """Partie de la progression consacree a la classe de l'eleve (None si introuvable)."""
+    titres = titres_de_classes(texte)
+    if not titres:
+        return None
+    # Chaque titre de classe ouvre une section (Terminale C puis Terminale D : deux sections).
+    debuts = titres
+    morceaux = []
+    for i, (pos, c, ligne) in enumerate(debuts):
+        fin = debuts[i + 1][0] if i + 1 < len(debuts) else len(texte)
+        if c == code:
+            morceaux.append((ligne, texte[pos:fin]))
+    if not morceaux:
+        return None
+    if lettre:
+        avec_lettre = [m for m in morceaux if re.search(rf"(?<![A-Z0-9]){lettre[0]}(?:\d|\b|\s|$)", m[0])]
+        morceaux = avec_lettre or morceaux
+    return "\n".join(m[1] for m in morceaux)
+
+
+def fenetre_periode(texte, aujourd_hui, max_chars=7000):
+    """Fenetre de la progression autour du mois en cours (le debut si le mois est introuvable)."""
+    texte = str(texte or "")
+    if len(texte) <= max_chars:
+        return texte
+    plat = aplatir(texte)
+    mois = MOIS_MAJ[aujourd_hui.month - 1]
+    m = re.search(rf"(?<![A-Z]){mois}(?![A-Z])", plat)
+    if not m:
+        return texte[:max_chars]
+    debut = max(0, m.start() - 1500)
+    return texte[debut:debut + max_chars]
+
+
+def progression_generale(docs, matiere, serie, examen, question=""):
+    """Progression DPFC (un document par cycle) et partie de la classe de l'eleve."""
+    classe = classe_generale(serie, examen)
+    if not classe or not matiere:
+        return None
+    code, lettre, cycle, libelle = classe
+    candidats = [
+        d for d in docs
+        if str(d.get("type_doc") or "").upper().startswith("PROGRESSION")
+        and str(d.get("matiere") or "").upper().strip() == matiere.upper().strip()
+        and str(d.get("examen") or "").upper().strip() in {examen, "TOUS"}
+        # Les progressions DPFC valent pour toutes les series ("TOUTES"), BEPC compris.
+        and (str(d.get("serie") or "").upper().strip() in {"", "TOUTES"} or serie_match(d.get("serie"), serie))
+    ]
+
+    def rang(doc):
+        n = str(doc.get("niveau") or "").upper()
+        if n.startswith(cycle):
+            return 0 if "ADMIN" not in n else 1   # la version pedagogique d'abord
+        if n in {"TOUS_CYCLES", "TOUS", ""}:
+            return 2
+        return 3
+
+    ordonnes = sorted([d for d in candidats if rang(d) < 3], key=rang)
+    # 1. Un document qui a une partie pour la classe de l'eleve.
+    for doc in ordonnes:
+        section = section_de_classe(doc.get("texte", ""), code, lettre)
+        if section:
+            return dict(doc, texte=section, classe_eleve=libelle)
+    # 2. A defaut, un document sans titres de classe (il vaut pour tout le cycle).
+    for doc in ordonnes:
+        if rang(doc) < 2 and not titres_de_classes(doc.get("texte", "")):
+            return dict(doc, classe_eleve=libelle)
+    return None  # jamais la progression d'une autre classe
+
+
 def progression_de_reference(docs, matiere, serie, examen, question="", classe=None):
     """Progression officielle de la matiere, de la serie et de la classe de l'eleve.
     Elle est ajoutee au contexte meme si la question ne partage aucun mot avec elle
     ("Propose-moi un exercice"), pour qu'Akili suive le programme de la classe."""
-    if examen != "BAC_TECHNIQUE" or not matiere:
+    if not matiere:
         return None
+    if examen != "BAC_TECHNIQUE":
+        return progression_generale(docs, matiere, serie, examen, question)
     matiere = matiere.upper().strip()
     candidats = [
         d for d in docs
@@ -470,9 +616,10 @@ def progression_de_reference(docs, matiere, serie, examen, question="", classe=N
 def consigne_progression(progression, aujourd_hui=None):
     aujourd_hui = aujourd_hui or datetime.now(timezone.utc)
     date_txt = f"{aujourd_hui.day} {MOIS_FR[aujourd_hui.month - 1]} {aujourd_hui.year}"
-    niveau = str(progression.get("niveau") or "").replace("_", " et ").lower()
+    niveau = progression.get("classe_eleve") or str(progression.get("niveau") or "").replace("_", " et ").lower()
+    institution = progression.get("institution") or ("METFPA" if progression.get("examen") == "BAC_TECHNIQUE" else "officielle")
     return (
-        "PROGRESSION OFFICIELLE A SUIVRE : le CONTEXTE OFFICIEL contient la progression METFPA "
+        f"PROGRESSION OFFICIELLE A SUIVRE : le CONTEXTE OFFICIEL contient la progression {institution} "
         f"de cette matiere ({niveau}). Quand l'eleve demande un exercice, une lecon ou une revision "
         "sans preciser le chapitre, choisis une lecon de cette progression, en priorite celle prevue "
         f"pour la periode actuelle de l'annee scolaire (nous sommes le {date_txt}) ; si les periodes "
@@ -714,8 +861,9 @@ async def ask_question(
         progression = progression_de_reference(
             documents, matiere_registre, serie, examen_registre, question_recherche, classe=classe
         )
-        if progression and all(d.get("id") != progression.get("id") for d in contexte_docs):
-            contexte_docs = [progression] + contexte_docs[:5]
+        if progression:
+            progression = dict(progression, texte=fenetre_periode(progression.get("texte", ""), datetime.now(timezone.utc)))
+            contexte_docs = [progression] + [d for d in contexte_docs if d.get("id") != progression.get("id")][:5]
 
         contexte_texte = "\n\n---\n\n".join(
             formater_contexte_document(d, question, serie) for d in contexte_docs
