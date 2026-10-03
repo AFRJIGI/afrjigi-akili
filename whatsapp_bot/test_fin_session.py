@@ -48,9 +48,12 @@ class BaseFinSession(unittest.TestCase):
     def setUp(self):
         self.stock = FauxStockage()
         self.envoyes = []
+        self.boutons = []
         self.bilans = []
         noop = lambda *a, **k: None
         self.patches = [
+            mock.patch.object(main, "send_whatsapp_boutons",
+                              side_effect=lambda phone, corps, boutons: self.boutons.append((phone, corps, boutons)) or True),
             mock.patch.object(main, "charger_session_bilan", side_effect=self.stock.charger),
             mock.patch.object(main, "sauver_session_bilan", side_effect=self.stock.sauver),
             mock.patch.object(main, "fermer_session_bilan", side_effect=self.stock.fermer),
@@ -115,7 +118,8 @@ class AuRevoirTests(BaseFinSession):
         self.ajouter_echanges(2, mode="examen", cle=f"{PHONE}:BAC_TECHNIQUE:G1:ECO:examen")
         self.assertTrue(main.envoyer_fin_de_session(PHONE, "au_revoir"))
         self.assertIn("BILAN examen au_revoir", self.envoyes[-1][1])
-        self.assertIn("retour:", self.envoyes[-1][1])
+        self.assertEqual(self.boutons[-1][1], main.QUESTION_AVIS)
+        self.assertEqual([b[0] for b in self.boutons[-1][2]], ["avis_oui", "avis_un_peu", "avis_non"])
         # Deuxieme au revoir : pas de second bilan.
         self.assertFalse(main.envoyer_fin_de_session(PHONE, "au_revoir"))
         self.assertEqual(self.envoyes[-1][1], main.MESSAGE_AU_REVOIR_SIMPLE)

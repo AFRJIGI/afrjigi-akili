@@ -2508,6 +2508,113 @@ def generer_bilan_session(session, source):
     return "Bravo pour ta séance ! Reviens quand tu veux pour continuer : envoie un exercice, une photo ou le chapitre à travailler."
 
 
+# ─── AVIS DE FIN DE SEANCE : trois boutons WhatsApp ───
+QUESTION_AVIS = "Akili t'a aidé aujourd'hui ?"
+BOUTONS_AVIS = [("avis_oui", "Oui 👍"), ("avis_un_peu", "Un peu"), ("avis_non", "Non")]
+NOTES_AVIS = {"avis_oui": "oui", "avis_un_peu": "un_peu", "avis_non": "non"}
+MESSAGE_MERCI_AVIS = "Merci, ça nous fait plaisir ! Reviens quand tu veux : envoie un exercice, une photo ou le chapitre à travailler."
+MESSAGE_DEMANDE_COMMENTAIRE = "Merci. En une phrase, qu'est-ce qui t'a manqué ? (ou écris passer)"
+MESSAGE_MERCI_COMMENTAIRE = "Merci, ton avis est enregistré : il nous aide à améliorer Akili. Pour continuer, envoie ton exercice ou ta question."
+MESSAGE_PASSER_COMMENTAIRE = "D'accord ! Pour continuer, envoie ton exercice ou ta question."
+COMMENTAIRE_AVIS_MINUTES = 30
+MOTS_COMMANDES = {"reset", "reinitialiser", "réinitialiser", "menu", "profil", "profile", "bonjour", "bonsoir",
+                  "salut", "hello", "hi", "aide", "start", "changer"}
+
+
+def send_whatsapp_boutons(to, corps, boutons):
+    """Message WhatsApp avec jusqu'a 3 boutons de reponse ((id, titre de 20 caracteres max))."""
+    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"}
+    data = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": corps[:1024]},
+            "action": {"buttons": [
+                {"type": "reply", "reply": {"id": ident, "title": titre[:20]}} for ident, titre in boutons[:3]
+            ]},
+        },
+    }
+    try:
+        res = requests.post(url, headers=headers, json=data, timeout=30)
+        print(f"WHATSAPP_SEND_BOUTONS status={res.status_code} body={res.text[:200]}", flush=True)
+        return res.status_code < 300
+    except Exception as e:
+        print(f"Erreur WHATSAPP_SEND_BOUTONS: {repr(e)}", flush=True)
+        return False
+
+
+def demander_avis_seance(phone):
+    if not send_whatsapp_boutons(phone, QUESTION_AVIS, BOUTONS_AVIS):
+        # Sans boutons (echec d'envoi), on garde l'ancienne ligne pour ne pas perdre l'avis.
+        send_whatsapp(phone, MESSAGE_AVIS_FIN_SESSION, allow_audio=False)
+
+
+def enregistrer_avis_seance(phone, note, profile=None, commentaire=None):
+    """Note de la seance (oui / un_peu / non) et commentaire eventuel, dans feedback_whatsapp."""
+    profile = profile or {}
+    session = charger_session_bilan(phone) or {}
+    try:
+        feedback_db.collection("feedback_whatsapp").add({
+            "phone": phone,
+            "type": "commentaire_avis" if commentaire is not None else "avis_seance",
+            "note": note,
+            "feedback": commentaire or "",
+            "matiere_detectee": session.get("matiere") or profile.get("matiere", ""),
+            "serie_detectee": session.get("serie") or profile.get("serie", ""),
+            "type_examen_detecte": session.get("type_examen") or profile.get("type_examen", ""),
+            "mode_detecte": session.get("mode") or profile.get("mode", ""),
+            "bilan_source": session.get("bilan_source", ""),
+            "nb_echanges": session.get("nb_echanges", 0),
+            "statut": "nouveau",
+            "source": "whatsapp",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        print(f"AVIS_SEANCE note={note} commentaire={'oui' if commentaire else 'non'}", flush=True)
+        return True
+    except Exception as e:
+        print(f"Erreur enregistrer_avis_seance: {repr(e)}", flush=True)
+        return False
+
+
+def traiter_bouton_avis(phone, bouton_id):
+    """L'eleve a touche un bouton d'avis. Pour "Un peu" ou "Non", on lui demande pourquoi."""
+    note = NOTES_AVIS.get(bouton_id)
+    if not note:
+        return False
+    profile = charger_etat_whatsapp(phone) or user_profiles.get(phone) or {}
+    enregistrer_avis_seance(phone, note, profile)
+    if note == "oui":
+        profile.pop("attente_commentaire_avis", None)
+        send_whatsapp(phone, MESSAGE_MERCI_AVIS, allow_audio=False)
+    else:
+        profile["attente_commentaire_avis"] = {"note": note, "at": datetime.now(timezone.utc).isoformat()}
+        send_whatsapp(phone, MESSAGE_DEMANDE_COMMENTAIRE, allow_audio=False)
+    if profile:
+        user_profiles[phone] = profile
+        sauver_etat_whatsapp(phone, profile)
+    return True
+
+
+def commentaire_avis_attendu(profile, text, now=None):
+    """Note en attente de commentaire, si la reponse arrive a temps et n'est pas une commande."""
+    attente = (profile or {}).get("attente_commentaire_avis")
+    if not attente:
+        return None
+    depuis = parse_datetime(attente.get("at"))
+    now = now or datetime.now(timezone.utc)
+    if not depuis or now - depuis > timedelta(minutes=COMMENTAIRE_AVIS_MINUTES):
+        profile.pop("attente_commentaire_avis", None)
+        return None
+    premier_mot = (text or "").strip().lower().split(" ")[0] if (text or "").strip() else ""
+    if premier_mot in MOTS_COMMANDES or premier_mot.startswith(("retour:", "feedback:")):
+        profile.pop("attente_commentaire_avis", None)
+        return None
+    return attente.get("note") or "non"
+
+
 def envoyer_fin_de_session(phone, source="au_revoir"):
     min_echanges = 1 if source == "au_revoir" else BILAN_MIN_ECHANGES_INACTIVITE
     session = reserver_bilan(phone, source, min_echanges=min_echanges)
@@ -2516,7 +2623,8 @@ def envoyer_fin_de_session(phone, source="au_revoir"):
             send_whatsapp(phone, MESSAGE_AU_REVOIR_SIMPLE, allow_audio=False)
         return False
     texte = generer_bilan_session(session, source)
-    send_whatsapp(phone, f"{texte}\n\n{MESSAGE_AVIS_FIN_SESSION}", allow_audio=False)
+    send_whatsapp(phone, texte, allow_audio=False)
+    demander_avis_seance(phone)
     print(f"FIN_SESSION envoyee source={source} echanges={session.get('nb_echanges')}", flush=True)
     return True
 
@@ -3690,6 +3798,7 @@ async def _receive_message_impl(request: Request):
         phone = msg["from"]
         msg_type = msg.get("type")
         text = msg.get("text", {}).get("body", "").strip()
+        bouton_id = ((msg.get("interactive") or {}).get("button_reply") or {}).get("id") if msg_type == "interactive" else None
         message_id = msg.get("id")
         if message_id and (message_id in processed_messages or not reserver_message_whatsapp(message_id)):
             print(f"Message déjà traité: {message_id}", flush=True)
@@ -3741,6 +3850,11 @@ async def _receive_message_impl(request: Request):
 
         if message_id:
             send_whatsapp_typing_indicator(message_id)
+
+        if bouton_id:
+            if traiter_bouton_avis(phone, bouton_id):
+                return {"status": "ok", "reason": "avis_seance"}
+            return {"status": "ok", "reason": "bouton_inconnu"}
 
         if len(processed_messages) > 1000:
             processed_messages.clear()
@@ -3852,6 +3966,18 @@ async def _receive_message_impl(request: Request):
         command = text.strip().lower()
         onboarding_step = profile.get("onboarding_step")
         print(f"SHORT_DEBUG text={text} is_short={is_short_exercise_answer(text)} is_contextual={is_contextual_exercise_answer(text)} onboarding={onboarding_step}", flush=True)
+        note_en_attente = commentaire_avis_attendu(profile, text)
+        if note_en_attente:
+            profile.pop("attente_commentaire_avis", None)
+            user_profiles[phone] = profile
+            if normalize_for_match(text) in {"PASSER", "PASSE", "NON", "RIEN", "NON MERCI"}:
+                send_whatsapp(phone, MESSAGE_PASSER_COMMENTAIRE, allow_audio=False)
+            else:
+                enregistrer_avis_seance(phone, note_en_attente, profile, commentaire=text[:1000])
+                send_whatsapp(phone, MESSAGE_MERCI_COMMENTAIRE, allow_audio=False)
+            track_inbound("commentaire_avis", profile)
+            return {"status": "ok", "reason": "commentaire_avis"}
+
         if not onboarding_step and is_profile_ready(profile) and est_message_au_revoir(text):
             envoyer_fin_de_session(phone, source="au_revoir")
             track_inbound("fin_session_au_revoir", profile)
