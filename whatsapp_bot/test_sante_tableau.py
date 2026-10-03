@@ -79,6 +79,25 @@ class SanteTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("Paiement en attente", detail)
 
+    def test_appels_sip_ne_declenchent_pas_d_alerte(self):
+        def reponse(erreurs):
+            class R:
+                status_code = 200
+
+                def json(self):
+                    return {"quality_rating": "GREEN", "health_status": {"can_send_message": "LIMITED", "entities": [
+                        {"entity_type": "APP", "errors": [{"error_code": 1, "error_description": e} for e in erreurs]}]}}
+            return R()
+
+        sip = ("WhatsApp Business calling cannot use SIP because it is not enabled",
+               "This app cannot use SIP for WhatsApp Business calling because it has not configured a SIP server")
+        with mock.patch.object(main.requests, "get", return_value=reponse(sip)):
+            ok, detail = main._sante_whatsapp()
+        self.assertTrue(ok, detail)
+        with mock.patch.object(main.requests, "get", return_value=reponse(sip + ("Messaging limit reached",))):
+            ok, detail = main._sante_whatsapp()
+        self.assertFalse(ok)  # une autre limite, elle, reste une alerte
+
     def test_champ_inconnu_ne_declenche_pas_d_alerte(self):
         class Erreur:
             status_code = 400

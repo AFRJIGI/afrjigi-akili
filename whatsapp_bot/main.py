@@ -4149,12 +4149,17 @@ def _sante_whatsapp():
     etat = (data.get("health_status") or {}).get("can_send_message", "AVAILABLE")
     qualite = data.get("quality_rating", "?")
     if etat != "AVAILABLE":
-        raisons = "; ".join(
+        erreurs = [
             str(err.get("error_description") or err.get("possible_solution") or err.get("error_code"))
             for entite in (data.get("health_status") or {}).get("entities", [])
             for err in entite.get("errors", [])
-        )
-        return False, f"envoi {etat} : {raisons[:200]}"
+        ]
+        # Les appels WhatsApp (SIP) non configures rendent l'etat LIMITED, mais les messages
+        # partent normalement : ce n'est pas une panne d'Akili.
+        if etat == "LIMITED" and erreurs and all(
+                re.search(r"\bSIP\b|CALLING", e, flags=re.I) for e in erreurs):
+            return True, f"envoi possible, qualité {qualite} (appels WhatsApp non configurés, sans effet sur les messages)"
+        return False, f"envoi {etat} : {'; '.join(erreurs)[:200]}"
     if qualite == "RED":
         return False, "note de qualité Meta : ROUGE"
     return True, f"envoi possible, qualité {qualite}"
