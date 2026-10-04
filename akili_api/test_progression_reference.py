@@ -66,6 +66,14 @@ class ProgressionReferenceTests(unittest.TestCase):
         self.assertIsNone(self.ref("CMI", "F4"))
         self.assertIsNone(ns["progression_de_reference"](DOCS, "CMI", "F1", "BAC_GENERAL"))
 
+    def test_version_prioritaire_a_classe_egale(self):
+        pdf = prog("maths_pdf", "MATHS", "B", "TERMINALE", texte="x" * 3000)  # PDF mal lu, plus long
+        word = dict(prog("maths_word", "MATHS", "B", "TERMINALE", texte="x" * 2000), priorite=1)
+        premiere = dict(prog("maths_1b", "MATHS", "B", "PREMIERE"), priorite=1)
+        choisir = lambda docs: ns["progression_de_reference"](docs, "MATHS", "B", "BAC_TECHNIQUE", "un exercice")["id"]
+        self.assertEqual(choisir([pdf, word, premiere]), "maths_word")
+        self.assertEqual(choisir([pdf, premiere]), "maths_pdf")  # la priorite ne change pas de classe
+
     def test_consigne(self):
         texte = ns["consigne_progression"](DOCS[0], datetime(2026, 10, 2, tzinfo=timezone.utc))
         self.assertIn("2 octobre 2026", texte)

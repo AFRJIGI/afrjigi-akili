@@ -634,7 +634,10 @@ def progression_de_reference(docs, matiere, serie, examen, question="", classe=N
     candidats = [d for d in candidats if rang(d) < 3]
     if not candidats:
         return None
-    return sorted(candidats, key=lambda d: (rang(d), -len(str(d.get("texte") or ""))))[0]
+    # A classe egale : la version marquee prioritaire (texte Word propre transmis par un enseignant),
+    # puis le texte le plus long.
+    return sorted(candidats, key=lambda d: (rang(d), -int(d.get("priorite") or 0),
+                                            -len(str(d.get("texte") or ""))))[0]
 
 
 def consigne_progression(progression, aujourd_hui=None):
