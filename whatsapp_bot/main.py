@@ -2793,37 +2793,76 @@ def cle_conversation_profil(phone, profile):
             f"{profile.get('matiere', 'MATHS')}:{profile.get('mode') or 'etude'}")
 
 
-def lister_sessions_pour_revision(now, limite=200):
-    """Sessions dont le dernier message date de 18 a 23 h."""
-    debut = (now - timedelta(hours=REVISION_AVANT_HEURES)).isoformat()
-    fin = (now - timedelta(hours=REVISION_APRES_HEURES)).isoformat()
+# La revision prevue est gardee a part : avant, elle vivait dans la fiche de la seance, et le
+# moindre message apres le bilan ("merci", un avis) ouvrait une nouvelle seance qui l'effacait.
+REVISIONS_COLLECTION = "whatsapp_revisions"
+
+
+def _revision_ref(phone):
+    return feedback_db.collection(REVISIONS_COLLECTION).document(phone)
+
+
+def planifier_revision(phone, session, bilan_texte, now=None):
+    """Apres un bilan : revision prevue pour le lendemain (remplace une revision plus ancienne)."""
+    if not bilan_texte or int(session.get("nb_echanges", 0)) < BILAN_MIN_ECHANGES_INACTIVITE:
+        return
+    now = now or datetime.now(timezone.utc)
     try:
-        docs = (
-            feedback_db.collection(SESSIONS_BILAN_COLLECTION)
-            .where("derniere_activite", ">=", debut)
-            .where("derniere_activite", "<=", fin)
-            .limit(limite)
-            .stream()
-        )
+        _revision_ref(phone).set({
+            "statut": "prevue",
+            "prevue_le": now.isoformat(),
+            "conversation_key": session.get("conversation_key"),
+            "messages": list(session.get("messages") or [])[-SESSION_MAX_MESSAGES:],
+            "bilan_texte": str(bilan_texte)[:2000],
+            "nb_echanges": int(session.get("nb_echanges", 0)),
+            "matiere": session.get("matiere"),
+            "serie": session.get("serie"),
+            "type_examen": session.get("type_examen"),
+            "mode": session.get("mode"),
+            "derniere_activite": session.get("derniere_activite") or now.isoformat(),
+        })
+    except Exception as e:
+        print(f"Erreur planifier_revision: {repr(e)}", flush=True)
+
+
+def lister_revisions_prevues(limite=500):
+    try:
+        docs = feedback_db.collection(REVISIONS_COLLECTION).where("statut", "==", "prevue").limit(limite).stream()
         return [(doc.id, doc.to_dict() or {}) for doc in docs]
     except Exception as e:
-        print(f"Erreur lister_sessions_pour_revision: {repr(e)}", flush=True)
+        print(f"Erreur lister_revisions_prevues: {repr(e)}", flush=True)
         return []
 
 
+def noter_revision(phone, champs):
+    try:
+        _revision_ref(phone).update(champs)
+    except Exception as e:
+        print(f"Erreur noter_revision: {repr(e)}", flush=True)
+
+
+def derniere_activite_eleve(phone, revision):
+    """Dernier message de l'eleve : fin de la seance revisee, ou plus tard s'il a reecrit depuis."""
+    dates = [parse_datetime(revision.get("derniere_activite"))]
+    session = charger_session_bilan(phone) or {}
+    dates.append(parse_datetime(session.get("derniere_activite")))
+    dates = [d for d in dates if d]
+    return max(dates) if dates else None
+
+
 def reserver_revision(phone):
-    """Marque la revision comme envoyee (transaction) : jamais deux revisions pour une seance."""
-    reference = _session_bilan_ref(phone)
+    """Passe la revision de "prevue" a "en_cours" (transaction) : jamais deux revisions pour une seance."""
+    reference = _revision_ref(phone)
     transaction = feedback_db.transaction()
 
     @firestore.transactional
     def reserver(tx):
         snapshot = reference.get(transaction=tx)
-        session = snapshot.to_dict() if snapshot.exists else None
-        if not session or session.get("revision_envoyee"):
+        revision = snapshot.to_dict() if snapshot.exists else None
+        if not revision or revision.get("statut") != "prevue":
             return None
-        tx.update(reference, {"revision_envoyee": True, "revision_at": datetime.now(timezone.utc).isoformat()})
-        return session
+        tx.update(reference, {"statut": "en_cours", "revision_at": datetime.now(timezone.utc).isoformat()})
+        return revision
 
     try:
         return reserver(transaction)
@@ -2832,12 +2871,10 @@ def reserver_revision(phone):
         return None
 
 
-def session_eligible_revision(session):
+def session_eligible_revision(revision):
     return bool(
-        session.get("bilan_envoye")
-        and session.get("bilan_texte")
-        and not session.get("revision_envoyee")
-        and int(session.get("nb_echanges", 0)) >= BILAN_MIN_ECHANGES_INACTIVITE
+        revision.get("bilan_texte")
+        and int(revision.get("nb_echanges", 0)) >= BILAN_MIN_ECHANGES_INACTIVITE
     )
 
 
@@ -2878,29 +2915,42 @@ def traiter_revisions_lendemain(now=None):
     now = now or datetime.now(timezone.utc)
     if now.hour not in REVISION_HEURES_ENVOI:
         return {"revisions": 0}
-    envoyees = 0
-    for phone, session in lister_sessions_pour_revision(now):
+    prevues = lister_revisions_prevues()
+    envoyees = dans_fenetre = 0
+    for phone, revision in prevues:
         if envoyees >= REVISION_MAX_PAR_TACHE:
             break
-        if not session_eligible_revision(session):
+        fin_seance = parse_datetime(revision.get("derniere_activite"))
+        if fin_seance and now - fin_seance < timedelta(hours=REVISION_APRES_HEURES):
+            continue  # trop tot (et l'eleve n'a pas pu ecrire avant la fin de sa seance)
+        derniere = derniere_activite_eleve(phone, revision)
+        if not derniere or now - derniere > timedelta(hours=REVISION_AVANT_HEURES):
+            noter_revision(phone, {"statut": "expiree"})  # hors de la fenetre WhatsApp de 24 h
             continue
+        if now - derniere < timedelta(hours=REVISION_APRES_HEURES):
+            continue  # l'eleve a reecrit depuis : on attend 18 h apres son dernier message
+        if not session_eligible_revision(revision):
+            noter_revision(phone, {"statut": "ignoree"})
+            continue
+        dans_fenetre += 1
         profile = charger_etat_whatsapp(phone) or {}
         # Pas de revision si l'eleve l'a refusee, ou s'il a change de matiere ou de mode depuis.
-        if profile.get("revisions_off") or cle_conversation_profil(phone, profile) != session.get("conversation_key"):
-            noter_session_bilan(phone, {"revision_envoyee": True, "revision_statut": "ignoree"})
+        if profile.get("revisions_off") or cle_conversation_profil(phone, profile) != revision.get("conversation_key"):
+            noter_revision(phone, {"statut": "ignoree"})
             continue
         if not reserver_revision(phone):
             continue
-        texte = generer_revision(session, profile)
+        texte = generer_revision(revision, profile)
         if not texte:
-            noter_session_bilan(phone, {"revision_statut": "echec"})
+            noter_revision(phone, {"statut": "echec"})
             continue
         user_profiles[phone] = profile
         send_whatsapp(phone, f"{texte}\n\n{MESSAGE_ARRET_REVISION}", allow_audio=False)
-        ajouter_a_historique(session.get("conversation_key"), texte)
-        noter_session_bilan(phone, {"revision_statut": "envoyee"})
+        ajouter_a_historique(revision.get("conversation_key"), texte)
+        noter_revision(phone, {"statut": "envoyee"})
         envoyees += 1
-        print(f"REVISION_LENDEMAIN envoyee matiere={session.get('matiere')}", flush=True)
+        print(f"REVISION_LENDEMAIN envoyee matiere={revision.get('matiere')}", flush=True)
+    print(f"REVISION_TACHE prevues={len(prevues)} dans_fenetre={dans_fenetre} envoyees={envoyees}", flush=True)
     return {"revisions": envoyees}
 
 
@@ -2914,6 +2964,7 @@ def envoyer_fin_de_session(phone, source="au_revoir"):
     texte = generer_bilan_session(session, source)
     send_whatsapp(phone, texte, allow_audio=False)
     noter_session_bilan(phone, {"bilan_texte": texte[:2000]})
+    planifier_revision(phone, session, texte)
     demander_avis_seance(phone)
     print(f"FIN_SESSION envoyee source={source} echanges={session.get('nb_echanges')}", flush=True)
     return True
@@ -4215,8 +4266,8 @@ def construire_tableau(now=None):
                      ["phone", "direction", "created_at", "matiere"])
     avis = _flux(feedback_db.collection("feedback_whatsapp").where("created_at", ">=", debut),
                  ["type", "note", "feedback", "statut", "matiere_detectee", "created_at"])
-    revisions = _flux(feedback_db.collection(SESSIONS_BILAN_COLLECTION).where("revision_at", ">=", aujourd_hui),
-                      ["revision_statut"])
+    revisions = _flux(feedback_db.collection(REVISIONS_COLLECTION).where("revision_at", ">=", aujourd_hui),
+                      ["statut"])
     qualite = None
     for jour in [aujourd_hui, (now - timedelta(days=1)).strftime("%Y-%m-%d")]:
         lignes = _flux(feedback_db.collection("controle_qualite").where("jour", "==", jour), ["note", "problemes"])
@@ -4233,7 +4284,7 @@ def construire_tableau(now=None):
     stats = tableau_de_bord.calculer_stats(messages, avis, now)
     return tableau_de_bord.rendre_html(
         stats, sante=sante, echecs_jour=lire_echecs_jour(now), qualite=qualite,
-        revisions_jour=sum(1 for r in revisions if r.get("revision_statut") == "envoyee"),
+        revisions_jour=sum(1 for r in revisions if r.get("statut") == "envoyee"),
         genere_le=now.strftime("%d/%m/%Y %H:%M"), libelle=libelle_matiere,
     )
 

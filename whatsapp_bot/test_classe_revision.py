@@ -80,12 +80,15 @@ class RevisionTests(unittest.TestCase):
     def setUp(self):
         self.envoyes, self.notes, self.historique = [], [], []
         self.sessions = [(PHONE, session())]
+        self.seance_en_cours = {}  # fiche de seance actuelle (nouvelle seance ouverte apres le bilan)
         self.profil = dict(PROFIL)
         self.patches = [
             mock.patch.object(main, "send_whatsapp", side_effect=lambda phone, msg, *a, **k: self.envoyes.append(msg)),
-            mock.patch.object(main, "lister_sessions_pour_revision", side_effect=lambda now, limite=200: list(self.sessions)),
+            mock.patch.object(main, "lister_revisions_prevues", side_effect=lambda limite=500: list(self.sessions)),
+            mock.patch.object(main, "charger_session_bilan", side_effect=lambda phone: dict(self.seance_en_cours)),
             mock.patch.object(main, "charger_etat_whatsapp", side_effect=lambda phone: dict(self.profil)),
             mock.patch.object(main, "reserver_revision", side_effect=lambda phone: dict(self.sessions[0][1])),
+            mock.patch.object(main, "noter_revision", side_effect=lambda phone, champs: self.notes.append(champs)),
             mock.patch.object(main, "noter_session_bilan", side_effect=lambda phone, champs: self.notes.append(champs)),
             mock.patch.object(main, "generer_revision", return_value="Hier, tu as travaillé la cotation.\nPetit défi de 2 minutes : ...\nRéponds par a, b ou c."),
             mock.patch.object(main, "ajouter_a_historique", side_effect=lambda cle, texte: self.historique.append((cle, texte))),
@@ -103,7 +106,7 @@ class RevisionTests(unittest.TestCase):
         self.assertIn("Petit défi", self.envoyes[-1])
         self.assertIn(main.MESSAGE_ARRET_REVISION, self.envoyes[-1])
         self.assertEqual(self.historique[0][0], CLE)
-        self.assertIn({"revision_statut": "envoyee"}, self.notes)
+        self.assertIn({"statut": "envoyee"}, self.notes)
 
     def test_pas_la_nuit(self):
         self.assertEqual(main.traiter_revisions_lendemain(now=NOW.replace(hour=22)), {"revisions": 0})
@@ -115,12 +118,32 @@ class RevisionTests(unittest.TestCase):
         self.profil = dict(PROFIL, matiere="AUTOMATISME")
         self.assertEqual(main.traiter_revisions_lendemain(now=NOW), {"revisions": 0})
         self.assertEqual(self.envoyes, [])
-        self.assertTrue(all(n.get("revision_statut") == "ignoree" for n in self.notes))
+        self.assertTrue(all(n.get("statut") == "ignoree" for n in self.notes))
 
     def test_seance_non_eligible(self):
-        for s in [session(bilan_texte=""), session(nb_echanges=1), session(revision_envoyee=True), session(bilan_envoye=False)]:
+        for s in [session(bilan_texte=""), session(nb_echanges=1)]:
             self.assertFalse(main.session_eligible_revision(s))
         self.assertTrue(main.session_eligible_revision(session()))
+
+    def test_merci_apres_le_bilan_n_empeche_plus_la_revision(self):
+        # Apres le bilan, l'eleve a ecrit "merci" : une nouvelle seance d'un seul echange.
+        self.seance_en_cours = {"nb_echanges": 1, "bilan_envoye": True, "bilan_source": "fermee_sans_bilan",
+                                "derniere_activite": (NOW - timedelta(hours=19, minutes=30)).isoformat()}
+        self.assertEqual(main.traiter_revisions_lendemain(now=NOW), {"revisions": 1})
+
+    def test_eleve_revenu_depuis_on_attend(self):
+        self.seance_en_cours = {"derniere_activite": (NOW - timedelta(hours=5)).isoformat()}
+        self.assertEqual(main.traiter_revisions_lendemain(now=NOW), {"revisions": 0})
+        self.assertEqual(self.notes, [])  # toujours prevue : elle partira 18 h apres ce dernier message
+
+    def test_trop_tot_ou_trop_tard(self):
+        self.sessions = [(PHONE, session(derniere_activite=(NOW - timedelta(hours=10)).isoformat()))]
+        self.assertEqual(main.traiter_revisions_lendemain(now=NOW), {"revisions": 0})
+        self.assertEqual(self.notes, [])
+        self.sessions = [(PHONE, session(derniere_activite=(NOW - timedelta(hours=30)).isoformat()))]
+        self.assertEqual(main.traiter_revisions_lendemain(now=NOW), {"revisions": 0})
+        self.assertEqual(self.notes, [{"statut": "expiree"}])
+        self.assertEqual(self.envoyes, [])
 
     def test_bilan_texte_conserve(self):
         with mock.patch.object(main, "reserver_bilan", return_value=session(bilan_envoye=False)), \
@@ -128,6 +151,24 @@ class RevisionTests(unittest.TestCase):
              mock.patch.object(main, "demander_avis_seance"):
             main.envoyer_fin_de_session(PHONE, "au_revoir")
         self.assertIn({"bilan_texte": "Bravo. À revoir : la cotation"}, self.notes)
+
+    def test_bilan_planifie_la_revision_a_part(self):
+        ecrit = {}
+        reference = mock.Mock()
+        reference.set.side_effect = lambda d: ecrit.update(d)
+        with mock.patch.object(main, "reserver_bilan", return_value=session(bilan_envoye=False)), \
+             mock.patch.object(main, "generer_bilan_session", return_value="Bravo. À revoir : la cotation"), \
+             mock.patch.object(main, "_revision_ref", return_value=reference), \
+             mock.patch.object(main, "demander_avis_seance"):
+            main.envoyer_fin_de_session(PHONE, "inactivite")
+        self.assertEqual(ecrit["statut"], "prevue")
+        self.assertEqual(ecrit["conversation_key"], CLE)
+        self.assertIn("cotation", ecrit["bilan_texte"])
+        # Une seance d'un seul echange ne planifie pas de revision.
+        ecrit.clear()
+        with mock.patch.object(main, "_revision_ref", return_value=reference):
+            main.planifier_revision(PHONE, session(nb_echanges=1), "Bravo")
+        self.assertEqual(ecrit, {})
 
 
 class ContexteTests(unittest.TestCase):
