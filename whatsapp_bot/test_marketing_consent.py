@@ -320,7 +320,8 @@ class MarketingConsentWebhookTests(unittest.TestCase):
         send.assert_not_called()
         mark.assert_not_called()
 
-    def test_normal_inbound_message_checks_the_prompt(self):
+    def test_premier_message_sans_invitation(self):
+        # L'invitation ne part plus au premier message (elle se melait a l'inscription).
         main.user_profiles.pop(PHONE, None)
         with mock.patch.object(main, "maybe_send_marketing_consent_prompt") as prompt, \
                 mock.patch.object(main, "send_whatsapp_typing_indicator"), \
@@ -330,7 +331,7 @@ class MarketingConsentWebhookTests(unittest.TestCase):
             result = self.run_webhook("bonjour")
 
         self.assertEqual(result, {"status": "ok"})
-        prompt.assert_called_once_with(PHONE)
+        prompt.assert_not_called()
         ask_exam.assert_called_once_with(PHONE)
 
 

@@ -47,6 +47,7 @@ class FauxStockage:
 class BaseFinSession(unittest.TestCase):
     def setUp(self):
         self.stock = FauxStockage()
+        self.invitation_ok = False
         self.envoyes = []
         self.boutons = []
         self.bilans = []
@@ -57,6 +58,7 @@ class BaseFinSession(unittest.TestCase):
             mock.patch.object(main, "charger_session_bilan", side_effect=self.stock.charger),
             mock.patch.object(main, "charger_etat_whatsapp", side_effect=lambda phone: dict(PROFIL)),
             mock.patch.object(main, "sauver_etat_whatsapp", side_effect=noop),
+            mock.patch.object(main, "maybe_send_marketing_consent_prompt", side_effect=lambda phone: self.invitation_ok),
             mock.patch.object(main, "sauver_session_bilan", side_effect=self.stock.sauver),
             mock.patch.object(main, "fermer_session_bilan", side_effect=self.stock.fermer),
             mock.patch.object(main, "reserver_bilan", side_effect=self.stock.reserver),
@@ -113,6 +115,18 @@ class JournalSessionTests(BaseFinSession):
         self.ajouter_echanges(1, debut=NOW + timedelta(minutes=5))
         self.assertEqual(self.stock.docs[PHONE]["nb_echanges"], 1)
         self.assertFalse(self.stock.docs[PHONE]["bilan_envoye"])
+
+
+class ApresBilanTests(BaseFinSession):
+    def test_un_seul_message_apres_le_bilan(self):
+        self.ajouter_echanges(2)
+        self.invitation_ok = True  # invitation aux rappels pas encore envoyee
+        self.assertTrue(main.envoyer_fin_de_session(PHONE, "au_revoir"))
+        self.assertEqual(self.boutons, [])  # pas de boutons d'avis cette fois
+        self.ajouter_echanges(2, debut=NOW + timedelta(hours=2))
+        self.invitation_ok = False  # deja invite : l'avis revient
+        self.assertTrue(main.envoyer_fin_de_session(PHONE, "au_revoir"))
+        self.assertEqual(self.boutons[-1][1], main.QUESTION_AVIS)
 
 
 class AuRevoirTests(BaseFinSession):

@@ -3058,7 +3058,9 @@ def envoyer_fin_de_session(phone, source="au_revoir"):
     send_whatsapp(phone, texte, allow_audio=False)
     noter_session_bilan(phone, {"bilan_texte": texte[:2000]})
     planifier_revision(phone, session, texte)
-    if not demander_ville_ecole_si_besoin(phone):
+    # Un seul message apres le bilan : la ville et l'ecole (premiere fois), sinon l'invitation
+    # aux rappels pedagogiques (une seule fois), sinon les boutons d'avis.
+    if not demander_ville_ecole_si_besoin(phone) and not maybe_send_marketing_consent_prompt(phone):
         demander_avis_seance(phone)
     print(f"FIN_SESSION envoyee source={source} echanges={session.get('nb_echanges')}", flush=True)
     return True
@@ -4583,7 +4585,9 @@ async def _receive_message_impl(request: Request):
             print(f"WHATSAPP_MARKETING_CONSENT status={consent_decision}", flush=True)
             return {"status": "ok", "reason": reason}
 
-        maybe_send_marketing_consent_prompt(phone)
+        # L'invitation aux rappels pedagogiques part apres un bilan de seance (voir
+        # envoyer_fin_de_session), plus au premier message : un nouvel eleve recevait en meme
+        # temps la question du niveau et les boutons du consentement.
 
         print(f"Message de {phone}: {text}", flush=True)
 
