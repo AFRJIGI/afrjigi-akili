@@ -15,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from gtts import gTTS
 import tableau_de_bord
+from template_replies import retention_template_text
+import pedagogical_consent as pedagogical
 from marketing_consent import (
     OPTED_IN,
     claim_marketing_consent_prompt,
@@ -664,7 +666,7 @@ MARKETING_CONSENT_PROMPT = (
 def maybe_send_marketing_consent_prompt(phone):
     """Invite une seule fois, après un message initié par l'utilisateur."""
     try:
-        claim_id = claim_marketing_consent_prompt(feedback_db, phone)
+        claim_id = pedagogical.claim_prompt(feedback_db, phone)
     except Exception as exc:
         print(
             "WHATSAPP_MARKETING_CONSENT_PROMPT claim_failed "
@@ -677,11 +679,10 @@ def maybe_send_marketing_consent_prompt(phone):
 
     delivered = False
     try:
-        delivered = bool(send_whatsapp(
+        delivered = bool(send_whatsapp_boutons(
             phone,
-            MARKETING_CONSENT_PROMPT,
-            persist_event=False,
-            allow_audio=False,
+            pedagogical.PROMPT,
+            pedagogical.BUTTONS,
         ))
     except Exception as exc:
         print(
@@ -690,7 +691,7 @@ def maybe_send_marketing_consent_prompt(phone):
             flush=True,
         )
     try:
-        mark_marketing_consent_prompt_delivery(
+        pedagogical.mark_prompt(
             feedback_db, phone, claim_id, delivered
         )
     except Exception as exc:
@@ -4286,6 +4287,11 @@ async def _receive_message_impl(request: Request):
         phone = msg["from"]
         msg_type = msg.get("type")
         text = msg.get("text", {}).get("body", "").strip()
+        template_text = retention_template_text(msg)
+        if msg_type == "button":
+            if template_text is None:
+                return {"status": "ok", "reason": "bouton_modele_inconnu"}
+            text = template_text
         bouton_id = ((msg.get("interactive") or {}).get("button_reply") or {}).get("id") if msg_type == "interactive" else None
         message_id = msg.get("id")
         if message_id and (message_id in processed_messages or not reserver_message_whatsapp(message_id)):
@@ -4347,6 +4353,24 @@ async def _receive_message_impl(request: Request):
         if message_id:
             send_whatsapp_typing_indicator(message_id)
 
+        if bouton_id in {pedagogical.YES, pedagogical.NO}:
+            decision = OPTED_IN if bouton_id == pedagogical.YES else pedagogical.OPTED_OUT
+            try:
+                saved = pedagogical.save_decision(feedback_db, phone, decision)
+            except Exception:
+                if message_id:
+                    processed_messages.discard(message_id)
+                    liberer_message_whatsapp(message_id)
+                return JSONResponse(status_code=503, content={"status": "retry", "reason": "pedagogical_consent_persistence_failed"})
+            if not saved:
+                return {"status": "ok", "reason": "pedagogical_prompt_missing"}
+            send_whatsapp(phone,
+                "Ton accord est enregistré pour les bilans, rappels d’exercices et quiz. Pour arrêter, écris STOP."
+                if decision == OPTED_IN else
+                "D’accord, tu ne recevras pas ces rappels. Tu peux continuer à utiliser Akili.",
+                persist_event=False, allow_audio=False)
+            return {"status": "ok", "reason": "pedagogical_" + decision}
+
         if bouton_id:
             if traiter_bouton_avis(phone, bouton_id):
                 return {"status": "ok", "reason": "avis_seance"}
@@ -4371,6 +4395,8 @@ async def _receive_message_impl(request: Request):
         consent_decision = detect_marketing_consent_command(text)
         if consent_decision:
             try:
+                if consent_decision == pedagogical.OPTED_OUT:
+                    pedagogical.save_decision(feedback_db, phone, consent_decision, require_prompt=False)
                 save_marketing_consent(feedback_db, phone, consent_decision)
             except Exception as exc:
                 if message_id:
@@ -4401,9 +4427,8 @@ async def _receive_message_impl(request: Request):
             else:
                 send_whatsapp(
                     phone,
-                    "Ta désinscription marketing est enregistrée. Tu ne recevras plus de "
-                    "campagnes WhatsApp d'AfrJigi. Tu peux continuer à utiliser Akili. "
-                    "Pour te réabonner, envoie OUI MARKETING.",
+                    "Ta désinscription est enregistrée. Tu ne recevras plus de rappels ni "
+                    "de campagnes WhatsApp d’AfrJigi. Tu peux continuer à utiliser Akili.",
                     persist_event=False,
                     allow_audio=False,
                 )

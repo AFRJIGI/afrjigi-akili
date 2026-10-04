@@ -215,6 +215,13 @@ class MarketingConsentUnitTests(unittest.TestCase):
 class MarketingConsentWebhookTests(unittest.TestCase):
     def setUp(self):
         main.processed_messages.clear()
+        for target, value in [("reserver_message_whatsapp", True), ("liberer_message_whatsapp", None)]:
+            patch = mock.patch.object(main, target, return_value=value)
+            patch.start()
+            self.addCleanup(patch.stop)
+        patch = mock.patch.object(main.pedagogical, "save_decision", return_value=True)
+        patch.start()
+        self.addCleanup(patch.stop)
 
     def run_webhook(self, text):
         return asyncio.run(main.receive_message(FakeRequest(text)))
@@ -233,7 +240,7 @@ class MarketingConsentWebhookTests(unittest.TestCase):
         self.assertEqual(result, {"status": "ok", "reason": "marketing_opted_out"})
         save.assert_called_once_with(main.feedback_db, PHONE, consent.OPTED_OUT)
         send.assert_called_once()
-        self.assertIn("désinscription marketing", send.call_args.args[1])
+        self.assertIn("désinscription", send.call_args.args[1])
         self.assertEqual(send.call_args.kwargs, {
             "persist_event": False,
             "allow_audio": False,
@@ -291,24 +298,23 @@ class MarketingConsentWebhookTests(unittest.TestCase):
 
     def test_one_time_prompt_records_delivery_without_message_history(self):
         with mock.patch.object(
-            main, "claim_marketing_consent_prompt", return_value="claim-1"
-        ), mock.patch.object(main, "send_whatsapp", return_value=True) as send, \
-                mock.patch.object(main, "mark_marketing_consent_prompt_delivery") as mark:
+            main.pedagogical, "claim_prompt", return_value="claim-1"
+        ), mock.patch.object(main, "send_whatsapp_boutons", return_value=True) as send, \
+                mock.patch.object(main.pedagogical, "mark_prompt") as mark:
             self.assertTrue(main.maybe_send_marketing_consent_prompt(PHONE))
 
         send.assert_called_once_with(
             PHONE,
-            main.MARKETING_CONSENT_PROMPT,
-            persist_event=False,
-            allow_audio=False,
+            main.pedagogical.PROMPT,
+            main.pedagogical.BUTTONS,
         )
         mark.assert_called_once_with(main.feedback_db, PHONE, "claim-1", True)
 
     def test_already_prompted_user_is_not_prompted_again(self):
         with mock.patch.object(
-            main, "claim_marketing_consent_prompt", return_value=None
-        ), mock.patch.object(main, "send_whatsapp") as send, \
-                mock.patch.object(main, "mark_marketing_consent_prompt_delivery") as mark:
+            main.pedagogical, "claim_prompt", return_value=None
+        ), mock.patch.object(main, "send_whatsapp_boutons") as send, \
+                mock.patch.object(main.pedagogical, "mark_prompt") as mark:
             self.assertFalse(main.maybe_send_marketing_consent_prompt(PHONE))
 
         send.assert_not_called()
