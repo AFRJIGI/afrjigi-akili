@@ -112,13 +112,14 @@ class EtatFraisTests(BaseWebhook):
         main.user_profiles[PHONE] = dict(PROFIL, mode="examen", type_examen="BEPC")  # vieille copie
         self.firestore_etat[PHONE] = dict(PROFIL)
         self.envoyer("profil")
-        self.assertIn("mode=etude", self.envoyes[-1])
-        self.assertIn("BAC_TECHNIQUE", self.envoyes[-1])
+        self.assertIn("mode étude", self.envoyes[-1])
+        self.assertIn("BAC Technique", self.envoyes[-1])
 
     def test_reset_fait_sur_une_autre_copie_respecte(self):
         main.user_profiles[PHONE] = dict(PROFIL)   # cette copie se souvient encore
         self.envoyer("profil")                      # Firestore vide : reset fait ailleurs
-        self.assertIn("série=TOUTES", self.envoyes[-1])
+        self.assertNotIn("G1", self.envoyes[-1])
+        self.assertIn("BAC Général", self.envoyes[-1])
 
     def test_lecture_firestore_en_panne_garde_la_memoire(self):
         main.user_profiles[PHONE] = dict(PROFIL)
@@ -130,7 +131,7 @@ class EtatFraisTests(BaseWebhook):
         with mock.patch.object(main, "charger_etat_whatsapp", side_effect=panne):
             self.envoyer("profil")
         main._etat_lecture_echouee.discard(PHONE)
-        self.assertIn("série=G1", self.envoyes[-1])
+        self.assertIn("série G1", self.envoyes[-1])
 
 
 class SauvegardeFinDeMessageTests(BaseWebhook):

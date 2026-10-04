@@ -30,7 +30,7 @@ MAX_MESSAGES = 30
 # Messages automatiques de l'inscription : une conversation qui n'a que ca n'est pas evaluee.
 DEBUTS_AUTOMATIQUES = (
     "Bienvenue sur Akili", "Quel niveau", "Quelle série", "Quelle matière", "Tu veux travailler comment",
-    "Dans quelle ville", "Quel est le nom de ton école", "Profil prêt", "C'est note", "Tu es en quelle classe",
+    "Dans quelle ville", "Quel est le nom de ton école", "Profil prêt", "C'est note", "C'est noté", "Profil actuel", "Tu es en quelle classe",
     "Que veux-tu faire", "Je n'ai pas compris ton choix", "Akili t'a aidé",
 )
 

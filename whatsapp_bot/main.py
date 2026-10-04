@@ -1479,7 +1479,7 @@ def handle_onboarding_choice(phone, profile, text):
         user_profiles[phone] = profile
         sauver_etat_whatsapp(phone, profile)
         send_whatsapp(phone,
-            f"Profil prêt : {profile.get('type_examen', 'BAC_GENERAL')}, série {profile.get('serie', 'TOUTES')}, {libelle_matiere(profile.get('matiere', 'MATHS'))}, mode {profile.get('mode', 'etude')}.\n\n"
+            f"Profil prêt : {resume_profil(profile)}.\n\n"
             "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler.\n\n"
                 "Commandes utiles :\n"
                 "- menu : changer de matiere ou de niveau\n"
@@ -1627,8 +1627,8 @@ def handle_onboarding_choice(phone, profile, text):
                 user_profiles[phone] = profile
                 sauver_etat_whatsapp(phone, profile)
                 send_whatsapp(phone,
-                    f"C'est note : {profile.get('type_examen', 'BAC_GENERAL')}, serie {profile.get('serie', 'TOUTES')}, {libelle_matiere(profile.get('matiere', 'MATHS'))}, mode {profile.get('mode', 'etude')}.\n\n"
-                    "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre a travailler."
+                    f"C'est noté : {resume_profil(profile)}.\n\n"
+                    "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler."
                 )
                 return True
             profile["onboarding_step"] = "mode"
@@ -1659,7 +1659,7 @@ def handle_onboarding_choice(phone, profile, text):
             user_profiles[phone] = profile
             sauver_etat_whatsapp(phone, profile)
             send_whatsapp(phone,
-                f"Profil prêt : {profile.get('type_examen', 'BAC_GENERAL')}, série {profile.get('serie', 'TOUTES')}, {libelle_matiere(profile.get('matiere', 'MATHS'))}, mode {profile.get('mode', 'etude')}.\n\n"
+                f"Profil prêt : {resume_profil(profile)}.\n\n"
                 "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler.\n\n"
                 "Commandes utiles :\n"
                 "- menu : changer de matiere ou de niveau\n"
@@ -2604,6 +2604,32 @@ LIBELLES_EXAMENS = {
     "BAC_TECHNIQUE": "BAC Technique", "BAC_GENERAL": "BAC Général", "BEPC": "BEPC",
     "CLASSE_INTERMEDIAIRE": "classe intermédiaire",
 }
+
+
+LIBELLES_CLASSES_INTERMEDIAIRES = {
+    "6E": "6e", "5E": "5e", "4E": "4e", "SECONDE_A": "Seconde A", "SECONDE_C": "Seconde C",
+    "PREMIERE_A": "Première A", "PREMIERE_C": "Première C", "PREMIERE_D": "Première D",
+}
+LIBELLES_MODES = {"etude": "mode étude", "examen": "mode examen"}
+
+
+def resume_profil(profile):
+    """Profil en clair pour l'eleve : "BAC Technique, série F2, Seconde, Mathématiques, mode étude"."""
+    profile = profile or {}
+    examen = (profile.get("type_examen") or "BAC_GENERAL").upper()
+    serie = str(profile.get("serie") or "").upper()
+    if examen == "BAC_TECHNIQUE":
+        parties = ["BAC Technique", f"série {serie}" if serie and serie != "TOUTES" else "",
+                   LIBELLES_CLASSES.get(str(profile.get("classe") or "").upper(), "")]
+    elif examen == "BEPC":
+        parties = ["BEPC (3e)"]
+    elif examen == "CLASSE_INTERMEDIAIRE":
+        parties = [LIBELLES_CLASSES_INTERMEDIAIRES.get(serie, "classe intermédiaire")]
+    else:
+        parties = [f"BAC Général, Terminale {serie}" if serie and serie != "TOUTES" else "BAC Général"]
+    mode = profile.get("mode") or "etude"
+    parties += [libelle_matiere(profile.get("matiere") or "MATHS"), LIBELLES_MODES.get(mode, f"mode {mode}")]
+    return ", ".join(x for x in parties if x)
 
 
 def consigne_matiere_choisie(matiere, serie=None, type_examen=None, classe=None):
@@ -4772,7 +4798,7 @@ async def _receive_message_impl(request: Request):
         if command in {"profil", "profile"}:
             send_whatsapp(
                 phone,
-                f"Profil actuel : examen={profile.get('type_examen', 'BAC_GENERAL')}, série={profile.get('serie', 'TOUTES')}, matière={libelle_matiere(profile.get('matiere', 'MATHS'))}, mode={profile.get('mode', 'etude')}."
+                f"Profil actuel : {resume_profil(profile)}."
             )
             track_inbound("profile_command", profile)
             return {"status": "ok"}
