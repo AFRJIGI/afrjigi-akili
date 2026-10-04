@@ -55,6 +55,8 @@ class BaseFinSession(unittest.TestCase):
             mock.patch.object(main, "send_whatsapp_boutons",
                               side_effect=lambda phone, corps, boutons: self.boutons.append((phone, corps, boutons)) or True),
             mock.patch.object(main, "charger_session_bilan", side_effect=self.stock.charger),
+            mock.patch.object(main, "charger_etat_whatsapp", side_effect=lambda phone: dict(PROFIL)),
+            mock.patch.object(main, "sauver_etat_whatsapp", side_effect=noop),
             mock.patch.object(main, "sauver_session_bilan", side_effect=self.stock.sauver),
             mock.patch.object(main, "fermer_session_bilan", side_effect=self.stock.fermer),
             mock.patch.object(main, "reserver_bilan", side_effect=self.stock.reserver),

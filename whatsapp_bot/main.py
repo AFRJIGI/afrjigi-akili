@@ -1213,27 +1213,81 @@ def repartir_premiere_question(profile):
     return profile
 
 
+LISTES_WHATSAPP = os.environ.get("WHATSAPP_LISTES", "1") == "1"
+CONSIGNE_LISTE = "Touche « Choisir » puis ton choix."
+
+
+def send_whatsapp_liste(to, corps, lignes, bouton="Choisir"):
+    """Liste WhatsApp a toucher (10 lignes max) : [(lettre, titre de 24 car., description)].
+    La reponse arrive comme un list_reply d'identifiant "choix_<lettre>"."""
+    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
+        return False
+    rangees = []
+    for lettre, titre, description in lignes[:10]:
+        rangee = {"id": f"choix_{lettre}", "title": titre[:24]}
+        if description:
+            rangee["description"] = description[:72]
+        rangees.append(rangee)
+    data = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "body": {"text": corps[:1024]},
+            "action": {"button": bouton[:20], "sections": [{"title": "Choix", "rows": rangees}]},
+        },
+    }
+    try:
+        res = requests.post(f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages",
+                            headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"},
+                            json=data, timeout=30)
+        print(f"WHATSAPP_SEND_LISTE status={res.status_code} body={res.text[:200]}", flush=True)
+        return res.status_code < 300
+    except Exception as e:
+        print(f"Erreur WHATSAPP_SEND_LISTE: {repr(e)}", flush=True)
+        return False
+
+
+def texte_choix(question, options):
+    """Version texte (lettres) d'une question a choix : [(lettre, libelle, precision)]."""
+    lignes = "\n".join(f"{l}. {lib}" + (f" : {prec}" if prec else "") for l, lib, prec in options)
+    lettres = [l for l, _, _ in options]
+    fin = f"{', '.join(lettres[:-1])} ou {lettres[-1]}" if len(lettres) > 1 else lettres[0]
+    return f"{question}\n\n{lignes}\n\nRéponds par {fin}."
+
+
+def envoyer_choix(phone, question, options):
+    """Question a choix : liste a toucher si possible, sinon lettres a taper.
+    Les titres des lignes gardent la lettre : l'eleve peut toujours repondre "b"."""
+    if LISTES_WHATSAPP and 2 <= len(options) <= 10:
+        lignes = []
+        for lettre, libelle, precision in options:
+            titre = f"{lettre}. {libelle}"
+            if len(titre) > 24:
+                precision = libelle if not precision else f"{libelle} : {precision}"
+                titre = titre[:23] + "…"
+            lignes.append((lettre, titre, precision))
+        if send_whatsapp_liste(phone, f"{question}\n\n{CONSIGNE_LISTE}", lignes):
+            return
+    send_whatsapp(phone, texte_choix(question, options))
+
+
+OPTIONS_EXAM = [
+    ("a", "BEPC / 3e", ""),
+    ("b", "BAC Général", ""),
+    ("c", "BAC Technique", ""),
+    ("d", "Classe intermédiaire", "6e, 5e, 4e, Seconde ou Première"),
+]
+
+
 def ask_exam(phone):
-    send_whatsapp(phone,
-        "Bienvenue sur Akili.\n\n"
-        "Quel niveau prépares-tu ?\n\n"
-        "a. BEPC / 3e\n"
-        "b. BAC Général\n"
-        "c. BAC Technique\n"
-        "d. Classe intermédiaire : 6e, 5e, 4e, Seconde ou Première\n\n"
-        "Réponds par a, b, c ou d."
-    )
+    envoyer_choix(phone, "Bienvenue sur Akili.\n\nQuel niveau prépares-tu ?", OPTIONS_EXAM)
 
 
 def ask_serie_general(phone):
-    send_whatsapp(phone,
-        "Quelle série du BAC Général ?\n\n"
-        "a. A1\n"
-        "b. A2\n"
-        "c. C\n"
-        "d. D\n\n"
-        "Réponds par a, b, c ou d."
-    )
+    envoyer_choix(phone, "Quelle série du BAC Général ?",
+                  [("a", "A1", ""), ("b", "A2", ""), ("c", "C", ""), ("d", "D", "")])
 
 
 CLASSES_TECHNIQUE = {"a": "SECONDE", "b": "PREMIERE", "c": "TERMINALE"}
@@ -1241,53 +1295,23 @@ LIBELLES_CLASSES = {"SECONDE": "Seconde", "PREMIERE": "Première", "TERMINALE": 
 
 
 def ask_classe_technique(phone):
-    send_whatsapp(phone,
-        "Tu es en quelle classe ?\n\n"
-        "a. Seconde\n"
-        "b. Première\n"
-        "c. Terminale\n\n"
-        "Réponds par a, b ou c."
-    )
+    envoyer_choix(phone, "Tu es en quelle classe ?",
+                  [("a", "Seconde", ""), ("b", "Première", ""), ("c", "Terminale", "")])
 
 
 def ask_serie_technique(phone):
-    send_whatsapp(phone,
-        "Quelle série du BAC Technique ?\n\n"
-        "a. B\n"
-        "b. G1\n"
-        "c. G2\n"
-        "d. E\n"
-        "e. F1\n"
-        "f. F2\n"
-        "g. F3\n"
-        "h. F4\n"
-        "i. F7\n\n"
-        "Réponds par a, b, c, d, e, f, g, h ou i."
-    )
+    envoyer_choix(phone, "Quelle série du BAC Technique ?",
+                  [(l, s, "") for l, s in zip("abcdefghi", ["B", "G1", "G2", "E", "F1", "F2", "F3", "F4", "F7"])])
 
 
 def ask_seconde(phone):
-    send_whatsapp(phone,
-        "Tu es en seconde. Quelle série ?\n\n"
-        "a. Seconde A\n"
-        "b. Seconde C\n\n"
-        "Réponds par a ou b."
-    )
+    envoyer_choix(phone, "Tu es en seconde. Quelle série ?", [("a", "Seconde A", ""), ("b", "Seconde C", "")])
 
 
 def ask_classe_intermediaire(phone):
-    send_whatsapp(phone,
-        "Tu es en quelle classe ?\n\n"
-        "a. 6e\n"
-        "b. 5e\n"
-        "c. 4e\n"
-        "d. Seconde A\n"
-        "e. Seconde C\n"
-        "f. Première A\n"
-        "g. Première C\n"
-        "h. Première D\n\n"
-        "Réponds par a, b, c, d, e, f, g ou h."
-    )
+    envoyer_choix(phone, "Tu es en quelle classe ?", [
+        (l, c, "") for l, c in zip("abcdefgh", ["6e", "5e", "4e", "Seconde A", "Seconde C",
+                                               "Première A", "Première C", "Première D"])])
 
 
 
@@ -1303,50 +1327,67 @@ def menu_matieres_technique(serie=None):
 
 
 def ask_matiere_technique(phone, serie=None):
-    send_whatsapp(phone, menu_matieres_technique(serie))
+    matieres = matieres_technique(serie)
+    if len(matieres) <= 10:
+        envoyer_choix(phone, "Quelle matière veux-tu travailler ?",
+                      [(LETTRES_CHOIX[i], libelle, "") for i, (_, libelle) in enumerate(matieres)])
+    else:
+        send_whatsapp(phone, menu_matieres_technique(serie))  # plus de 10 matieres : lettres
+
+
+MATIERES_BEPC = ["Mathématiques", "Physique-Chimie", "SVT", "Français", "Histoire-Géographie",
+                 "EDHC", "Espagnol", "Allemand", "Anglais"]
+MATIERES_GENERAL = ["Mathématiques", "Physique-Chimie", "SVT", "Français", "Philosophie",
+                    "Histoire-Géographie", "Espagnol", "Allemand", "Anglais"]
 
 
 def ask_matiere(phone, serie="TOUTES"):
     serie = (serie or "").upper().strip()
-
-    if serie == "BEPC":
-        send_whatsapp(phone,
-            "Quelle matière veux-tu travailler ?\n\n"
-            "a. Mathématiques\n"
-            "b. Physique-Chimie\n"
-            "c. SVT\n"
-            "d. Français\n"
-            "e. Histoire-Géographie\n"
-            "f. EDHC\n"
-            "g. Espagnol\n"
-            "h. Allemand\n"
-            "i. Anglais\n\n"
-            "Réponds par a, b, c, d, e, f, g, h ou i."
-        )
-        return
-
-    send_whatsapp(phone,
-        "Quelle matière veux-tu travailler ?\n\n"
-        "a. Mathématiques\n"
-        "b. Physique-Chimie\n"
-        "c. SVT\n"
-        "d. Français\n"
-        "e. Philosophie\n"
-        "f. Histoire-Géographie\n"
-        "g. Espagnol\n"
-        "h. Allemand\n"
-        "i. Anglais\n\n"
-        "Réponds par a, b, c, d, e, f, g, h ou i."
-    )
+    matieres = MATIERES_BEPC if serie == "BEPC" else MATIERES_GENERAL
+    envoyer_choix(phone, "Quelle matière veux-tu travailler ?",
+                  [(LETTRES_CHOIX[i], m, "") for i, m in enumerate(matieres)])
 
 
 def ask_mode(phone):
-    send_whatsapp(phone,
-        "Tu veux travailler comment ?\n"
-        "a) Mode Étude : Akili t'explique pas à pas\n"
-        "b) Mode Examen : tu fais seul, Akili corrige et note\n\n"
-        "Réponds par a ou b."
+    envoyer_choix(phone, "Tu veux travailler comment ?", [
+        ("a", "Mode Étude", "Akili t'explique pas à pas"),
+        ("b", "Mode Examen", "tu fais seul, Akili corrige et note"),
+    ])
+
+
+def message_profil_pret(profile):
+    return (
+        f"Profil prêt : {resume_profil(profile)}.\n\n"
+        "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler.\n\n"
+        "Tu es en mode étude : Akili t'explique pas à pas. Pour être noté comme à l'examen, écris menu.\n\n"
+        "Commandes utiles :\n"
+        "- menu : changer de matière, de niveau ou de mode\n"
+        "- changer profil : modifier ton niveau, ta série ou ta matière\n"
+        "- avis: ton avis sur Akili\n\n"
+        "Pendant le Grand Pilote, ton avis compte beaucoup."
+    ) if (profile.get("mode") or "etude") == "etude" else (
+        f"Profil prêt : {resume_profil(profile)}.\n\n"
+        "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler.\n\n"
+        "Commandes utiles :\n"
+        "- menu : changer de matière, de niveau ou de mode\n"
+        "- changer profil : modifier ton niveau, ta série ou ta matière\n"
+        "- avis: ton avis sur Akili"
     )
+
+
+def terminer_inscription(phone, profile, deja_inscrit=False):
+    """Fin de l'inscription des la matiere choisie : mode etude par defaut, la ville et
+    l'ecole sont demandees plus tard (apres la premiere seance), sans bloquer l'eleve."""
+    profile["mode"] = profile.get("mode") or "etude"
+    profile = mark_onboarding_completed(phone, profile)
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    if deja_inscrit:
+        send_whatsapp(phone, f"C'est noté : {resume_profil(profile)}.\n\n"
+                             "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler.")
+    else:
+        send_whatsapp(phone, message_profil_pret(profile))
+    return profile
 
 
 
@@ -1430,7 +1471,8 @@ def mot_cle_vers_lettre(step, text, profile):
         },
         "menu_choice": {
             "a": ["MATIERE"],
-            "b": ["NIVEAU", "SERIE", "EXAMEN"],
+            "b": ["NIVEAU", "SERIE"],
+            "c": ["MODE", "ETUDE", "EXAMEN"],
         },
     }
 
@@ -1475,18 +1517,7 @@ def handle_onboarding_choice(phone, profile, text):
             nom_ecole = ""
         profile["nom_ecole"] = nom_ecole[:120]
         profile["nom_ecole_asked"] = True
-        profile = mark_onboarding_completed(phone, profile)
-        user_profiles[phone] = profile
-        sauver_etat_whatsapp(phone, profile)
-        send_whatsapp(phone,
-            f"Profil prêt : {resume_profil(profile)}.\n\n"
-            "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler.\n\n"
-                "Commandes utiles :\n"
-                "- menu : changer de matiere ou de niveau\n"
-                "- changer profil : modifier ton niveau, ta série ou ta matière\n"
-                "- avis: ton avis sur Akili\n\n"
-                "Pendant le Grand Pilote, ton avis compte beaucoup."
-        )
+        terminer_inscription(phone, profile)
         return True
 
     key = choice_key(text) or mot_cle_vers_lettre(step, text, profile)
@@ -1512,6 +1543,12 @@ def handle_onboarding_choice(phone, profile, text):
             user_profiles[phone] = profile
             sauver_etat_whatsapp(phone, profile)
             ask_exam(phone)
+            return True
+        if key == "c":
+            profile["onboarding_step"] = "mode"
+            user_profiles[phone] = profile
+            sauver_etat_whatsapp(phone, profile)
+            ask_mode(phone)
             return True
 
     if step == "exam":
@@ -1617,56 +1654,17 @@ def handle_onboarding_choice(phone, profile, text):
         if key in values:
             profile["matiere"] = values[key]
             profile["matiere_confirmed"] = True
-            profil_deja_complet = (
-                profile.get("mode")
-                and profile.get("ville")
-                and (profile.get("nom_ecole") or profile.get("nom_ecole_asked"))
-            )
-            if profil_deja_complet:
-                profile = mark_onboarding_completed(phone, profile)
-                user_profiles[phone] = profile
-                sauver_etat_whatsapp(phone, profile)
-                send_whatsapp(phone,
-                    f"C'est noté : {resume_profil(profile)}.\n\n"
-                    "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler."
-                )
-                return True
-            profile["onboarding_step"] = "mode"
-            user_profiles[phone] = profile
-            sauver_etat_whatsapp(phone, profile)
-            ask_mode(phone)
+            deja_inscrit = bool(profile.get("mode") and (profile.get("onboarding_completed_at") or profile.get("ville")))
+            terminer_inscription(phone, profile, deja_inscrit=deja_inscrit)
             return True
 
     if step == "mode":
+        # Choix du mode : depuis le menu (option c), ou eleve arrete a cette etape avant
+        # la suppression de la question.
         if key in {"a", "b"}:
+            deja_inscrit = bool(profile.get("onboarding_completed_at"))
             profile["mode"] = "etude" if key == "a" else "examen"
-
-            if not profile.get("ville"):
-                profile["onboarding_step"] = "ville"
-                user_profiles[phone] = profile
-                sauver_etat_whatsapp(phone, profile)
-                ask_ville(phone)
-                return True
-
-            if not profile.get("nom_ecole") and not profile.get("nom_ecole_asked"):
-                profile["onboarding_step"] = "nom_ecole"
-                user_profiles[phone] = profile
-                sauver_etat_whatsapp(phone, profile)
-                ask_nom_ecole(phone)
-                return True
-
-            profile = mark_onboarding_completed(phone, profile)
-            user_profiles[phone] = profile
-            sauver_etat_whatsapp(phone, profile)
-            send_whatsapp(phone,
-                f"Profil prêt : {resume_profil(profile)}.\n\n"
-                "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler.\n\n"
-                "Commandes utiles :\n"
-                "- menu : changer de matiere ou de niveau\n"
-                "- changer profil : modifier ton niveau, ta série ou ta matière\n"
-                "- avis: ton avis sur Akili\n\n"
-                "Pendant le Grand Pilote, ton avis compte beaucoup."
-            )
+            terminer_inscription(phone, profile, deja_inscrit=deja_inscrit)
             return True
 
     return reposer_si_choix_attendu(phone, profile, text)
@@ -1675,7 +1673,7 @@ def handle_onboarding_choice(phone, profile, text):
 # Etapes ou seule une lettre de la liste est attendue. L'etape "exam" n'y est pas :
 # l'eleve peut y ecrire son profil en toutes lettres ("Je suis en Terminale D...").
 ETAPES_A_REPOSER = {"exam", "serie_general", "serie_technique", "classe_technique", "seconde", "classe_intermediaire", "matiere", "mode"}
-MESSAGE_CHOIX_NON_COMPRIS = "Je n'ai pas compris ton choix. Réponds seulement avec la lettre de la liste."
+MESSAGE_CHOIX_NON_COMPRIS = "Je n'ai pas compris ton choix. Touche ton choix dans la liste, ou réponds avec sa lettre."
 
 
 def reposer_si_choix_attendu(phone, profile, text):
@@ -2776,6 +2774,75 @@ def traiter_bouton_avis(phone, bouton_id):
     return True
 
 
+QUESTION_VILLE_ECOLE = (
+    "Dernière petite question (facultative) : dans quelle ville et dans quelle école étudies-tu ?\n"
+    "Exemple : Bouaké, Lycée moderne 1\n\n"
+    "Écris « passer » si tu préfères ne pas répondre."
+)
+MESSAGE_MERCI_VILLE_ECOLE = "Merci, c'est noté ! À bientôt sur Akili."
+MESSAGE_PASSER_VILLE_ECOLE = "D'accord, pas de souci. À bientôt sur Akili !"
+VILLE_ECOLE_MINUTES = 60
+MOTS_ECOLE = {"LYCEE", "COLLEGE", "ECOLE", "GROUPE", "INSTITUT", "INSTITUTION", "CEG", "EPP", "COMPLEXE",
+              "LTP", "CET", "CENTRE", "ETABLISSEMENT", "LT", "LM", "LYCE"}
+REPONSES_SANS_CONTENU = {"OK", "OKAY", "MERCI", "MERCI BEAUCOUP", "OUI", "D ACCORD", "DACCORD", "BIEN", "SUPER", "COOL"}
+
+
+def demander_ville_ecole_si_besoin(phone):
+    """Apres le premier bilan : ville et ecole, si on ne les connait pas. Vrai si demandees."""
+    profile = user_profiles.get(phone) or charger_etat_whatsapp(phone) or {}
+    if profile.get("ville") or profile.get("ville_ecole_demandee"):
+        return False
+    profile["ville_ecole_demandee"] = True
+    profile["attente_ville_ecole"] = datetime.now(timezone.utc).isoformat()
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    send_whatsapp(phone, QUESTION_VILLE_ECOLE, allow_audio=False)
+    return True
+
+
+def lire_ville_ecole(texte):
+    """("Bouaké", "Lycée moderne 1") depuis "Bouaké, Lycée moderne 1" ou "Bouaké lycée moderne 1"."""
+    texte = " ".join((texte or "").split())
+    morceaux = re.split(r"\s*[,;/\n]\s*|\s+-\s+", texte, maxsplit=1)
+    if len(morceaux) == 2 and morceaux[0] and morceaux[1]:
+        return morceaux[0][:80], morceaux[1][:120]
+    mots = texte.split(" ")
+    for i, mot in enumerate(mots):
+        if normalize_for_match(mot) in MOTS_ECOLE:
+            return " ".join(mots[:i])[:80], " ".join(mots[i:])[:120]
+    return texte[:80], ""
+
+
+def ville_ecole_attendue(profile, text, now=None):
+    """None : message ordinaire. False : l'eleve passe. Sinon (ville, ecole)."""
+    attente = (profile or {}).get("attente_ville_ecole")
+    if not attente:
+        return None
+    depuis = parse_datetime(attente)
+    now = now or datetime.now(timezone.utc)
+    msg = normalize_for_match(text)
+    if (not depuis or now - depuis > timedelta(minutes=VILLE_ECOLE_MINUTES)
+            or (text or "").strip().lower().split(" ")[0] in MOTS_COMMANDES or "?" in (text or "")
+            or len(msg.split()) > 12 or is_learning_request(text) or prefixe_avis(text)):
+        profile.pop("attente_ville_ecole", None)
+        return None
+    if msg in REPONSES_SANS_CONTENU:
+        return None  # "merci" apres le bilan : on attend encore la reponse
+    if msg in {"PASSER", "PASSE", "NON", "NON MERCI", "RIEN", "SKIP"} or not msg:
+        return False
+    return lire_ville_ecole(text)
+
+
+def enregistrer_ville_ecole(phone, profile):
+    try:
+        feedback_db.collection("users").document(f"{phone}@afrjigi.com").set({
+            "ville": profile.get("ville", ""), "nom_ecole": profile.get("nom_ecole", ""),
+            "last_profile_update": datetime.now(timezone.utc).isoformat(),
+        }, merge=True)
+    except Exception as e:
+        print(f"Erreur enregistrer_ville_ecole: {repr(e)}", flush=True)
+
+
 def commentaire_avis_attendu(profile, text, now=None):
     """Note en attente de commentaire, si la reponse arrive a temps et n'est pas une commande."""
     attente = (profile or {}).get("attente_commentaire_avis")
@@ -2991,7 +3058,8 @@ def envoyer_fin_de_session(phone, source="au_revoir"):
     send_whatsapp(phone, texte, allow_audio=False)
     noter_session_bilan(phone, {"bilan_texte": texte[:2000]})
     planifier_revision(phone, session, texte)
-    demander_avis_seance(phone)
+    if not demander_ville_ecole_si_besoin(phone):
+        demander_avis_seance(phone)
     print(f"FIN_SESSION envoyee source={source} echanges={session.get('nb_echanges')}", flush=True)
     return True
 
@@ -3560,7 +3628,6 @@ def is_profile_ready(profile):
         and profile.get("type_examen")
         and profile.get("matiere")
         and profile.get("mode")
-        and profile.get("ville")
         and profile.get("serie")
         and profile.get("serie") != "TOUTES"
     )
@@ -3574,7 +3641,6 @@ def mark_profile_ready_if_complete(profile):
         and profile.get("type_examen")
         and profile.get("matiere")
         and profile.get("mode")
-        and profile.get("ville")
         and profile.get("serie")
         and profile.get("serie") != "TOUTES"
     ):
@@ -4369,7 +4435,11 @@ async def _receive_message_impl(request: Request):
             if template_text is None:
                 return {"status": "ok", "reason": "bouton_modele_inconnu"}
             text = template_text
-        bouton_id = ((msg.get("interactive") or {}).get("button_reply") or {}).get("id") if msg_type == "interactive" else None
+        interactif = (msg.get("interactive") or {}) if msg_type == "interactive" else {}
+        bouton_id = (interactif.get("button_reply") or {}).get("id")
+        choix_liste = str((interactif.get("list_reply") or {}).get("id") or "")
+        if choix_liste.startswith("choix_"):
+            text = choix_liste[len("choix_"):]  # comme si l'eleve avait tape la lettre
         message_id = msg.get("id")
         if message_id and (message_id in processed_messages or not reserver_message_whatsapp(message_id)):
             print(f"Message déjà traité: {message_id}", flush=True)
@@ -4594,6 +4664,24 @@ async def _receive_message_impl(request: Request):
             track_inbound("offre_mode_etude", profile)
             return {"status": "ok", "reason": "offre_mode_etude"}
 
+        ville_ecole = ville_ecole_attendue(profile, text)
+        if ville_ecole is not None:
+            profile.pop("attente_ville_ecole", None)
+            if ville_ecole:
+                ville, ecole = ville_ecole
+                if ville:
+                    profile["ville"] = ville
+                if ecole:
+                    profile["nom_ecole"] = ecole
+                profile["nom_ecole_asked"] = True
+                enregistrer_ville_ecole(phone, profile)
+                send_whatsapp(phone, MESSAGE_MERCI_VILLE_ECOLE, allow_audio=False)
+            else:
+                send_whatsapp(phone, MESSAGE_PASSER_VILLE_ECOLE, allow_audio=False)
+            user_profiles[phone] = profile
+            track_inbound("ville_ecole", profile)
+            return {"status": "ok", "reason": "ville_ecole"}
+
         note_en_attente = commentaire_avis_attendu(profile, text)
         if note_en_attente:
             profile.pop("attente_commentaire_avis", None)
@@ -4687,12 +4775,11 @@ async def _receive_message_impl(request: Request):
                 profile["onboarding_step"] = "menu_choice"
                 user_profiles[phone] = profile
                 sauver_etat_whatsapp(phone, profile)
-                send_whatsapp(phone,
-                    "Que veux-tu faire ?\n\n"
-                    "a. Changer de matiere (garder le meme niveau)\n"
-                    "b. Changer de niveau, serie ou examen\n\n"
-                    "Reponds par a ou b."
-                )
+                envoyer_choix(phone, "Que veux-tu faire ?", [
+                    ("a", "Changer de matière", "Garder le même niveau"),
+                    ("b", "Changer de niveau", "Niveau, série ou examen"),
+                    ("c", "Changer de mode", f"Étude ou examen (aujourd'hui : {LIBELLES_MODES.get(profile.get('mode') or 'etude', 'mode étude')})"),
+                ])
                 track_inbound("menu_opened", profile)
                 return {"status": "ok"}
             profile["onboarding_step"] = "exam"

@@ -32,6 +32,7 @@ DEBUTS_AUTOMATIQUES = (
     "Bienvenue sur Akili", "Quel niveau", "Quelle série", "Quelle matière", "Tu veux travailler comment",
     "Dans quelle ville", "Quel est le nom de ton école", "Profil prêt", "C'est note", "C'est noté", "Profil actuel", "Tu es en quelle classe",
     "Que veux-tu faire", "Je n'ai pas compris ton choix", "Akili t'a aidé",
+    "Dernière petite question", "Merci, c'est noté", "D'accord, pas de souci",
 )
 
 GRILLE = """Tu es inspecteur pedagogique. Tu relis une conversation WhatsApp entre un eleve de Cote d'Ivoire
