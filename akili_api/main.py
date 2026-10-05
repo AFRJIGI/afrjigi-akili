@@ -280,6 +280,43 @@ def normaliser_mode(mode, question=""):
         return "examen"
     return "etude"
 
+# Matieres techniques (BAC Technique) guidees comme les sciences : meme methode pas a pas.
+MATIERES_TECHNIQUES_GUIDEES = {
+    "MATHS_GENERAL": "Mathématiques générales", "MATHS_FIN": "Mathématiques financières",
+    "PHYSIQUE_APPLIQUEE": "Physique appliquée", "ESTI": "Étude des systèmes techniques industriels",
+    "MECANIQUE_APPLIQUEE": "Mécanique appliquée", "MECANIQUE": "Mécanique",
+    "CMI": "Construction mécanique industrielle", "ELECTRONIQUE": "Électronique",
+    "DESSIN_INDUSTRIEL": "Dessin industriel", "TECHNO_SCHEMAS": "Technologie et schémas",
+    "TECHNO_GENERALE": "Technologie générale", "AUTOMATISME": "Automatisme",
+    "BUREAU_METHODES": "Bureau des méthodes", "ETUDE_OUTILLAGE": "Étude d'outillage",
+    "FABRICATION": "Fabrication mécanique", "ETUDE_FABRICATION": "Étude de fabrication",
+    "MESURES_ESSAIS": "Mesures et essais", "CABLAGE": "Câblage", "TOPOGRAPHIE": "Topographie appliquée",
+    "RDM": "Résistance des matériaux", "TECHNO_GENIE_CIVIL": "Technologie (génie civil)",
+    "METHODES": "Méthodes", "LABO_MATERIAUX": "Laboratoire (essais des matériaux)",
+    "DESSIN_GENIE_CIVIL": "Dessin technique (génie civil)", "BIOCHIMIE": "Biochimie",
+    "MICROBIOLOGIE": "Microbiologie", "BIOLOGIE": "Biologie", "CHIMIE": "Chimie",
+    "INFORMATIQUE_INDUSTRIELLE": "Informatique industrielle",
+}
+LIBELLES_CLASSES_TECHNIQUE = {"SECONDE": "Seconde", "PREMIERE": "Première", "TERMINALE": "Terminale"}
+CONSIGNE_TECHNIQUE = (
+    "MATIÈRE TECHNIQUE (important) : relie chaque notion à une situation concrète d'atelier, "
+    "de laboratoire ou de chantier (pièce, mécanisme, montage, ouvrage). Pour les calculs, fais "
+    "écrire les données avec leurs unités, convertis-les avant le calcul (mm, m, N, daN, MPa...) "
+    "et vérifie l'unité et l'ordre de grandeur du résultat. Pour une résolution graphique, décris "
+    "les étapes du tracé (échelle, directions, dynamique des forces) que l'élève fait sur papier."
+)
+
+
+def niveau_bac_technique(serie, classe):
+    texte = "BAC Technique"
+    if (serie or "").strip():
+        texte += f", série {serie.strip().upper()}"
+    libelle = LIBELLES_CLASSES_TECHNIQUE.get(str(classe or "").strip().upper())
+    if libelle:
+        texte += f", classe de {libelle}"
+    return texte
+
+
 def normaliser_examen_requete(type_examen=None, serie=None):
     raw = f"{type_examen or ''} {serie or ''}".upper()
     s = (serie or "").upper().strip()
@@ -955,7 +992,7 @@ RÈGLES ABSOLUES :
 - Terminer chaque réponse par une question ou une invitation à agir
 - Format BAC CI officiel : JAMAIS de plan en 3 parties
 """
-        elif matiere_propre in ["MATHS", "PC", "PHYSIQUE", "PHYSIQUE-CHIMIE", "SVT"]:
+        elif matiere_propre in ["MATHS", "PC", "PHYSIQUE", "PHYSIQUE-CHIMIE", "SVT"] or matiere_propre in MATIERES_TECHNIQUES_GUIDEES:
             niveau_examen = (type_examen or "BAC Général").strip()
             serie_normalisee = (serie or "").upper().strip()
             libelles_classes = {
@@ -977,6 +1014,9 @@ RÈGLES ABSOLUES :
                     "terme nouveau avec un exemple concret et familier. Ne parle ni du BAC "
                     "ni du BEPC sauf si l'élève le demande explicitement."
                 )
+            elif examen_registre == "BAC_TECHNIQUE":
+                niveau_texte = niveau_bac_technique(serie, classe)
+                langage_texte = CONSIGNE_TECHNIQUE if matiere_propre in MATIERES_TECHNIQUES_GUIDEES else ""
             elif niveau_examen.upper() == "BEPC":
                 niveau_texte = "BEPC (3ème)"
                 langage_texte = (
@@ -1013,7 +1053,7 @@ CONCISION (important) :
 - Les élèves lisent peu : va à l'essentiel.
 
 FORMATAGE : Utilise le LaTeX ($inline$ ou $$display$$) pour TOUTES les expressions mathématiques, fractions, puissances et racines, pour un rendu lisible sur smartphone."""
-            matiere_texte = {"MATHS": "Mathématiques", "SVT": "SVT (Sciences de la Vie et de la Terre)"}.get(matiere_propre, "Physique-Chimie")
+            matiere_texte = MATIERES_TECHNIQUES_GUIDEES.get(matiere_propre) or {"MATHS": "Mathématiques", "SVT": "SVT (Sciences de la Vie et de la Terre)"}.get(matiere_propre, "Physique-Chimie")
             system_prompt = (system_prompt.replace("NIVEAU_PLACEHOLDER", niveau_texte)
                              .replace("LANGAGE_PLACEHOLDER", langage_texte).replace("MATIERE_PLACEHOLDER", matiere_texte))
         elif matiere_propre == "FRANÇAIS-BEPC-COMPOSITION":
