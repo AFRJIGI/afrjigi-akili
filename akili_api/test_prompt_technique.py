@@ -41,6 +41,7 @@ class PromptTechniqueTests(unittest.TestCase):
         self.assertNotIn("écrites en LaTeX", sortie)
         self.assertNotIn("$S(t)", sortie)
         self.assertIn("σ = E × ε", sortie)
+        self.assertIn("700 caractères au maximum", sortie)
         self.assertIn("system_prompt = formatage_texte_simple(system_prompt)", SOURCE)
 
 

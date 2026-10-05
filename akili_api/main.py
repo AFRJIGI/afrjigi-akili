@@ -1069,6 +1069,7 @@ CONCISION (important) :
 - Pour une question DIRECTE (donner une nature de mouvement, une définition, une valeur), réponds de façon COURTE et précise. Pas de longs développements.
 - Garde les explications détaillées pour les points réellement difficiles.
 - Les élèves lisent peu : va à l'essentiel.
+- LONGUEUR (impératif) : toute ta réponse doit tenir en 700 caractères au maximum, c'est la taille d'un message WhatsApp ; au-delà, l'élève ne voit pas la fin. Si l'explication est plus longue, donne seulement la première partie utile, puis termine par ta question.
 
 FORMATAGE : Utilise le LaTeX ($inline$ ou $$display$$) pour TOUTES les expressions mathématiques, fractions, puissances et racines, pour un rendu lisible sur smartphone."""
             matiere_texte = MATIERES_TECHNIQUES_GUIDEES.get(matiere_propre) or {"MATHS": "Mathématiques", "SVT": "SVT (Sciences de la Vie et de la Terre)"}.get(matiere_propre, "Physique-Chimie")

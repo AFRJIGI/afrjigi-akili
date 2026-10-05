@@ -1907,17 +1907,22 @@ def is_multiple_choice_answer(text):
 
 
 
-def split_whatsapp_message(message, limit=850, max_parts=1, add_continuation=True):
-    """Découpe une réponse WhatsApp sans couper au milieu d'un mot."""
-    message = clean_whatsapp_response(message)
-    if not message:
-        return []
+CONTINUATION_WHATSAPP = "\n\nJe m'arrête ici. Écris *suite* pour lire la suite."
+SUITE_MAX_HEURES = 3
+MOTS_POLITESSE_SUITE = {"STP", "SVP", "S IL TE PLAIT", "S IL VOUS PLAIT", "MERCI", "AKILI", "PROF"}
+DEMANDES_DE_SUITE = {
+    "SUITE", "LA SUITE", "CONTINUE", "CONTINUER", "CONTINUES", "CONTINU", "OUI", "OUAIS", "OK", "OKAY",
+    "D ACCORD", "DACCORD", "VAS Y", "VA Y", "ENSUITE", "ET APRES", "APRES", "OUI CONTINUE", "OUI CONTINUER",
+    "OUI LA SUITE", "OUI VAS Y", "OK CONTINUE", "OK LA SUITE", "JE VEUX CONTINUER", "OUI JE VEUX CONTINUER",
+    "JE VEUX LA SUITE", "DONNE LA SUITE", "DONNE MOI LA SUITE", "LA SUITE DE L EXPLICATION", "CONTINUE L EXPLICATION",
+}
 
+
+def decouper_message(message, limit=850, max_parts=1):
+    """Coupe un texte deja nettoye : (parties envoyees, reste non envoye)."""
     parts = []
-    remaining = message
-
-    continuation = "\n\nJe m'arrête ici. Dis-moi si tu veux continuer."
-    effective_limit = max(200, limit - len(continuation))
+    remaining = (message or "").strip()
+    effective_limit = max(200, limit - len(CONTINUATION_WHATSAPP))
 
     while remaining and len(parts) < max_parts:
         if len(remaining) <= limit:
@@ -1946,10 +1951,41 @@ def split_whatsapp_message(message, limit=850, max_parts=1, add_continuation=Tru
 
         remaining = remaining[last_break + 1:].strip()
 
+    return parts, remaining
+
+
+def split_whatsapp_message(message, limit=850, max_parts=1, add_continuation=True):
+    """Découpe une réponse WhatsApp sans couper au milieu d'un mot."""
+    message = clean_whatsapp_response(message)
+    if not message:
+        return []
+
+    parts, remaining = decouper_message(message, limit=limit, max_parts=max_parts)
+
     if remaining and parts and add_continuation:
-        parts[-1] = parts[-1].rstrip(" ,;:-") + continuation
+        parts[-1] = parts[-1].rstrip(" ,;:-") + CONTINUATION_WHATSAPP
 
     return parts
+
+
+def texte_envoye(message, limit=850, add_continuation=True):
+    """Ce que l'eleve recoit vraiment (premier bloc), pour l'historique d'Akili."""
+    parts = split_whatsapp_message(message, limit=limit, max_parts=1, add_continuation=add_continuation)
+    return parts[0] if parts else ""
+
+
+def reste_non_envoye(message, limit=850):
+    """Partie coupee par l'envoi WhatsApp, a envoyer quand l'eleve demande la suite."""
+    message = clean_whatsapp_response(message)
+    return decouper_message(message, limit=limit, max_parts=1)[1] if message else ""
+
+
+def est_demande_de_suite(text):
+    mots = normalize_for_match(text)
+    for politesse in MOTS_POLITESSE_SUITE:
+        mots = re.sub(rf"(?<![A-Z0-9]){politesse}(?![A-Z0-9])", " ", mots)
+    return " ".join(mots.split()) in DEMANDES_DE_SUITE
+
 
 def format_whatsapp_message(message, limit=1400):
     """Compatibilité avec l'ancien appel : retourne seulement le premier bloc."""
@@ -2314,6 +2350,7 @@ def send_whatsapp(
 
     should_reply_audio = allow_audio and bool(audio_reply_context.get(str(to)))
     message_parts = split_whatsapp_message(message, limit=limit, max_parts=1, add_continuation=add_continuation)
+    suite = reste_non_envoye(message, limit=limit) if add_continuation else ""
 
     if not message_parts:
         return False
@@ -2352,7 +2389,7 @@ def send_whatsapp(
                 user_profiles.get(to, {}),
                 extra={"graph_status": res.status_code}
             )
-            save_last_assistant_context(to, part, user_profiles.get(to, {}))
+            save_last_assistant_context(to, part, user_profiles.get(to, {}), suite=suite)
 
         if should_reply_audio and index == 1:
             audio_reply_context[str(to)] = False
@@ -3104,8 +3141,9 @@ def traiter_bilans_inactivite(now=None):
     return {"envoyes": envoyes, "fermees": fermees}
 
 
-def save_last_assistant_context(phone, text, profile=None):
-    """Persiste le dernier message pedagogique envoye a un utilisateur."""
+def save_last_assistant_context(phone, text, profile=None, suite=""):
+    """Persiste le dernier message pedagogique envoye a un utilisateur, et la partie
+    coupee par WhatsApp (vide si tout est parti) pour pouvoir l'envoyer sur "suite"."""
     try:
         if not phone or not text:
             return
@@ -3113,6 +3151,7 @@ def save_last_assistant_context(phone, text, profile=None):
         feedback_db.collection("whatsapp_contexts").document(str(phone)).set({
             "phone": str(phone),
             "last_assistant_text": text,
+            "suite_en_attente": suite or "",
             "matiere": profile.get("matiere", ""),
             "serie": profile.get("serie", ""),
             "type_examen": profile.get("type_examen", ""),
@@ -3134,6 +3173,44 @@ def load_last_assistant_context(phone):
     except Exception as e:
         print(f"Erreur load_last_assistant_context: {repr(e)}", flush=True)
         return ""
+
+
+def charger_suite_en_attente(phone):
+    """Partie coupee du dernier message, si elle date de moins de SUITE_MAX_HEURES."""
+    try:
+        doc = feedback_db.collection("whatsapp_contexts").document(str(phone)).get()
+        if not doc.exists:
+            return ""
+        data = doc.to_dict() or {}
+        suite = (data.get("suite_en_attente") or "").strip()
+        date = parse_datetime(data.get("updated_at"))
+        if not suite or not date or datetime.now(timezone.utc) - date > timedelta(hours=SUITE_MAX_HEURES):
+            return ""
+        return suite
+    except Exception as e:
+        print(f"Erreur charger_suite_en_attente: {repr(e)}", flush=True)
+        return ""
+
+
+def envoyer_suite_en_attente(phone, profile, texte_eleve):
+    """L'eleve a ecrit "suite" (ou "oui") apres un message coupe : on envoie la partie
+    coupee telle quelle, sans redemander a Akili, et on la met dans l'historique."""
+    suite = charger_suite_en_attente(phone)
+    if not suite:
+        return False
+    envoye = texte_envoye(suite)
+    if not send_whatsapp(phone, suite, limit=850):
+        return False
+    conversation_key = (f"{phone}:{profile.get('type_examen')}:{profile.get('serie', 'TOUTES')}:"
+                        f"{profile.get('matiere', 'MATHS')}:{profile.get('mode')}")
+    hist = charger_historique_conv(conversation_key)
+    historique = list(hist if hist is not None else conversations.get(conversation_key, []))
+    historique += [{"role": "user", "content": texte_eleve}, {"role": "assistant", "content": envoye}]
+    conversations[conversation_key] = historique[-10:]
+    sauver_historique_conv(conversation_key, conversations[conversation_key])
+    journal_session_ajouter(phone, profile, conversation_key, profile.get("mode"), texte_eleve, envoye)
+    print(f"SUITE_ENVOYEE len={len(envoye)} reste={len(suite) - len(envoye)}", flush=True)
+    return True
 
 
 def is_learning_request(text):
@@ -3583,14 +3660,17 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
             print(f"P0: conflit de révision pour {phone}, réponse non renvoyée", flush=True)
             return None
 
-    conversations[conversation_key].append({"role": "user", "content": texte_eleve})
-    conversations[conversation_key].append({"role": "assistant", "content": reponse})
-    conversations[conversation_key] = conversations[conversation_key][-10:]
-    sauver_historique_conv(conversation_key, conversations[conversation_key])
-    journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve, reponse)
-
     is_teacher = profile.get("user_type") == "ENSEIGNANT"
     send_limit = 1200 if is_teacher else 850
+    # L'historique d'Akili garde ce que l'eleve a vraiment recu : la partie coupee
+    # n'y entre que si l'eleve demande la suite (envoyer_suite_en_attente).
+    recu = texte_envoye(reponse, limit=send_limit, add_continuation=not is_teacher) or reponse
+    conversations[conversation_key].append({"role": "user", "content": texte_eleve})
+    conversations[conversation_key].append({"role": "assistant", "content": recu})
+    conversations[conversation_key] = conversations[conversation_key][-10:]
+    sauver_historique_conv(conversation_key, conversations[conversation_key])
+    journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve, recu)
+
     if is_teacher and (matiere or "").upper().strip() == "ESPAGNOL":
         print("TEACHER_SPANISH_POSTPROCESS active", flush=True)
         is_apc_response = any(k in (reponse or "").upper() for k in [
@@ -4724,6 +4804,11 @@ async def _receive_message_impl(request: Request):
             envoyer_fin_de_session(phone, source="au_revoir")
             track_inbound("fin_session_au_revoir", profile)
             return {"status": "ok", "reason": "fin_session"}
+
+        if (not onboarding_step and is_profile_ready(profile) and est_demande_de_suite(text)
+                and envoyer_suite_en_attente(phone, profile, text)):
+            track_inbound("suite_reponse", profile)
+            return {"status": "ok", "reason": "suite_reponse"}
 
         if is_contextual_exercise_answer(text) and not profile.get("onboarding_step"):
             if not short_answer_has_exercise_context(phone):
