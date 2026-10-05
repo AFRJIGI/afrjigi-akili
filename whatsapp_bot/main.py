@@ -17,6 +17,7 @@ from gtts import gTTS
 import tableau_de_bord
 from template_replies import retention_template_text
 import pedagogical_consent as pedagogical
+import espace_enseignant as prof
 from marketing_consent import (
     OPTED_IN,
     claim_marketing_consent_prompt,
@@ -644,6 +645,8 @@ def save_whatsapp_event(phone, direction, text, profile=None, message_id=None, e
             "nom_ecole": profile.get("nom_ecole", ""),
             "onboarding_completed_at": profile.get("onboarding_completed_at", ""),
             "first_learning_request_at": profile.get("first_learning_request_at", ""),
+            "user_type": profile.get("user_type", ""),
+            "enseignant_verifie": bool(profile.get("enseignant_verifie")),
             "source": "whatsapp",
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -3104,10 +3107,19 @@ def envoyer_fin_de_session(phone, source="au_revoir"):
         if source == "au_revoir":
             send_whatsapp(phone, MESSAGE_AU_REVOIR_SIMPLE, allow_audio=False)
         return False
+    profil = user_profiles.get(phone) or charger_etat_whatsapp(phone) or {}
+    if espace_enseignant_actif(profil):
+        # Seance de preparation d'un enseignant : pas de bilan ni de revision.
+        if source == "au_revoir":
+            send_whatsapp(phone, "À bientôt ! Votre espace enseignant reste disponible : écrivez « menu prof ».",
+                          allow_audio=False)
+        return False
     texte = generer_bilan_session(session, source)
     send_whatsapp(phone, texte, allow_audio=False)
     noter_session_bilan(phone, {"bilan_texte": texte[:2000]})
     planifier_revision(phone, session, texte)
+    if est_enseignant_verifie(profil):
+        return True  # enseignant en mode eleve : ni ville/ecole, ni invitation, ni boutons d'avis
     # Un seul message apres le bilan : la ville et l'ecole (premiere fois), sinon l'invitation
     # aux rappels pedagogiques (une seule fois), sinon les boutons d'avis.
     if not demander_ville_ecole_si_besoin(phone) and not maybe_send_marketing_consent_prompt(phone):
@@ -3198,8 +3210,9 @@ def envoyer_suite_en_attente(phone, profile, texte_eleve):
     suite = charger_suite_en_attente(phone)
     if not suite:
         return False
-    envoye = texte_envoye(suite)
-    if not send_whatsapp(phone, suite, limit=850):
+    limite = 1500 if espace_enseignant_actif(profile) else 850
+    envoye = texte_envoye(suite, limit=limite)
+    if not send_whatsapp(phone, suite, limit=limite):
         return False
     conversation_key = (f"{phone}:{profile.get('type_examen')}:{profile.get('serie', 'TOUTES')}:"
                         f"{profile.get('matiere', 'MATHS')}:{profile.get('mode')}")
@@ -3540,6 +3553,204 @@ def is_short_pedagogical_answer(text):
     ))
 
 
+# ─── Espace enseignant (codes PROF-NOM-1234 crees par gerer_enseignants.py) ───
+
+def est_enseignant_verifie(profile):
+    return bool((profile or {}).get("enseignant_verifie"))
+
+
+def espace_enseignant_actif(profile):
+    """Enseignant verifie en mode preparation (pas en mode 'voir comme vos eleves')."""
+    return est_enseignant_verifie(profile) and (profile or {}).get("mode_enseignant") != prof.MODE_ELEVE
+
+
+def type_utilisateur_akili(profile):
+    """ENSEIGNANT (preparation), ELEVE_TEST (enseignant qui voit Akili comme ses eleves) ou le type du profil."""
+    profile = profile or {}
+    if est_enseignant_verifie(profile):
+        return "ENSEIGNANT" if espace_enseignant_actif(profile) else "ELEVE_TEST"
+    return profile.get("user_type")
+
+
+def resume_enseignant(profile):
+    profile = profile or {}
+    return ", ".join(x for x in [libelle_matiere(profile.get("matiere") or ""), profile.get("enseignant_classe") or ""] if x)
+
+
+def passer_mode_enseignant(profile, mode):
+    profile["mode_enseignant"] = mode
+    profile["mode"] = "etude" if mode == prof.MODE_ELEVE else prof.MODE_PROFIL_ASSISTANT
+    return profile
+
+
+def appliquer_classe_enseignant(profile, libelle):
+    try:
+        profile.update(prof.classe_vers_profil(libelle))
+        profile["enseignant_classe"] = libelle
+    except ValueError as e:
+        print(f"ENSEIGNANT classe ignoree: {e}", flush=True)
+    return profile
+
+
+def envoyer_menu_enseignant(phone, profile):
+    question, options = prof.options_menu(profile.get("enseignant_nom") or "l'enseignant")
+    envoyer_choix(phone, f"{question}\n(Actuellement : {resume_enseignant(profile)})", options)
+
+
+def activer_code_enseignant(phone, profile, code):
+    try:
+        reference = feedback_db.collection(prof.COLLECTION_CODES).document(code)
+        snapshot = reference.get()
+        data = (snapshot.to_dict() or {}) if snapshot.exists else {}
+    except Exception as e:
+        print(f"Erreur activer_code_enseignant: {repr(e)}", flush=True)
+        send_whatsapp(phone, "Désolé, je n'arrive pas à vérifier ce code pour le moment. Réessayez dans un instant.")
+        return "enseignant_code_erreur"
+    if not data or not data.get("actif", True):
+        send_whatsapp(phone, prof.MESSAGE_CODE_INVALIDE, allow_audio=False)
+        return "enseignant_code_invalide"
+    if data.get("phone") and str(data["phone"]) != str(phone):
+        send_whatsapp(phone, prof.MESSAGE_CODE_DEJA_UTILISE, allow_audio=False)
+        return "enseignant_code_deja_utilise"
+    maintenant = datetime.now(timezone.utc).isoformat()
+    if not data.get("phone"):
+        try:
+            reference.update({"phone": str(phone), "active_le": maintenant})
+        except Exception as e:
+            print(f"Erreur activation code enseignant: {repr(e)}", flush=True)
+    matieres = list(data.get("matieres") or ["MATHS"])
+    classes = list(data.get("classes") or [])
+    profile.update({
+        "user_type": "ENSEIGNANT", "enseignant_verifie": True, "enseignant_nom": data.get("nom") or "Professeur",
+        "enseignant_code": code, "enseignant_matieres": matieres, "enseignant_classes": classes,
+        "matiere": matieres[0], "matiere_confirmed": True, "profile_ready": True, "profile_locked": True,
+        "onboarding_step": "", "attente_prof": "menu",
+    })
+    profile.setdefault("onboarding_completed_at", maintenant)
+    if classes:
+        appliquer_classe_enseignant(profile, classes[0])
+    passer_mode_enseignant(profile, prof.MODE_ASSISTANT)
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    send_whatsapp(phone, prof.message_bienvenue(
+        profile["enseignant_nom"], ", ".join(libelle_matiere(m) for m in matieres), ", ".join(classes) or "-"),
+        allow_audio=False)
+    envoyer_menu_enseignant(phone, profile)
+    print(f"ENSEIGNANT_ACTIVE code={code}", flush=True)
+    return "enseignant_active"
+
+
+def enregistrer_signalement(phone, profile, texte):
+    try:
+        feedback_db.collection(prof.COLLECTION_SIGNALEMENTS).add({
+            "phone": str(phone), "nom": profile.get("enseignant_nom", ""), "code": profile.get("enseignant_code", ""),
+            "texte": str(texte or "")[:3000], "message_akili": load_last_assistant_context(phone)[:3000],
+            "matiere": profile.get("matiere", ""), "serie": profile.get("serie", ""),
+            "classe": profile.get("enseignant_classe") or profile.get("classe", ""),
+            "type_examen": profile.get("type_examen", ""), "mode_enseignant": profile.get("mode_enseignant", ""),
+            "statut": "nouveau", "cree_le": datetime.now(timezone.utc).isoformat(),
+        })
+        print("SIGNALEMENT_ENSEIGNANT enregistre", flush=True)
+    except Exception as e:
+        print(f"Erreur enregistrer_signalement: {repr(e)}", flush=True)
+    send_whatsapp(phone, prof.message_merci_signalement(profile.get("enseignant_nom", "")), allow_audio=False)
+
+
+def _confirmer_profil_enseignant(phone, profile):
+    profile.pop("attente_prof", None)
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    mode = "mode élève" if profile.get("mode_enseignant") == prof.MODE_ELEVE else "mode préparation"
+    send_whatsapp(phone, f"C'est noté : {resume_enseignant(profile)} ({mode}).", allow_audio=False)
+
+
+def traiter_espace_enseignant(phone, profile, text):
+    """Code d'acces, menu et signalements des enseignants. Renvoie la raison si le message
+    est traite ici, None sinon (le message suit alors son chemin habituel vers Akili)."""
+    code = prof.extraire_code(text)
+    if code:
+        return activer_code_enseignant(phone, profile, code)
+    if not est_enseignant_verifie(profile):
+        return None
+    attente = profile.get("attente_prof")
+    lettre = (text or "").strip().lower().rstrip(".)")
+
+    def sauver():
+        user_profiles[phone] = profile
+        sauver_etat_whatsapp(phone, profile)
+
+    if prof.est_commande_menu(text):
+        profile["attente_prof"] = "menu"
+        sauver()
+        envoyer_menu_enseignant(phone, profile)
+        return "enseignant_menu"
+
+    if attente == "signalement":
+        profile.pop("attente_prof", None)
+        sauver()
+        if normalize_for_match(text) in {"ANNULER", "RETOUR", "NON"}:
+            send_whatsapp(phone, "D'accord. Vous pouvez continuer.", allow_audio=False)
+            return "enseignant_signalement_annule"
+        enregistrer_signalement(phone, profile, text)
+        return "enseignant_signalement"
+
+    signalement = prof.texte_signalement(text)
+    if signalement:
+        enregistrer_signalement(phone, profile, signalement)
+        return "enseignant_signalement"
+
+    matieres = list(profile.get("enseignant_matieres") or [])
+    classes = list(profile.get("enseignant_classes") or [])
+
+    def demander_classe():
+        profile["attente_prof"] = "classe"
+        sauver()
+        envoyer_choix(phone, "Quelle classe ?", [(LETTRES_CHOIX[i], c, "") for i, c in enumerate(classes[:10])])
+
+    if attente == "menu" and lettre in {"a", "b"}:
+        passer_mode_enseignant(profile, prof.MODE_ELEVE if lettre == "a" else prof.MODE_ASSISTANT)
+        profile.pop("attente_prof", None)
+        sauver()
+        message = prof.message_mode_eleve if lettre == "a" else prof.message_mode_assistant
+        send_whatsapp(phone, message(resume_enseignant(profile)), allow_audio=False)
+        return "enseignant_mode_" + profile["mode_enseignant"]
+    if attente == "menu" and lettre == "c":
+        if len(matieres) > 1:
+            profile["attente_prof"] = "matiere"
+            sauver()
+            envoyer_choix(phone, "Quelle matière ?",
+                          [(LETTRES_CHOIX[i], libelle_matiere(m), "") for i, m in enumerate(matieres[:10])])
+        elif len(classes) > 1:
+            demander_classe()
+        else:
+            profile.pop("attente_prof", None)
+            sauver()
+            send_whatsapp(phone, f"Votre espace a une seule matière et une seule classe ({resume_enseignant(profile)}). "
+                                 "Pour en ajouter, contactez l'équipe AfrJigi.", allow_audio=False)
+        return "enseignant_changer"
+    if attente == "menu" and lettre == "d":
+        profile["attente_prof"] = "signalement"
+        sauver()
+        send_whatsapp(phone, prof.MESSAGE_DEMANDE_SIGNALEMENT, allow_audio=False)
+        return "enseignant_signalement_demande"
+    if attente == "matiere" and len(lettre) == 1 and lettre in LETTRES_CHOIX[:len(matieres)]:
+        profile["matiere"] = matieres[LETTRES_CHOIX.index(lettre)]
+        if len(classes) > 1:
+            demander_classe()
+        else:
+            _confirmer_profil_enseignant(phone, profile)
+        return "enseignant_matiere"
+    if attente == "classe" and len(lettre) == 1 and lettre in LETTRES_CHOIX[:len(classes)]:
+        appliquer_classe_enseignant(profile, classes[LETTRES_CHOIX.index(lettre)])
+        _confirmer_profil_enseignant(phone, profile)
+        return "enseignant_classe"
+
+    if attente:
+        profile.pop("attente_prof", None)  # l'enseignant est passe a autre chose : question pour Akili
+        sauver()
+    return None
+
+
 def answer_learning_request(phone, profile, text, media_file=None, message_id=None, reply_audio=False,
                             document_context=None):
     profile = mark_first_learning_request(phone, profile)
@@ -3620,7 +3831,8 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
             type_examen,
             mode,
             media_file=media_file,
-            user_type=profile.get("user_type"),
+            user_type=type_utilisateur_akili(profile),
+            espace_enseignant=espace_enseignant_actif(profile),
             active_session=prepared_active_session if p0_enabled() else None,
             raise_on_error=p0_enabled(),
             return_details=p0_enabled(),
@@ -3660,17 +3872,11 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
             print(f"P0: conflit de révision pour {phone}, réponse non renvoyée", flush=True)
             return None
 
-    is_teacher = profile.get("user_type") == "ENSEIGNANT"
-    send_limit = 1200 if is_teacher else 850
-    # L'historique d'Akili garde ce que l'eleve a vraiment recu : la partie coupee
-    # n'y entre que si l'eleve demande la suite (envoyer_suite_en_attente).
-    recu = texte_envoye(reponse, limit=send_limit, add_continuation=not is_teacher) or reponse
-    conversations[conversation_key].append({"role": "user", "content": texte_eleve})
-    conversations[conversation_key].append({"role": "assistant", "content": recu})
-    conversations[conversation_key] = conversations[conversation_key][-10:]
-    sauver_historique_conv(conversation_key, conversations[conversation_key])
-    journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve, recu)
-
+    is_teacher = type_utilisateur_akili(profile) == "ENSEIGNANT"
+    espace = espace_enseignant_actif(profile)
+    # Enseignant verifie : documents complets (fiche, evaluation), envoyes en plusieurs messages.
+    send_limit = 1500 if espace else (1200 if is_teacher else 850)
+    continuation = espace or not is_teacher
     if is_teacher and (matiere or "").upper().strip() == "ESPAGNOL":
         print("TEACHER_SPANISH_POSTPROCESS active", flush=True)
         is_apc_response = any(k in (reponse or "").upper() for k in [
@@ -3683,11 +3889,21 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         ])
         limit = 1000 if is_apc_response else 900
         reponse = clean_teacher_spanish_activity(reponse)
-        reponse = enforce_teacher_whatsapp_limit(reponse, limit=limit)
-    elif is_teacher:
+        if not espace:
+            reponse = enforce_teacher_whatsapp_limit(reponse, limit=limit)
+    elif is_teacher and not espace:
         reponse = enforce_teacher_whatsapp_limit(reponse, limit=900)
 
-    send_whatsapp(phone, reponse, limit=send_limit, add_continuation=not is_teacher)
+    # L'historique d'Akili garde ce que l'utilisateur a vraiment recu : la partie coupee
+    # n'y entre que s'il demande la suite (envoyer_suite_en_attente).
+    recu = texte_envoye(reponse, limit=send_limit, add_continuation=continuation) or reponse
+    conversations[conversation_key].append({"role": "user", "content": texte_eleve})
+    conversations[conversation_key].append({"role": "assistant", "content": recu})
+    conversations[conversation_key] = conversations[conversation_key][-10:]
+    sauver_historique_conv(conversation_key, conversations[conversation_key])
+    journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve, recu)
+
+    send_whatsapp(phone, reponse, limit=send_limit, add_continuation=continuation)
     send_vector_formula_if_needed(phone, text + "\n" + reponse)
 
     print(f"WHATSAPP_AUDIO_REPLY reply_audio={reply_audio}", flush=True)
@@ -4030,7 +4246,7 @@ def strip_filler_opening(text):
 
 def get_akili_response(question, matiere, serie, history, phone="whatsapp_user", type_examen=None,
                        mode=None, media_file=None, user_type=None, raise_on_error=False,
-                       return_details=False, active_session=None, classe=None):
+                       return_details=False, active_session=None, classe=None, espace_enseignant=False):
     try:
         # Sécurité: si l'appelant oublie user_type, on redétecte ici.
         if not user_type and is_teacher_request(question):
@@ -4083,6 +4299,14 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
                 "- Ne recopie pas un long texte d'annale dans WhatsApp. Donne seulement un extrait court ou un résumé exploitable.\n"
                 "- Si le niveau, la matière ou l'objectif manque, pose une question courte avant de détailler.\n"
             )
+            if espace_enseignant:
+                teacher_instruction += (
+                    "- ESPACE ENSEIGNANT VERIFIE (prioritaire sur les limites de longueur et le guidage pas a pas "
+                    "ci-dessus, qui concernent les eleves) : donne le document complet demande (fiche de lecon, "
+                    "exercices, evaluation, corrige detaille, bareme), meme au-dela de 850 caracteres ; il sera "
+                    "envoye en plusieurs messages. Structure-le avec des titres courts. Ne pose pas de question "
+                    "d'eleve a la fin ; propose au plus une suite utile (variante, remediation, autre niveau).\n"
+                )
 
         instructions_whatsapp = (
             "CONTEXTE TECHNIQUE WHATSAPP:\n"
@@ -4188,7 +4412,10 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             # L'API Akili attend un tableau JSON et ignorait auparavant ce champ
             # parce qu'elle recevait une chaîne déjà mise en forme.
             "history": json.dumps(history[-6:], ensure_ascii=False),
-            "user_type": user_type or "",
+            # L'API ne passe en assistant enseignant (corriges complets) que pour un enseignant
+            # verifie par code : "je suis prof" seul reste un profil declare.
+            "user_type": "ENSEIGNANT" if espace_enseignant else (
+                "ENSEIGNANT_DECLARE" if (user_type or "").upper() == "ENSEIGNANT" else (user_type or "")),
             "classe": classe or "",
         }
 
@@ -4743,6 +4970,11 @@ async def _receive_message_impl(request: Request):
         command = text.strip().lower()
         onboarding_step = profile.get("onboarding_step")
         print(f"SHORT_DEBUG text={text} is_short={is_short_exercise_answer(text)} is_contextual={is_contextual_exercise_answer(text)} onboarding={onboarding_step}", flush=True)
+        raison_enseignant = traiter_espace_enseignant(phone, profile, text) if media_file is None else None
+        if raison_enseignant:
+            track_inbound(raison_enseignant, user_profiles.get(phone, profile))
+            return {"status": "ok", "reason": raison_enseignant}
+
         if normalize_for_match(text) in COMMANDES_ARRET_REVISION | COMMANDES_REPRISE_REVISION:
             arret = normalize_for_match(text) in COMMANDES_ARRET_REVISION
             profile["revisions_off"] = arret

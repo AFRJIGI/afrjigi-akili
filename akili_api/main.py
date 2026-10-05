@@ -325,6 +325,60 @@ def formatage_texte_simple(prompt):
                   'Réponds par a, b ou c."', prompt, flags=re.S)
 
 
+LIBELLES_MATIERES_API = dict(MATIERES_TECHNIQUES_GUIDEES, **{
+    "MATHS": "Mathématiques", "PC": "Physique-Chimie", "PHYSIQUE": "Physique-Chimie", "SVT": "SVT",
+    "PHILO": "Philosophie", "HG": "Histoire-Géographie", "FRENCH": "Français", "FRANCAIS": "Français",
+    "ANGLAIS": "Anglais", "ESPAGNOL": "Espagnol", "ALLEMAND": "Allemand", "ECO": "Économie", "EDHC": "EDHC",
+    "COMPTA": "Comptabilité", "COMPTA_FIN": "Comptabilité financière", "COMPTA_SOCIETES": "Comptabilité des sociétés",
+    "COMPTA_ANALYTIQUE": "Comptabilité analytique", "DROIT": "Droit", "EXPRESSION_PRO": "Expression professionnelle",
+})
+LIBELLES_CLASSES_GENERALES = {
+    "6E": "6e", "5E": "5e", "4E": "4e", "SECONDE_A": "Seconde A", "SECONDE_C": "Seconde C",
+    "PREMIERE_A": "Première A", "PREMIERE_C": "Première C", "PREMIERE_D": "Première D",
+}
+
+
+def niveau_enseignant(examen, serie, classe):
+    serie = (serie or "").strip().upper()
+    if examen == "BAC_TECHNIQUE":
+        return niveau_bac_technique(serie, classe)
+    if examen == "BEPC":
+        return "3e (BEPC)"
+    if examen == "CLASSE_INTERMEDIAIRE":
+        return LIBELLES_CLASSES_GENERALES.get(serie, "classe intermédiaire")
+    return f"Terminale {serie} (BAC Général)" if serie and serie != "TOUTES" else "BAC Général"
+
+
+def prompt_enseignant(matiere, examen, serie, classe):
+    """Akili assistant d'un enseignant verifie (espace enseignant du bot WhatsApp)."""
+    libelle = LIBELLES_MATIERES_API.get((matiere or "").strip().upper(), matiere or "la matière")
+    niveau = niveau_enseignant(examen, serie, classe)
+    return f"""Tu es Akili, assistant pédagogique d'un enseignant de {libelle} ({niveau}) en Côte d'Ivoire. Tu t'adresses à un professeur : vouvoie-le, parle de « vos élèves » et de « votre classe ». Ne te présente pas : commence directement par le contenu utile.
+
+TON RÔLE : aider l'enseignant à préparer et à évaluer :
+- fiches de leçon selon l'approche par compétences en vigueur en Côte d'Ivoire (situation d'apprentissage, activités, résumé de cours, exercices d'application) ;
+- exercices gradués, évaluations avec corrigé détaillé et barème, sujets de type examen ;
+- correction de copies envoyées en photo, remédiation, explication d'une notion pour la classe.
+Contrairement au mode élève, tu donnes directement les solutions et les corrigés complets.
+
+APPUI SUR LES DOCUMENTS : appuie-toi sur le CONTEXTE OFFICIEL (programmes, progressions, cours transmis par des enseignants). Respecte le programme ivoirien de la classe ; si une notion demandée n'est pas au programme de cette classe, dis-le. Si une information précise manque (date, coefficient, référence), dis-le au lieu de l'inventer.
+
+FORME : documents directement utilisables en classe, avec des titres courts et une numérotation claire. Formules en texte simple, sans LaTeX (σ = N / S, x², √(x), angles α, θ), toujours avec les unités. Si la demande est trop vague (classe, durée, chapitre), pose une seule question courte avant de produire.
+
+Si l'enseignant signale une erreur dans une réponse d'Akili, remercie-le, reconnais l'erreur et donne la version corrigée."""
+
+
+def consigne_progression_enseignant(progression, aujourd_hui=None):
+    aujourd_hui = aujourd_hui or datetime.now(timezone.utc)
+    date_txt = f"{aujourd_hui.day} {MOIS_FR[aujourd_hui.month - 1]} {aujourd_hui.year}"
+    return (
+        "PROGRESSION OFFICIELLE : le CONTEXTE OFFICIEL contient la progression de cette matière pour cette classe. "
+        "Quand l'enseignant demande la leçon ou l'évaluation « de la semaine » ou « du moment », prends la leçon "
+        f"prévue pour la période actuelle (nous sommes le {date_txt}) et nomme-la. Place les exercices et les "
+        "évaluations dans l'ordre de cette progression."
+    )
+
+
 def niveau_bac_technique(serie, classe):
     texte = "BAC Technique"
     if (serie or "").strip():
@@ -867,6 +921,7 @@ async def ask_question(
     history: Optional[str] = Form(None),
     mode: Optional[str] = Form("etude"),
     classe: Optional[str] = Form(None),
+    user_type: Optional[str] = Form(None),
 ):
     try:
         if not email:
@@ -1263,6 +1318,11 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
             Tu aides les élèves à comprendre les cours et à réussir leurs examens.
             Tu réponds toujours en français, de façon claire, pédagogique et encourageante."""
 
+        # Enseignant verifie (espace enseignant du bot) : assistant de preparation, pas tuteur d'eleve.
+        enseignant = (user_type or "").strip().upper() == "ENSEIGNANT"
+        if enseignant:
+            system_prompt = prompt_enseignant(matiere_propre, examen_registre, serie, classe)
+
         if (
             matiere_propre == "FRENCH"
             or matiere_propre.startswith("FRANÇAIS")
@@ -1270,9 +1330,11 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
         ):
             system_prompt = system_prompt + "\n\n" + FRENCH_PEDAGOGY_GUIDANCE
 
-        system_prompt = system_prompt + "\n\n" + instructions_mode(mode_registre, examen_registre)
+        if not enseignant:
+            system_prompt = system_prompt + "\n\n" + instructions_mode(mode_registre, examen_registre)
         if progression:
-            system_prompt = system_prompt + "\n\n" + consigne_progression(progression)
+            consigne = consigne_progression_enseignant if enseignant else consigne_progression
+            system_prompt = system_prompt + "\n\n" + consigne(progression)
 
         # ─── 4. PRÉPARATION DU CONTENU MULTIMODAL POUR VERTEX AI ───
         contents = [system_prompt]
