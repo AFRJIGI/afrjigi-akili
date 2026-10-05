@@ -1100,7 +1100,8 @@ RÈGLES ABSOLUES :
                     "proche d'un professeur de college, jamais condescendant."
                 )
             else:
-                niveau_texte = "BAC (" + niveau_examen + ")"
+                # Libelle lisible ("Terminale D (BAC Général)") : "BAC (BAC_GENERAL)" finissait tel quel chez l'eleve.
+                niveau_texte = niveau_enseignant(examen_registre, serie, classe)
                 langage_texte = ""
             system_prompt = """Tu es Akili, professeur de MATIERE_PLACEHOLDER pour le NIVEAU_PLACEHOLDER de Côte d'Ivoire. Ne te présente jamais (pas de "Je suis Akili, ton professeur...") : commence directement par le contenu utile. Tu GUIDES l'élève pas à pas — tu ne résous JAMAIS l'exercice entièrement à sa place. L'élève doit participer à chaque étape.
 

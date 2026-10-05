@@ -42,8 +42,11 @@ STYLES = {"text", "textrm", "textnormal", "mathrm", "mathbf", "textbf", "mathit"
           "underline", "textup", "unit", "si", "mathring"}
 EXPOSANTS = str.maketrans("0123456789+-=()n", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿ")
 INDICES = str.maketrans("0123456789+-=()", "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎")
-# Seuls les indices lettres bien affiches sur Android (ᵢ et ⱼ manquent sur beaucoup de telephones).
-INDICE_N = {"n": "ₙ", "k": "ₖ", "p": "ₚ"}
+# Indices lettres qui existent en Unicode et s'affichent sur Android (pas de b, c, d, f, g, j, q, w, y, z).
+INDICE_N = {"a": "ₐ", "e": "ₑ", "h": "ₕ", "i": "ᵢ", "k": "ₖ", "l": "ₗ", "m": "ₘ", "n": "ₙ", "o": "ₒ",
+            "p": "ₚ", "r": "ᵣ", "s": "ₛ", "t": "ₜ", "u": "ᵤ", "v": "ᵥ", "x": "ₓ"}
+SANS_INDICE = re.compile(r"_\{?[^}\s]*[b-df-gjqwyzA-Z]")  # une formule avec un tel indice : tout a plat
+_A_PLAT = [False]
 
 
 def _atome(texte):
@@ -63,6 +66,8 @@ def _paren(texte, denominateur=False):
         return f"({t})"
     if _atome(t) or (t.startswith("(") and t.endswith(")") and _equilibre(t[1:-1])):
         return t
+    if re.fullmatch(r"[∛∜√]\(.*\)", t) and _equilibre(t[2:-1]):
+        return t  # √(2x²+1) : deja delimite
     return f"({t})"
 
 
@@ -84,7 +89,9 @@ def _exposant(texte):
         return "′"
     if t and all(c in "0123456789+-−=()n" for c in t):
         return t.replace("−", "-").translate(EXPOSANTS)
-    return "^" + (_paren(t) if len(t) > 1 else t)
+    if len(t) > 1 and not (t.startswith("(") and t.endswith(")") and _equilibre(t[1:-1])):
+        return f"^({t})"  # e^(2x), e^(-x) : sans parentheses, e^2x se lirait (e²)x
+    return "^" + t
 
 
 def _indice(texte):
@@ -93,9 +100,11 @@ def _indice(texte):
         return ""
     if all(c in "0123456789+-−=()" for c in t):
         return t.replace("−", "-").translate(INDICES)
-    # indices de suites et de sommes : n, k, i, n+1, 2n, k-1...
-    if re.fullmatch(r"\d*[nkp]([+\-−]\d+)?", t):
-        return "".join(INDICE_N.get(c, c) for c in t.replace("−", "-")).translate(INDICES)
+    # n, k, i, n+1, i-1, max, e, s... : en indice si chaque caractere existe en indice et si la
+    # formule n'a pas d'indice impossible (CxHyOz reste entierement a plat, comme l'enonce).
+    t2 = t.replace("−", "-")
+    if not _A_PLAT[0] and all(c in INDICE_N or c in "0123456789+-=()" for c in t2):
+        return "".join(INDICE_N.get(c, c) for c in t2).translate(INDICES)
     return t  # lettres sans indice lisible : collees (CxHyOz), jamais de "_"
 
 
@@ -274,7 +283,9 @@ def latex_vers_whatsapp(texte):
 
     def formule(m):
         contenu = next(g for g in m.groups() if g is not None)
+        _A_PLAT[0] = bool(SANS_INDICE.search(contenu))
         converties.append(convertir(contenu.replace("{,}", ",")))
+        _A_PLAT[0] = False
         return f"\x00{len(converties) - 1}\x00"
 
     texte = DELIMITEURS.sub(formule, texte)
@@ -282,12 +293,17 @@ def latex_vers_whatsapp(texte):
     texte = re.sub(r"https?://\S+|www\.\S+|[\w.+-]+@[\w-]+\.[\w.]+",
                    lambda m: (converties.append(m.group(0)), f"\x00{len(converties) - 1}\x00")[1], texte)
     texte = texte.replace("{,}", ",")
+    # Constantes du code (BAC_GENERAL, CLASSE_INTERMEDIAIRE) : des mots, pas des indices.
+    texte = re.sub(r"\b([A-Z]{2,})_(?=[A-Z]{2,})", r"\1 ", texte)
+    texte = re.sub(r"\b([A-Z]{2,})_(?=[A-Z]{2,})", r"\1 ", texte)
     # Commandes et ^ _ restes hors des $ (Akili en ecrit parfois sans delimiteurs).
     if COMMANDE_NUE.search(texte) or re.search(r"[\^_]", texte):
         lignes = []
         for ligne in texte.split("\n"):
             if COMMANDE_NUE.search(ligne) or re.search(r"[A-Za-z0-9)}\]][\^_][{A-Za-z0-9(\\+\-]", ligne):
+                _A_PLAT[0] = bool(SANS_INDICE.search(ligne))
                 ligne = _convertir_hors_formule(ligne)
+                _A_PLAT[0] = False
             lignes.append(ligne)
         texte = "\n".join(lignes)
     texte = texte.replace("$", "")

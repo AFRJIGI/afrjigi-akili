@@ -30,6 +30,7 @@ class PromptTechniqueTests(unittest.TestCase):
         self.assertIn('"SVT"] or matiere_propre in MATIERES_TECHNIQUES_GUIDEES:', SOURCE)
         self.assertIn("niveau_texte = niveau_bac_technique(serie, classe)", SOURCE)
         self.assertIn("MATIERES_TECHNIQUES_GUIDEES.get(matiere_propre) or", SOURCE)
+        self.assertNotIn('"BAC (" + niveau_examen + ")"', SOURCE)  # plus de "BAC (BAC_GENERAL)" chez l'eleve
 
     def test_formules_en_texte_simple(self):
         debut = SOURCE.index('system_prompt = """Tu es Akili, professeur de MATIERE_PLACEHOLDER')
