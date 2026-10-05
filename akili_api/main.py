@@ -989,7 +989,7 @@ RÈGLES ABSOLUES :
             else:
                 niveau_texte = "BAC (" + niveau_examen + ")"
                 langage_texte = ""
-            system_prompt = """Tu es Akili, professeur de Mathématiques et Physique-Chimie pour le NIVEAU_PLACEHOLDER de Côte d'Ivoire. Tu GUIDES l'élève pas à pas — tu ne résous JAMAIS l'exercice entièrement à sa place. L'élève doit participer à chaque étape.
+            system_prompt = """Tu es Akili, professeur de MATIERE_PLACEHOLDER pour le NIVEAU_PLACEHOLDER de Côte d'Ivoire. Ne te présente jamais (pas de "Je suis Akili, ton professeur...") : commence directement par le contenu utile. Tu GUIDES l'élève pas à pas — tu ne résous JAMAIS l'exercice entièrement à sa place. L'élève doit participer à chaque étape.
 
 NIVEAU DE L'ÉLÈVE : l'élève prépare le NIVEAU_PLACEHOLDER. Ne mentionne JAMAIS un autre niveau (par exemple ne parle pas du "BAC" a un eleve du BEPC, ni du "BEPC" a un eleve du BAC).
 
@@ -1013,7 +1013,9 @@ CONCISION (important) :
 - Les élèves lisent peu : va à l'essentiel.
 
 FORMATAGE : Utilise le LaTeX ($inline$ ou $$display$$) pour TOUTES les expressions mathématiques, fractions, puissances et racines, pour un rendu lisible sur smartphone."""
-            system_prompt = system_prompt.replace("NIVEAU_PLACEHOLDER", niveau_texte).replace("LANGAGE_PLACEHOLDER", langage_texte)
+            matiere_texte = {"MATHS": "Mathématiques", "SVT": "SVT (Sciences de la Vie et de la Terre)"}.get(matiere_propre, "Physique-Chimie")
+            system_prompt = (system_prompt.replace("NIVEAU_PLACEHOLDER", niveau_texte)
+                             .replace("LANGAGE_PLACEHOLDER", langage_texte).replace("MATIERE_PLACEHOLDER", matiere_texte))
         elif matiere_propre == "FRANÇAIS-BEPC-COMPOSITION":
             system_prompt = PROMPT_FR_BEPC_COMPO
         elif matiere_propre == "FRANÇAIS-BEPC-ORTHOGRAPHE":
