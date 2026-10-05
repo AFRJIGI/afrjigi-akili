@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from injecter_documents_m_coulibaly import DONNEES, corps, decider, documents_base, suites
+from injecter_documents_m_coulibaly import DONNEES, corps, decider, decision_finale, documents_base, suites
 
 PAQUET = json.loads(DONNEES.read_text(encoding="utf-8"))
 SOURCES = {s["fichier"]: s for s in PAQUET["sources"]}
@@ -52,6 +52,22 @@ class DecisionTests(unittest.TestCase):
         self.assertEqual(decider(s, *moitie)[0], "PARTIEL")
         meme_fichier = base_de(dict(id="y", matiere="MATHS", texte="", sha256_source=s["sha256"]))
         self.assertEqual(decider(s, *meme_fichier)[0], "DEJA")
+
+    def test_programme_remplace_l_ancien_bloc(self):
+        s = SOURCES["14. Prog Educt maths TD CND 0923.pdf"]
+        bloc = "Mot de Madame la Ministre " + "\n".join(corps(m) for m in s["morceaux"]).upper()
+        ancien = dict(id="knowledge_base_MATHS_D__PROGRAMME_TD", matiere="MATHS", type_doc="PROGRAMME", texte=bloc)
+        sujet = dict(id="sujet_bac_d", matiere="MATHS", type_doc="SUJET", texte=bloc)
+        decision, _, remplaces = decision_finale(s, *base_de(sujet, ancien))
+        self.assertEqual((decision, remplaces), ("AJOUTER", ["knowledge_base_MATHS_D__PROGRAMME_TD"]))
+        docs = documents_base(s, "M. Coulibaly", remplaces)
+        self.assertTrue(all(d["remplace_ids"] == remplaces for d in docs))
+
+    def test_deja_presents_ignores(self):
+        for f in ["MATHEMATIQUES - Progressions annuelles_DPFC_2026_2027.pdf",
+                  "PROGRESSION DE ECONOMIE GENERALE Tle G.docx", "PROGRESSION DE INITIATION ECONOMIQUE 2nde G1&G2.docx"]:
+            self.assertEqual(decision_finale(SOURCES[f], *base_de())[0], "IGNORER")
+        self.assertEqual(decision_finale(SOURCES["7.Format du Bac série C D2021-2.pdf"], *base_de())[0], "AJOUTER")
 
     def test_autre_matiere_ignoree(self):
         s = SOURCES["PROGRESSION DE SCIENCES ECONOMIQUES ET SOCIALES Tle B.docx"]

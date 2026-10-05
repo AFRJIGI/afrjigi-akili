@@ -6,15 +6,20 @@ Contenu (donnees/documents_m_coulibaly.json, construit par donnees/construire_do
   - les progressions de Mathematiques DPFC 2026-2027 ;
   - 6 progressions d'economie 2025-2026 du Lycee technique d'Abidjan (B, G1, G2).
 
-Pour chaque document, le script mesure la part de son texte deja presente dans la base (memes
-suites de 4 mots, dans les documents de la meme matiere) :
-  DEJA     : fichier identique, ou 60 % du texte deja present -> rien a faire ;
-  PARTIEL  : 25 a 60 % (autre version ou extraits) -> affiche, ajoute seulement avec --avec-partiels ;
-  NOUVEAU  : moins de 25 % -> ajoute.
+Le script mesure la part du texte de chaque document deja presente dans la base (memes suites
+de 4 mots, meme matiere). Avec des extractions PDF differentes, un document identique ne
+depasse souvent pas 50 a 60 % : les decisions ci-dessous ont ete prises sur l'audit du
+5 octobre 2026.
+  - Programmes educatifs : deja dans la base, mais en un seul bloc dont l'API ne lit que les
+    2 800 premiers caracteres (le mot de la ministre). La version decoupee par lecon est ajoutee
+    et REMPLACE l'ancienne (champ remplace_ids : l'API ne charge plus l'ancienne, rien n'est
+    supprime de la base).
+  - Formats des epreuves et 4 progressions d'economie : nouveaux, ajoutes.
+  - Progressions de maths DPFC 2026-2027, initiation economique 2nde G, economie generale Tle G :
+    deja presentes, ignorees.
 
-  python3 injecter_documents_m_coulibaly.py                       # audit, aucune ecriture
-  python3 injecter_documents_m_coulibaly.py --apply               # ajoute les NOUVEAU
-  python3 injecter_documents_m_coulibaly.py --apply --avec-partiels
+  python3 injecter_documents_m_coulibaly.py            # audit, aucune ecriture
+  python3 injecter_documents_m_coulibaly.py --apply    # sauvegarde la base puis ajoute
 
 Redeployer akili-api ensuite.
 """
@@ -30,7 +35,13 @@ BUCKET = "akili-database-storage-astute-curve-307922"
 DATABASE = "data/jigi_global_database.json"
 DONNEES = Path(__file__).with_name("donnees") / "documents_m_coulibaly.json"
 SEUIL_DEJA, SEUIL_PARTIEL = 0.60, 0.25
+SEUIL_REMPLACE = 0.20  # part minimale partagee avec l'ancien programme remplace
 N = 4
+DEJA_PRESENTS = {
+    "MATHEMATIQUES - Progressions annuelles_DPFC_2026_2027.pdf": "meme fichier DPFC que dpfc_progression_2026_2027_mathematiques",
+    "PROGRESSION DE INITIATION ECONOMIQUE 2nde G1&G2.docx": "deja present (progression 2nde G1G2 2025-2026)",
+    "PROGRESSION DE ECONOMIE GENERALE Tle G.docx": "deja present (metfpa_progression_economie_generale_2025_2026_terminale_g)",
+}
 
 
 def mots(texte):
@@ -83,7 +94,34 @@ def decider(source, base, base_par_matiere):
     return "NOUVEAU", f"{part:.0%} du texte deja present{proche}", part
 
 
-def documents_base(source, transmis_par):
+def programme_remplace(source, base_par_matiere):
+    """Ancien programme de la meme classe (un seul bloc) que la version decoupee remplace."""
+    candidat = set().union(*(suites(corps(m)) for m in source["morceaux"]))
+    meilleur, part = None, 0.0
+    for doc, ens in base_par_matiere.get(source["matiere"], []):
+        if str(doc.get("type_doc") or "").upper() != "PROGRAMME" or not candidat:
+            continue
+        p = len(candidat & ens) / len(candidat)
+        if p > part:
+            meilleur, part = doc, p
+    return (meilleur, part) if meilleur and part >= SEUIL_REMPLACE else (None, part)
+
+
+def decision_finale(source, base, base_par_matiere):
+    """(AJOUTER | IGNORER, explication, documents remplaces)."""
+    if any(str(d.get("sha256_source")) == source["sha256"] for d in base):
+        return "IGNORER", "deja injecte par ce script", []
+    if source["fichier"] in DEJA_PRESENTS:
+        return "IGNORER", DEJA_PRESENTS[source["fichier"]], []
+    if source["type_doc"] == "PROGRAMME":
+        ancien, part = programme_remplace(source, base_par_matiere)
+        if ancien:
+            return "AJOUTER", f"remplace {ancien.get('id')} ({part:.0%} en commun, un seul bloc de {len(ancien.get('texte', ''))} car.)", [ancien.get("id")]
+        return "AJOUTER", "aucun ancien programme reconnu", []
+    return "AJOUTER", decider(source, base, base_par_matiere)[1], []
+
+
+def documents_base(source, transmis_par, remplace_ids=()):
     docs = []
     nb = len(source["morceaux"])
     for examen, serie in source["cibles"]:
@@ -97,7 +135,7 @@ def documents_base(source, transmis_par):
                 transmis_par=transmis_par, titre=source["titre"],
                 annee="2025-2026" if source["matiere"] == "ECO" else ("2026-2027" if "2026_2027" in source["fichier"] else "2023"),
                 sha256=hashlib.sha256(texte.encode("utf-8")).hexdigest(), sha256_source=source["sha256"],
-                texte=texte, score=5,
+                texte=texte, score=5, remplace_ids=list(remplace_ids),
                 resume=f"{source['titre']} ({source['type_doc'].lower().replace('_', ' ')}), transmis par {transmis_par}",
             ))
     return docs
@@ -106,7 +144,6 @@ def documents_base(source, transmis_par):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--avec-partiels", action="store_true")
     args = parser.parse_args()
     from google.cloud import storage
 
@@ -125,13 +162,11 @@ def main():
                                if str(d.get("matiere") or "").upper() == m and not str(d.get("id", "")).startswith("coulibaly_")]
     ajouts, bilan = [], {}
     for source in paquet["sources"]:
-        decision, pourquoi, _ = decider(source, base, base_par_matiere)
-        if any(str(d.get("sha256_source")) == source["sha256"] for d in base):
-            decision, pourquoi = "DEJA", "deja injecte par ce script"
+        decision, pourquoi, remplaces = decision_finale(source, base, base_par_matiere)
         bilan[decision] = bilan.get(decision, 0) + 1
-        print(f"{decision:8} | {source['type_doc']:20} | {source['titre'][:55]:55} | {pourquoi}")
-        if decision == "NOUVEAU" or (decision == "PARTIEL" and args.avec_partiels):
-            ajouts.extend(documents_base(source, paquet["transmis_par"]))
+        print(f"{decision:8} | {source['type_doc']:20} | {source['titre'][:50]:50} | {pourquoi}")
+        if decision == "AJOUTER":
+            ajouts.extend(documents_base(source, paquet["transmis_par"], remplaces))
     print(f"\nBilan : {bilan}")
     print(f"Documents a ajouter : {len(ajouts)} ; total prevu : {len(base) + len(ajouts)}")
     if not args.apply or not ajouts:

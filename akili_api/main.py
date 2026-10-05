@@ -26,6 +26,17 @@ model = GenerativeModel("gemini-2.5-flash")
 # Initialisation de Firestore (Sécurisée via IAM - pas besoin de clé JSON)
 db = firestore.Client()
 
+def retirer_remplaces(docs):
+    """Un document qui en remplace d'autres (champ remplace_ids, par exemple un programme decoupe
+    par lecon a la place du bloc entier) les ecarte au chargement. Rien n'est supprime de la base."""
+    remplaces = {r for d in docs for r in (d.get("remplace_ids") or [])}
+    if not remplaces:
+        return docs
+    gardes = [d for d in docs if d.get("id") not in remplaces]
+    print(f"{len(docs) - len(gardes)} documents remplaces par une version plus recente ou decoupee")
+    return gardes
+
+
 def load_db_from_gcs():
     """Charge la base de données depuis Google Cloud Storage."""
     try:
@@ -47,6 +58,7 @@ def load_db_from_gcs():
                 d["texte"] = texte
                 docs.append(d)
 
+        docs = retirer_remplaces(docs)
         print(f"✅ {len(docs)} documents chargés avec succès.")
         return docs
     except Exception as e:
