@@ -74,10 +74,11 @@ def options_menu(nom):
     return (
         f"Espace enseignant de {nom}. Que voulez-vous faire ?",
         [
-            ("a", "Voir comme vos élèves", "Akili vous répond comme à un élève de votre classe"),
+            ("a", "Voir comme vos élèves", "Akili vous répond comme à un élève (mode étude)"),
             ("b", "Préparer cours, évals", "Fiche de leçon, exercices, évaluation, corrigé, barème"),
             ("c", "Matière ou classe", "Changer la matière ou la classe de travail"),
             ("d", "Signaler une erreur", "Une réponse d'Akili à corriger"),
+            ("e", "Élève en mode examen", "Akili vous fait passer un sujet, puis corrige et note"),
         ],
     )
 
@@ -90,10 +91,16 @@ def message_bienvenue(nom, resume_matieres, resume_classes):
     )
 
 
-def message_mode_eleve(resume):
+def message_mode_eleve(resume, examen=False):
+    if examen:
+        debut = (f"Mode élève, examen activé ({resume}) : Akili vous traite comme un élève qui s'entraîne "
+                 "pour l'examen. Il vous tutoie, vous fait résoudre seul, puis corrige et note avec le barème. "
+                 "Demandez un sujet ou envoyez le vôtre.\n\n")
+    else:
+        debut = (f"Mode élève activé : Akili vous répond exactement comme à un élève ({resume}). "
+                 "Il va vous tutoyer et vous guider pas à pas. Posez une question ou envoyez un exercice.\n\n")
     return (
-        f"Mode élève activé : Akili vous répond exactement comme à un élève ({resume}). "
-        "Il va vous tutoyer et vous guider pas à pas. Posez une question ou envoyez un exercice.\n\n"
+        debut +
         "Pour signaler une erreur : écrivez « correction : » suivi de votre remarque.\n"
         "Pour revenir à votre espace : écrivez « menu prof »."
     )

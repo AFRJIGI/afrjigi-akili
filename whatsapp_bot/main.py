@@ -1252,15 +1252,18 @@ def send_whatsapp_liste(to, corps, lignes, bouton="Choisir"):
         return False
 
 
-def texte_choix(question, options):
+def texte_choix(question, options, vous=False):
     """Version texte (lettres) d'une question a choix : [(lettre, libelle, precision)]."""
     lignes = "\n".join(f"{l}. {lib}" + (f" : {prec}" if prec else "") for l, lib, prec in options)
     lettres = [l for l, _, _ in options]
     fin = f"{', '.join(lettres[:-1])} ou {lettres[-1]}" if len(lettres) > 1 else lettres[0]
-    return f"{question}\n\n{lignes}\n\nRéponds par {fin}."
+    return f"{question}\n\n{lignes}\n\n{'Répondez' if vous else 'Réponds'} par {fin}."
 
 
-def envoyer_choix(phone, question, options):
+CONSIGNE_LISTE_VOUS = "Touchez « Choisir » puis votre choix."
+
+
+def envoyer_choix(phone, question, options, vous=False):
     """Question a choix : liste a toucher si possible, sinon lettres a taper.
     Les titres des lignes gardent la lettre : l'eleve peut toujours repondre "b"."""
     if LISTES_WHATSAPP and 2 <= len(options) <= 10:
@@ -1271,9 +1274,10 @@ def envoyer_choix(phone, question, options):
                 precision = libelle if not precision else f"{libelle} : {precision}"
                 titre = titre[:23] + "…"
             lignes.append((lettre, titre, precision))
-        if send_whatsapp_liste(phone, f"{question}\n\n{CONSIGNE_LISTE}", lignes):
+        consigne = CONSIGNE_LISTE_VOUS if vous else CONSIGNE_LISTE
+        if send_whatsapp_liste(phone, f"{question}\n\n{consigne}", lignes):
             return
-    send_whatsapp(phone, texte_choix(question, options))
+    send_whatsapp(phone, texte_choix(question, options, vous=vous))
 
 
 OPTIONS_EXAM = [
@@ -1777,9 +1781,14 @@ def clean_whatsapp_response(message):
     """Nettoie les reponses avant envoi WhatsApp en gardant les retours a la ligne."""
     text = str(message or "").strip()
 
+    # Lignes de separation Markdown (---, ***) : inutiles sur WhatsApp.
+    text = re.sub(r"(?m)^[ \t]*([-*_])\1{2,}[ \t]*\n?", "", text)
     # Format WhatsApp : puces "- " ou "* " -> "• ", et gras Markdown "**texte**" -> "*texte*"
     text = re.sub(r"(?m)^[ \t]*[-*]\s+", "• ", text)
     text = re.sub(r"\*\*(.+?)\*\*", r"*\1*", text)
+    # Titres Markdown ("### Exercice 1") -> gras WhatsApp.
+    text = re.sub(r"(?m)^[ \t]*#{1,6}[ \t]+(.+?)[ \t#]*$",
+                  lambda m: "*" + m.group(1).replace("*", "").strip() + "*", text)
 
     # Lettres grecques LaTeX (\sigma, \varepsilon, \Delta...) -> symbole Unicode.
     text = re.sub(r"\\+(" + "|".join(sorted(LETTRES_GRECQUES, key=len, reverse=True)) + r")(?![A-Za-z])",
@@ -3577,9 +3586,12 @@ def resume_enseignant(profile):
     return ", ".join(x for x in [libelle_matiere(profile.get("matiere") or ""), profile.get("enseignant_classe") or ""] if x)
 
 
-def passer_mode_enseignant(profile, mode):
+def passer_mode_enseignant(profile, mode, examen=False):
     profile["mode_enseignant"] = mode
-    profile["mode"] = "etude" if mode == prof.MODE_ELEVE else prof.MODE_PROFIL_ASSISTANT
+    if mode == prof.MODE_ELEVE:
+        profile["mode"] = "examen" if examen else "etude"
+    else:
+        profile["mode"] = prof.MODE_PROFIL_ASSISTANT
     return profile
 
 
@@ -3594,7 +3606,7 @@ def appliquer_classe_enseignant(profile, libelle):
 
 def envoyer_menu_enseignant(phone, profile):
     question, options = prof.options_menu(profile.get("enseignant_nom") or "l'enseignant")
-    envoyer_choix(phone, f"{question}\n(Actuellement : {resume_enseignant(profile)})", options)
+    envoyer_choix(phone, f"{question}\n(Actuellement : {resume_enseignant(profile)})", options, vous=True)
 
 
 def activer_code_enseignant(phone, profile, code):
@@ -3717,7 +3729,7 @@ def traiter_espace_enseignant(phone, profile, text):
     if attente == "classes_libres" or prof.est_commande_classes(text):
         return enregistrer_classes_enseignant(phone, profile, text, demande=attente != "classes_libres")
 
-    if prof.est_commande_menu(text):
+    if prof.est_commande_menu(text) or normalize_for_match(text) == "MENU":
         profile["attente_prof"] = "menu"
         sauver()
         envoyer_menu_enseignant(phone, profile)
@@ -3743,21 +3755,25 @@ def traiter_espace_enseignant(phone, profile, text):
     def demander_classe():
         profile["attente_prof"] = "classe"
         sauver()
-        envoyer_choix(phone, "Quelle classe ?", [(LETTRES_CHOIX[i], c, "") for i, c in enumerate(classes[:10])])
+        envoyer_choix(phone, "Quelle classe ?", [(LETTRES_CHOIX[i], c, "") for i, c in enumerate(classes[:10])],
+                      vous=True)
 
-    if attente == "menu" and lettre in {"a", "b"}:
-        passer_mode_enseignant(profile, prof.MODE_ELEVE if lettre == "a" else prof.MODE_ASSISTANT)
+    if attente == "menu" and lettre in {"a", "b", "e"}:
+        passer_mode_enseignant(profile, prof.MODE_ASSISTANT if lettre == "b" else prof.MODE_ELEVE, examen=lettre == "e")
         profile.pop("attente_prof", None)
         sauver()
-        message = prof.message_mode_eleve if lettre == "a" else prof.message_mode_assistant
-        send_whatsapp(phone, message(resume_enseignant(profile)), allow_audio=False)
-        return "enseignant_mode_" + profile["mode_enseignant"]
+        if lettre == "b":
+            message = prof.message_mode_assistant(resume_enseignant(profile))
+        else:
+            message = prof.message_mode_eleve(resume_enseignant(profile), examen=lettre == "e")
+        send_whatsapp(phone, message, allow_audio=False)
+        return "enseignant_mode_" + profile["mode_enseignant"] + ("_examen" if lettre == "e" else "")
     if attente == "menu" and lettre == "c":
         if len(matieres) > 1:
             profile["attente_prof"] = "matiere"
             sauver()
             envoyer_choix(phone, "Quelle matière ?",
-                          [(LETTRES_CHOIX[i], libelle_matiere(m), "") for i, m in enumerate(matieres[:10])])
+                          [(LETTRES_CHOIX[i], libelle_matiere(m), "") for i, m in enumerate(matieres[:10])], vous=True)
         elif len(classes) > 1:
             demander_classe()
         else:
@@ -4257,6 +4273,12 @@ def strip_filler_opening(text):
     text = str(text or "").strip()
     if not text:
         return text
+
+    # Premiere ligne qui n'est qu'une salutation ("Bonjour Professeur,") : retiree.
+    premiere_ligne, saut, suite_texte = text.partition("\n")
+    mots_ligne = normalize_for_match(premiere_ligne).split()
+    if saut and suite_texte.strip() and mots_ligne and mots_ligne[0] in FILLER_GREETING_WORDS and len(mots_ligne) <= 4:
+        text = suite_texte.strip()
 
     reste = text
     while reste:

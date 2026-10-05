@@ -82,7 +82,7 @@ class ParcoursTests(Base):
         self.choix = []
         self.extra = [
             mock.patch.object(main, "feedback_db", self.db),
-            mock.patch.object(main, "envoyer_choix", side_effect=lambda phone, q, options: self.choix.append((q, options))),
+            mock.patch.object(main, "envoyer_choix", side_effect=lambda phone, q, options, **k: self.choix.append((q, options))),
             mock.patch.object(main, "load_last_assistant_context", return_value="Réponse d'Akili : C = 400 N·m"),
         ]
         for p in self.extra:
@@ -102,7 +102,7 @@ class ParcoursTests(Base):
         self.assertEqual(self.etat["mode"], prof.MODE_PROFIL_ASSISTANT)
         self.assertTrue(main.is_profile_ready(self.etat))
         self.assertEqual(self.db.codes[CODE]["phone"], PHONE)
-        self.assertEqual(len(self.choix[-1][1]), 4)  # menu a, b, c, d
+        self.assertEqual([o[0] for o in self.choix[-1][1]], ["a", "b", "c", "d", "e"])
 
         self.assertEqual(self.envoyer(texte("a", "e2"))["reason"], "enseignant_mode_eleve")
         self.assertEqual(main.type_utilisateur_akili(self.etat), "ELEVE_TEST")
@@ -111,6 +111,11 @@ class ParcoursTests(Base):
 
         self.envoyer(texte("menu prof", "e3"))
         self.assertEqual(self.envoyer(texte("b", "e4"))["reason"], "enseignant_mode_assistant")
+        self.assertEqual(self.envoyer(texte("menu", "e5"))["reason"], "enseignant_menu")  # "menu" seul aussi
+        self.assertEqual(self.envoyer(texte("e", "e6"))["reason"], "enseignant_mode_eleve_examen")
+        self.assertEqual((self.etat["mode"], main.type_utilisateur_akili(self.etat)), ("examen", "ELEVE_TEST"))
+        self.envoyer(texte("menu prof", "e7"))
+        self.envoyer(texte("b", "e8"))
         self.assertEqual(main.type_utilisateur_akili(self.etat), "ENSEIGNANT")
         self.assertTrue(main.espace_enseignant_actif(self.etat))
 

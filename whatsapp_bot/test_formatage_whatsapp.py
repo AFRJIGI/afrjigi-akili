@@ -64,6 +64,22 @@ class LettresGrecquesTests(unittest.TestCase):
         self.assertEqual(main.clean_whatsapp_response("\\theta et \\eta et \\beta"), "θ et η et β")
 
 
+class MarkdownEnseignantTests(unittest.TestCase):
+    def test_titres_et_separateurs(self):
+        texte = ("Bonjour Professeur,\n\nVoici une évaluation.\n\n---\n### Évaluation de Mathématiques - Terminale D\n"
+                 "**Thème : Suites numériques**\n\n#### Exercice 1 : Suites (6 points)\n1. Soit (un)...")
+        sortie = envoye(texte)
+        self.assertTrue(sortie.startswith("Voici une évaluation."), sortie[:40])
+        self.assertIn("*Évaluation de Mathématiques - Terminale D*", sortie)
+        self.assertIn("*Exercice 1 : Suites (6 points)*", sortie)
+        self.assertIn("*Thème : Suites numériques*", sortie)
+        self.assertNotIn("#", sortie)
+        self.assertNotIn("---", sortie)
+
+    def test_salutation_en_cours_de_texte_gardee(self):
+        self.assertEqual(envoye("Calcule 2 + 3.\nBonjour à toi"), "Calcule 2 + 3.\nBonjour à toi")
+
+
 class TutoiementTests(unittest.TestCase):
     def test_consigne_de_tutoiement_envoyee_a_akili(self):
         from unittest import mock
