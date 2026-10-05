@@ -1,0 +1,1103 @@
+=== CHAPITRE : VECTEURS ===
+
+1. Définition
+
+Un vecteur est une grandeur définie par une direction, un sens et une intensité.
+- La direction est la droite qui porte le vecteur. Elle est définie par l'angle θ mesuré entre un axe de référence et le support.
+- Le sens représente l'orientation origine-extrémité du vecteur et est symbolisé par une flèche.
+- L'intensité, norme ou module, représente la valeur de la grandeur mesurée par le vecteur. Graphiquement, elle correspond à la longueur de celui-ci. Notation : V ou ‖→V‖.
+- Le point d'application est le point qui sert d'origine à un représentant (ou image) du vecteur.
+Remarque : définir un vecteur, c'est connaître les quatre paramètres précédents.
+[Figure 1 : vecteur →V d'origine A (point d'application ou origine), avec son extrémité, son intensité/module (longueur), son sens (flèche), sa direction ou support, et l'angle θ entre le support et l'axe de référence]
+
+2. Opération sur les vecteurs
+
+2.1. Somme de vecteurs
+
+Des vecteurs peuvent être additionnés pour donner un troisième vecteur appelé vecteur-somme.
+Exemple : déterminons la somme →R des deux vecteurs →A et →B proposés.
+[Figure : quadrillage (carreau = 1 unité) ; vecteur →A oblique vers le haut à droite, de module 5 ; vecteur →B horizontal vers la droite, de module 4,5]
+
+2.2. Soustraction de vecteurs
+
+La différence entre les vecteurs →A et →B se ramène à une addition en ajoutant le vecteur opposé (−→B).
+→A − →B = →A + (−→B) = →R'
+[Figure : vecteurs →A et →B partant d'un même point, et le vecteur −→B de même direction que →B mais de sens opposé]
+
+3. Coordonnées cartésiennes
+
+3.1. Vecteurs unitaires
+
+Les vecteurs →i, →j et →k sont des vecteurs unitaires d'intensité égale à 1. →i, →j et →k sont les vecteurs de base du repère orthonormé (O, x, y, z).
+Remarque : les vecteurs unitaires des axes x, y, z sont parfois notés →x, →y et →z.
+[Figure : repère (O, x, y, z) avec →i sur x, →j sur y, →k sur z ; ‖→i‖ = ‖→j‖ = ‖→k‖ = 1]
+
+3.2. Coordonnées dans le plan
+
+Dans le plan, le vecteur →V a pour coordonnées →V_x et →V_y.
+→V = →V_x + →V_y
+→V = V_x·→i + V_y·→j
+Direction : tan θ = V_y / V_x
+Intensité : ‖→V‖ = V = √(V_x² + V_y²)
+[Figure : vecteur →V faisant l'angle θ avec l'axe x, projections →V_x = V_x·→i sur x et →V_y = V_y·→j sur y ; avec V_x = V·cos θ et V_y = V·sin θ]
+
+Exemple
+Déterminons le module et la direction du vecteur →F ayant pour coordonnées cartésiennes 4 suivant x et 3 suivant y.
+[Zone de réponse laissée vide dans le document (lignes pointillées à compléter)]
+[Figure : quadrillage, vecteur →F partant de O, F_x = 4 sur l'axe x, F_y = 3 sur l'axe y, angle θ entre →F et l'axe x]
+
+3.3. Vecteurs positions
+
+3.3.1. Position d'un point A dans l'espace
+
+→OA : X_A = OA_x ; Y_A = OY_y ; Z_A = OZ_z
+→OA = X_A·→i + Y_A·→j + Z_A·→k
+Remarque : dans un plan (x, y), →k = →0 donne →OA = X_A·→i + Y_A·→j
+[Figure : repère (O, x, y, z), point A dans l'espace, vecteur →OA et ses projections A_x sur x, A_y sur y, A_z sur z]
+
+3.3.2. Représentation d'un segment ou d'une distance →AB
+
+→OA (X_A ; Y_A ; Z_A)   →OB (X_B ; Y_B ; Z_B)
+→AB = →AO + →OB = →OB − →OA
+→AB = (X_B − X_A)·→i + (Y_B − Y_A)·→j + (Z_B − Z_A)·→k
+‖→AB‖ = √((X_B − X_A)² + (Y_B − Y_A)² + (Z_B − Z_A)²)
+[Figure : repère (O, x, y, z), segment →AB et ses composantes (X_B − X_A)·→i, (Y_B − Y_A)·→j, (Z_B − Z_A)·→k]
+
+Exemple :
+→OA (0 ; 0 ; 10)   →OB (6 ; 10 ; 7)   unité : mètre
+→AB = (6 − 0)·→i + (10 − 0)·→j + (7 − 10)·→k
+    = 6·→i + 10·→j − 3·→k
+‖→AB‖ = √(6² + 10² + 3²) = 12,04 m
+[Figure 18 : point A sur l'axe z à 10 m de hauteur ; point B à 6 m suivant x, 10 m suivant y et 7 m de hauteur ; segment →AB]
+
+4. Produits scalaires
+
+4.1. Définition
+
+Le produit scalaire du vecteur →A par le vecteur →B, noté →A·→B, est égal au produit des modules des deux vecteurs multiplié par le cosinus de l'angle (θ) entre leurs directions respectives.
+→A·→B = A·B·cos θ = ‖→A‖·‖→B‖·cos θ = →B·→A
+Si : →A = A_x·→i + A_y·→j + A_z·→k
+     →B = B_x·→i + B_y·→j + B_z·→k
+alors : →A·→B = A_x·B_x + A_y·B_y + A_z·B_z
+[Figure : vecteurs →A et →B issus d'un même point, angle θ entre eux]
+Remarques : le produit scalaire de deux vecteurs est un nombre ou un scalaire et pas un autre vecteur.
+Si →A et →B sont perpendiculaires (θ = 90°) alors →A·→B = A·B·cos 90° = 0.
+
+4.2. Propriété
+
+→A·→B = →B·→A
+→A·(→B + →C) = →A·→B + →A·→C
+k(→A·→B) = (k→A)·→B = →A·(k→B) = k→A·→B   (k étant un scalaire)
+Remarques :
+→i·→i = 1 ; →j·→j = 1 ; →k·→k = 1 ; →i·→j = 0 ; →j·→k = 0 ; →k·→i = 0
+
+Exemple : déterminons le produit scalaire des vecteurs →A et →B proposés.
+→A = 4·→i + 4·→j
+→B = 7·→i − 3·→j
+→A·→B = (4×7) − (4×3) = 16
+[Figure : quadrillage ; →A part de l'origine vers le haut à droite à 45° au-dessus de l'axe x ; →B part de l'origine vers le bas à droite à 23,2° sous l'axe x]
+Remarques
+[Zone laissée vide dans le document (lignes pointillées à compléter)]
+
+5. Produit vectoriel de deux vecteurs
+
+5.1. Définition
+
+Le produit vectoriel du vecteur →A par le vecteur →B, noté →A ∧ →B, est un vecteur →C perpendiculaire au plan (→A, →B) et tel que :
+→A ∧ →B = →C = A·B·sin θ·→u_c
+avec ‖→C‖ = A·B·sin θ et ‖→u_c‖ = 1
+[Figure : à gauche, →A et →B formant l'angle θ, →C = →A ∧ →B dirigé vers le haut selon →u_c, perpendiculaire (90°) à →A et à →B ; à droite, →C' = →B ∧ →A = −→C dirigé vers le bas]
+
+5.2. Principe de calcul
+
+Si : →A = A_x·→i + A_y·→j + A_z·→k et →B = B_x·→i + B_y·→j + B_z·→k alors :
+→A ∧ →B = →C = | A_x  B_x |
+               | A_y  B_y |
+               | A_z  B_z |
+               | A_x  B_x |
+         = (A_y·B_z − A_z·B_y)·→i + (A_z·B_x − A_x·B_z)·→j + (A_x·B_y − A_y·B_x)·→k
+[Schéma de calcul : on écrit les colonnes de A et de B, on recopie la première ligne (A_x, B_x) en dessous, puis on fait les produits en croix deux lignes par deux lignes]
+C_x = A_y·B_z − A_z·B_y ; C_y = A_z·B_x − A_x·B_z ; C_z = A_x·B_y − A_y·B_x
+
+Exemple : soient les vecteurs :
+→A (4 ; 2 ; 0)   →B (3 ; 5 ; 0)   , →A = 4·→i + 2·→j ; →B = 3·→i + 5·→j
+→A ∧ →B : | 4  3 |
+          | 2  5 |
+          | 0  0 |
+          | 4  3 |
+→A ∧ →B = (2×0 − 0×5)·→i + (0×3 − 4×0)·→j + (4×5 − 2×3)·→k = 14·→k
+[Figure : repère (O, x, y, z), vecteurs →A et →B dans le plan (x, y), vecteur →A ∧ →B porté par l'axe z]
+
+=== CHAPITRE : FORCES ET VECTEURS-FORCES ===
+
+1. Définitions
+
+1.1. Forces
+En mécanique, les forces sont utilisées pour modéliser ou schématiser des charges concentrées et des résultantes d'actions mécaniques très diverses (poids, attraction magnétique, etc.).
+
+1.2. Vecteur-force
+En mécanique les forces sont représentées par des vecteurs-forces.
+Un vecteur-force est une grandeur définie par un point d'application, une direction, un sens et une intensité ou norme ou module.
+
+Exemple :
+[Figure 1 : support 1 fixé au mur 0 par boulons, câble 2 tendu attaché à un axe lié à 1 ; après schématisation : vecteur →A_2/1 au point A, incliné de 30° sous l'axe x, intensité 1 000 daN, dirigé de A vers I]
+L'action de contact exercée par le câble (2) sur le support (1) est schématisée par le vecteur-force →A_2/1 de point d'application A, de direction celle du câble, d'intensité 1 000 daN, de sens A vers I (le câble tire sur le support).
+
+2. Composantes d'une force
+
+Une force →F agissant en un point A peut toujours être remplacée par deux autres forces ou composantes (→F_x et →F_y) agissant au même point.
+→F = →F_x + →F_y
+Exemple :
+[Figure 2 : force →F appliquée en A ⇔ →F décomposée en →U et →V (parallélogramme), →F = →U + →V ⇔ les deux composantes →U et →V seules appliquées en A]
+
+3. Coordonnées cartésiennes d'une force dans le plan
+
+Dans le repère orthonormé (O, →x, →y) la force →F a pour coordonnées cartésiennes F_x et F_y.
+On pose : →F = →F_x + →F_y
+          →F = F_x·→i + F_y·→j
+autre expression : F_x = F·cos θ et F_y = F·sin θ
+Remarque :
+tan θ = F_y / F_x
+‖→F‖ = F = √(F_x² + F_y²)   (écrit ‖→V‖ = V = √(F_x² + F_y²) dans le document)
+[Figure 3 : force →F faisant l'angle θ avec l'axe x, projections →F_x = F_x·→i et →F_y = F_y·→j ; triangle rectangle →F = →F_x + →F_y]
+
+4. Application
+
+Sur le dessin ci-après, le support 1 est encastré dans le mur 0. Ce support porte en A un câble 2 soumis à une force d'intensité 1000 N. Le câble est incliné d'un angle α = 30° par rapport à l'axe (O ; →x).
+Déterminer les coordonnées cartésiennes de cette force.
+[Figure 4 : support 1 encastré dans le mur, force →A_2/1 de 1000 daN appliquée en A, inclinée de 30° sous l'axe x ; composantes →A_x suivant x et →A_y vers le bas suivant y]
+Déterminons les coordonnées cartésiennes de cette force.
+A_x = A_2/1·cos 30° = 1000 × 0,866 = 866 daN ;   A_y = A_2/1·sin 30° = (−1000 × 0,5) = −500 daN
+→A_2/1 = 866·→i − 500·→j
+
+EVALUATION (10 min)
+
+Exercice 2 : L'échelle utilisée pour représenter les forces est 1 mm pour 20 N. Déterminer les modules des forces →F_1, →F_2, →F_3 proposées. Écrire ces modules en N, daN et kN.
+[Figure 8 : quadrillage dont un carreau mesure 5 mm × 5 mm ; →F_1 horizontale vers la droite (environ 3 carreaux) ; →F_2 verticale vers le bas (environ 3,5 carreaux) ; →F_3 oblique vers le haut à droite (environ 3 carreaux en x et 3 carreaux en y)]
+[Zone de réponse laissée vide dans le document]
+
+Exercices
+
+Exercice 1
+L'action exercée par la route 0 sur la roue motrice 1 est schématisée par la force →F_0/1. Si l'effort normal →N_0/1 suivant →n a pour valeur 400 daN, déterminer F_0/1 et T_0/1 (suivant →t) sachant que →F_0/1 = →N_0/1 + →T_0/1.
+[Figure 11 : véhicule 2, roue motrice 1 en contact au point A avec la route 0 ; →n vertical, →t horizontal ; →F_0/1 appliquée en A, inclinée de φ = 50° par rapport à →n]
+(Pas de réponse donnée dans le document.)
+
+Exercice 2
+Sachant que la composante T_x de la tension →T du câble en A est de 90 daN, déterminer T_y et T.
+[Figure 12 : plate-forme inclinée de 16° sur l'horizontale, articulée sur un mur incliné ; câble tirant en A selon une pente indiquée par un triangle de 6 (horizontal) pour 2 (vertical)]
+Réponse : T_y = 30 daN ; T = 94,87 daN
+
+Exercice 3
+a) Déterminer les coordonnées T_1x et T_1y de la tension T_1 de la barre (1).
+b) Déterminer T_3 et T_3x si T_3y = 100 daN.
+c) Déterminer T_2 si (T_1x + T_2x + T_3x = 0).
+[Figure 10 : gousset soudé sur un poteau vertical, trois barres soudées : →T_1 = 200 daN à 45° au-dessus de l'axe x, →T_2 horizontale suivant x (dirigée vers le gousset), →T_3 à 30° sous l'axe x]
+Réponse :
+T_1x = T_1y = 141,4 daN ;
+T_3 = 200 daN ; T_3x = 173,2 daN ;
+T_2 = −314,6 daN
+
+Exercice 4
+a) Déterminer les coordonnées cartésiennes de F par rapport aux axes (x, y) et (x', y').
+b) Déterminer les composantes de →F suivant les directions x' et y.
+[Figure : support posé sur un plan incliné de 30° ; force →F de 200 N appliquée sur l'axe du support, inclinée de 40° par rapport à l'axe x ; axes (x, y) horizontaux/verticaux et axes (x', y') tournés de 30°, x' parallèle au plan incliné]
+Réponse :
+a) F_x = 153 ; F_y = 129 ; F_x' = 68,4 ; F_y' = 188
+b) F_x' = 177 avec F_y = 217
+
+=== CHAPITRE : MODELISATION DES ACTIONS MECANIQUES ===
+
+1. Définition d'une action mécanique
+
+On appelle action mécanique toute cause susceptible :
+- Modifier le mouvement d'un solide ;
+- Maintenir un corps au repos ;
+- Déformer un corps.
+
+2. Les types d'actions mécaniques
+
+2.1. Action mécanique de type force
+
+Elles génèrent ou interdisent un mouvement suivant une direction.
+
+2.2. Action mécanique de type moment
+
+Elles provoquent ou interdisent un mouvement autour d'une direction.
+
+3. Modélisation des actions mécaniques
+
+3.1. Les actions mécaniques à distance
+
+Ce sont des actions mécaniques qui agissent directement sur le corps que l'on isole sans aucun contact.
+
+Rappels sur le vecteur-poids
+Le poids d'un solide peut être représenté par un vecteur-force →P appelé vecteur poids et ayant les caractéristiques suivantes :
+- Un point d'application : G (le centre de gravité du corps) ;
+- Une direction : la verticale passant par G ;
+- Un sens : vers le bas ;
+- Une intensité ou module : P = m·g
+P = m·g avec :
+  P : poids en Newton (N)
+  m : masse en (kg)
+  g : accélération de la pesanteur (m/s²)
+[Figure : solide de centre de gravité G au-dessus du sol, vecteur poids →P vertical vers le bas appliqué en G]
+Autres actions à distance :
+- Force électromagnétique
+- Force électromotrice
+- Force de gravitation universelle
+
+3.2. Les actions mécaniques de contact
+
+3.2.1. Action ponctuelle
+
+C'est une action où l'effort de contact est concentré en un point ou sur une petite surface ; cet effort est perpendiculaire au plan tangent commun. Son unité est le Newton (N).
+[Figure : sphère 1 posée sur le sol 0, contact au point A ; solide 1 isolé : action →A_0/1 appliquée en A, verticale vers le haut, passant par G]
+
+3.2.2. Action de contact linéique
+
+L'effort de contact est réparti sur une ligne droite ou non. On définit un coefficient de charge linéique q, avec R = q·L.
+L'unité (de q) est (N/m).
+[Figure : cylindre 1 de longueur l posé sur le support 0 suivant la génératrice AB ; cylindre 1 isolé : charge répartie q sur AB, avec q = m·g / l ⇔ résultante →R (R = q·l) appliquée au milieu de AB (l/2 de chaque côté)]
+
+3.2.3. Action de contact surfacique
+
+L'effort de contact est réparti sur une surface. L'effort peut être uniforme ou non. On définit également un coefficient de charge surfacique.
+L'unité est : Pa ou (N/m²).
+[Figure : vérin avec corps 2, tige-piston 1 et huile sous pression ; piston 1 isolé de diamètre Ød soumis à la pression p répartie sur sa surface ⇔ résultante →R (R = p·S) sur l'axe du piston]
+=== CHAPITRE : MOMENTS ET COUPLES ===
+
+1. Moment d'une force par rapport à un point
+
+1.1 Définition
+
+Le moment de la force →F par rapport au point A, noté M_A(→F), est égal au produit de F par le bras de levier d :
+M_A(→F) = F · d   (d est la distance entre A et →F).
+
+[fig.1 : solide avec un point A ; la force →F agit sur une droite d'action (pointillés) ; d est la distance perpendiculaire de A à cette droite ; flèche courbe autour de A notée M_A(→F) = F.d]
+
+Si B est le point d'application de →F, si la longueur AB est connue :
+M_A(→F) = F · AB · sinα   car   d = AB · sinα.
+on a aussi : →M_A(→F) = →AB ∧ →F (produit vectoriel, dont la norme vaut AB · F · sinα).
+
+[fig.2 : solide avec A et B ; →F appliquée en B ; AB est le segment de A à B ; α est l'angle entre AB et la droite d'action de →F ; H est le pied de la perpendiculaire issue de A sur la droite d'action ; AH = d]
+
+Convention de signe
+Si →F fait tourner le solide autour de A dans le sens trigonométrique, le moment est dit positif, le moment est négatif, dans le cas contraire.
+
+1.2 Théorème de Varignon
+
+[fig.3 : à gauche, force →F appliquée en B, décomposée en →U (horizontale) et →V (verticale), d = distance de A à la droite d'action de →F ; à droite (équivalent ⇔), les composantes →U et →V en B avec leurs bras de levier d_U et d_V par rapport à A]
+
+Le moment de la force →F au point A est égal à la somme des moments de ses composantes →F_x et →F_y par rapport au même point.
+On écrit :
+→F = →F_x + →F_y
+M_A(→F) = M_A(→F_x) + M_A(→F_y)
+
+Application
+
+[fig.4 : pièce coudée fixée par deux boulons, A au pied de la pièce ; la force →F = 1000 N est appliquée en B, inclinée de 60° par rapport à l'horizontale (axe Fx) ; B est à 160 (horizontalement) et à 100 (verticalement) de A ; composantes Fx et Fy dessinées en B ; d = bras de levier de A à la droite d'action de →F]
+
+Déterminons M_A(→F).
+On pose :
+F_x = F · cosθ = 1000 × 0,5 = 500 N
+F_y = F · sin60 = 1000 × 0,866 = 866 N
+
+M_A(→F) = M_A(→F_x) + M_A(→F_y) = −0,1 F_x + 0,16 F_y = −0,1 × 500 + 0,16 × 866 = 88.6 Nm
+
+M_A(→F) = 88,6 Nm
+
+2. Notion de couple
+
+2.1 Définition
+
+Le couple C est le moment engendré en un point (exemple O), par deux forces égales en intensité et de sens opposés et ayant des supports différents.
+On écrit :
+C = M_O(→F) + M_O(−→F)
+C = F(a + d) − F · a
+C = F · d
+
+[fig.5 : solide avec un point O ; deux forces parallèles →F (vers le haut) et −→F (vers le bas) ; a = distance de O à −→F ; d = distance entre les deux forces]
+
+NB : l'intensité du couple ne dépend pas du point O choisi. Elle dépend de la distance entre les deux forces et de l'intensité de →F.
+
+2.2 Application
+
+Le solide de la figure ci-après est soumis à deux forces d'intensité 100 N chacune et distante de d = 4 m.
+Calcule le couple M
+C = F · d
+  = 100 × 4
+C = 400 Nm
+[Vérification : sur la figure 6, la distance entre les deux forces est d = 400 mm = 0,4 m ; avec cette valeur, C = 100 × 0,4 = 40 N·m. Le résultat 400 N·m correspond à d = 4 m comme écrit dans l'énoncé.]
+
+[fig.6 : clé en T (tige verticale de hauteur 250 sur un écrou E, poignée AB) ; −→F en A et →F en B, A et B à 200 de part et d'autre de O ; vue de dessus « Position 1 » : d = 400 mm, A–O = 200, O–B = 200, O = E au centre ; « Position 2 » : A–E = 100, E–B = 300 ; « Position 3 » : A–E = 250, E–B = 150 ; « Position 4 » : A–B = 400, O = E à l'extrémité B]
+
+EVALUATION (05 min)
+
+Soit la poutre encastrée ci-contre.
+Déterminer le moment de la force →F au point A.
+F = 1000 N
+
+[figure : poutre coudée encastrée dans un mur à gauche, A sur l'axe x au niveau de l'encastrement ; la poutre va horizontalement sur 0,5 m puis descend de 0,3 m jusqu'au point B ; en B la force →F = 1000 N est dirigée vers le bas et vers la droite, faisant 30° avec la verticale ; composantes Fx (vers la droite) et Fy (vers le bas)]
+
+[Pas de corrigé sur la fiche (lignes pointillées pour la réponse de l'élève).]
+
+Exercices
+
+Exercice 1
+[Fig. 19 : balance romaine ; crochet 1 en haut, articulation (pivot) O ; balancier 2 horizontal ; masse d'équilibrage mobile 3 en C, de poids →q = 5 daN ; crochet 4 en B portant le poids →P ; distance horizontale entre →P et O : 100 (mm) ; distance entre O et →q : a = 700 mm]
+Une balance romaine se compose d'un balancier 2 articulé en O (pivot) sur un crochet 1 lié à un support fixe et d'une masse d'équilibrage mobile 3 (a variable) de poids q = 5 daN. La masse à peser, poids →P, est suspendue en B par l'intermédiaire d'un crochet 4. Si a = 70 cm, déterminons la valeur de →P.
+
+Exercice 2 [numéro non affiché sur la fiche]
+La force →F schématise l'action exercée par la chaussure sur le ballon au moment du tir.
+a) Calculer le moment en G de la force →F.
+b) Quel est le mouvement pris par le ballon ?
+Réponse : M_G(→F) = −3 N·m ; translation + rotation ("tir brossé").
+[figure : pied frappant un ballon ; schéma du ballon (cercle de centre G) ; →F = 60 N appliquée en A sur le bord du ballon ; distance entre la droite d'action de →F et G : 50 mm]
+
+Exercice 3
+La force →F schématise l'action de serrage exercée par l'opérateur. Calculer le moment en B ("couple" de serrage sur l'écrou) de la force →F.
+[figure : clé à molette ; écrou en B ; force →F = 150 N appliquée en A sur la poignée, inclinée de 20° ; distance horizontale de B à A : 250 mm ; décalage vertical : 60 (mm)]
+
+
+=== CHAPITRE : RESULTANTES ===
+
+1. Définition
+On appelle résultante d'un système de forces →F_1, →F_2, …, →F_n la force →R telle que :
+– →R = →F_1 + →F_2 + … + →F_n ;
+– M_I(→R) = M_I(→F_1) + M_I(→F_2) + … + M_I(→F_n). I est un point quelconque.
+
+2. Propriété
+Le support de →R est unique et son point d'application est sans importance sur ce support.
+
+3. Résultante de forces concourantes
+
+3.1 Résultante de deux forces concourantes
+
+a. Principe
+La résultante de deux forces concourantes passe par le point de concours de celles-ci. Son intensité et sa direction peuvent être obtenues par la règle du parallélogramme ou le triangle des forces.
+
+[figures : support 1 fixé au mur, point A ; deux forces →F_1 et →F_2 issues de A]
+a) Règle du parallélogramme : [→R = →F_1 + →F_2 est la diagonale du parallélogramme construit sur →F_1 et →F_2]
+b) Règle du triangle des forces : [→F_1 est reportée au bout de →F_2 (directions parallèles) ; →R ferme le triangle]
+
+b. Application
+Le support 1 est encastré dans le mur 0. A l'extrémité du support 1 au point A, s'exercent les actions →F_1 et →F_2 (voir figure).
+Déterminer graphiquement puis analytiquement la résultante →R.
+On donne : 1 cm → 100 N
+[figure : support fixé au mur ; en A, câble 2 exerçant →F_2 (vers le haut à droite) ; en B, câble 1 exerçant →F_1 (vers le bas à droite)]
+
+Résolution analytique :
+On pose : →R = →F_1 + →F_2   (1)
+Projetons (1) sur l'axe [Ax) :
+R_x = F_1x + F_2x
+R_x = F_1 · cos45 + F_2 · cos30 = 150 · cos45 + 100 · cos30 = 192,67 N
+R_x = 192,67 N
+
+Projetons (1) sur l'axe [Ay)
+R_y = F_1y + F_2y
+R_y = −F_1 · sin45 + F_2 · sin30 = −150 sin45 + 100 sin30 = −106,07 + 50 = −56,07 N
+R_y = −56,07 N
+
+→R = 192,67 →i − 56,07 →j
+‖→R‖ = √(R_x² + R_y²) = √((192,67)² + (56,07)²) = 200,66 N
+tanθ = R_y / R_x = 56,07 / 192,67 = 0,291   d'où   θ = 16,2°
+Le support de →R est incliné d'un angle θ = 16,2° par rapport à l'axe [A,x)
+
+Résolution graphique
+[figure : les droites d'action de →F_2 (passant par A) et de →F_1 (passant par B) se coupent au point I près du mur ; →F_1 et →F_2 sont reportées en I et le parallélogramme donne →R, horizontale vers la droite]
+
+3.2. Résultante de plusieurs forces concourantes au même point
+
+a. Principe
+Les n forces →F_1, →F_2, →F_3, …, →F_n étant concourantes en un même point I, la résultante →R de celles-ci passe aussi par I. Sa direction et son intensité peuvent être obtenues par un polygone des forces.
+
+b. Application
+Déterminer la résultante des forces →T_1, →T_2, →T_3 et →T_4 exercées par les câbles 1, 2, 3 et 4 sur la pointe. Elles sont toutes concourantes en I.
+Echelle : 1 cm → 20 N.
+[figure : piton vissé dans du bois, anneau de centre I ; →T_1 = 40 N vers le haut (axe y) ; →T_2 = 40 N horizontale vers la droite (axe x), à 90° de →T_1 ; →T_3 = 60 N à 45° sous l'axe x ; →T_4 = 50 N à 60° de →T_3, vers le bas]
+
+Résolution analytique
+→R = →T_1 + →T_2 + →T_3 + →T_4
+Projection sur l'axe (I,x)
+R_x = T_1x + T_2x + T_3x + T_4x
+R_x = 0 + 40 + 60 cos45 + 50 cos105 = 69,49 N
+Projection sur l'axe (I,y)
+R_y = 40 + 0 − 60 sin45 + 50 sin105 = −50,72 N
+‖→R‖ = √(R_x² + R_y²) = √((69,49)² + (−50,72)²) = 86 N
+tanθ = R_y / R_x = −50,72 / 69,49 = −0,73   d'où   θ = −36,1°
+Le support de →R est incliné d'un angle θ = −36,1° par rapport à l'axe (I,x).
+
+Résolution graphique
+[figure « solution graphique » : polygone des forces →T_1 (vers le haut), →T_2 (vers la droite), →T_3, →T_4 mis bout à bout ; →R ferme le polygone ; →R = 86 N, passant par I, inclinée de 36° sous l'axe x]
+
+4. Résolution d'un système de forces planes quelconques
+
+4.1 Principe
+Si les forces connues ne sont plus toutes concourantes au même point, il est nécessaire de déterminer graphiquement la ligne d'action de la résultante par approches successives, en combinant les forces deux à deux.
+
+4.2 Application
+Déterminer la résultante →R des forces →F_1, →F_2, →F_3 exercées par trois câbles 1, 2 et 3 respectivement appliquées en A, B et C sur le solide.
+Echelle : 1 cm → 1000 N.
+
+[figure en 5 étapes :
+a) bateau tiré par trois remorqueurs : remorqueur 1 en A, remorqueur 2 en B, remorqueur 3 en C ;
+b) forces : →F_1 = 400 kN en A, →F_2 = 500 kN en B, →F_3 = 400 kN en C (verticale) ; les droites d'action de →F_1 et →F_2 se coupent en I ;
+c) en I : →R_1 = →F_1 + →F_2 = 380 kN ; la droite d'action de →R_1 coupe celle de →F_3 en J ;
+d) en J : →R = →R_1 + →F_3 = 600 kN ; la droite d'action de →R coupe le bord du bateau en D ; polygone des forces →F_1, →F_2, →R_1, →F_3, →R ;
+e) équivalence (⇔) : un seul remorqueur en D exerçant →R = 600 kN, dont la droite d'action passe par J]
+
+5. Résultante d'un système de forces parallèles
+
+5.1 Principe
+[figure en 3 étapes (⇔) : 1) deux forces parallèles →F_1 en I et →F_2 en J, toutes deux vers le bas ; 2) on ajoute deux forces opposées →F en I et −→F en J ; →R_1 = →F_1 + →F et →R_2 = →F_2 + (−→F) ; leurs droites d'action se coupent en K ; 3) →R_1 et →R_2 reportées en K donnent →R = →F_1 + →F_2, verticale vers le bas, passant par K]
+
+Ce cas particulier peut être résolu par calcul ou graphiquement. Concernant la résolution graphique en se ramenant à des forces concourantes.
+Déterminer graphiquement la résultante des forces →F_1 et →F_2 en se ramenant à des forces concourantes. Echelle : 1 cm → 1000 N.
+
+5.2 Application
+Déterminer par calcul la résultante des forces →F_1, →F_2 et →F_3 appliquées au solide ci-après.
+[figure : solide soumis à trois forces verticales vers le haut : →F_2 = 50 kN en I, →F_3 = 220 kN en J, →F_1 = 110 kN en K ; distance I–J : 2 m ; distance J–K : 7 m ; →R verticale entre J et K, à la distance d_R de I ; axe y vertical]
+
+On pose : →R = →F_1 + →F_2 + →F_3
+En projetant sur l'axe y :
+R = F_1 + F_2 + F_3
+R = 50000 + 220000 + 110000 = 380000 N   soit   R = 380 kN
+[Vérification : la fiche imprime « 16000 N », ce qui est une erreur de calcul ; la somme vaut 380 000 N.]
+
+Calculons d_R
+M_I(→R) = M_I(→F_1) + M_I(→F_2) + M_I(→F_3)
+R · d_R = 9·F_1 + 0·F_2 + 2·F_3 = 9 × 110 + 2 × 220 = 990 + 440 = 1430 kN·m
+d_R = 1430 / 380 ≈ 3,76 m   d'où   d_R ≈ 3,76 m
+[Vérification : la fiche imprime « 9·F_1 + 0F_2 − 2F_3 = 40000 − 99000 = 55000 » puis « d_R = 550000/160000 = 3,44 m » ; ces chiffres sont faux. Les trois forces sont verticales vers le haut et situées du même côté de I (F_3 à 2 m, F_1 à 9 m), leurs moments en I ont le même signe : d_R ≈ 3,76 m.]
+
+Exercices
+
+Exercice 1
+Déterminer [masqué]sultante →R de →T_1 et →T_2 agissant sur le [masqué]er en A. [une partie du texte est cachée par un cadre « 2 » ; d'après la figure, il s'agit de « la résultante » et du « palier »]
+Réponse : R_x = 23,7 ; R_y = 58,3 daN ; α_x = 67,9°.
+[figure : palier fixé par deux boulons, point A ; →T_1 = 60 daN inclinée de 30° au-dessus de l'axe x ; →T_2 = 40 daN vers le haut à gauche, inclinée de 45° par rapport à l'axe y]
+
+Exercice 2
+Le palier à roulement proposé est soumis aux actions →A et →B.
+a) Calculer les composantes horizontale (x) et verticale (y) des forces →A et →B.
+b) En déduire la résultante des deux forces.
+[figure : palier fixé sur un bâti, centre O ; →A = 35 kN inclinée de 40° au-dessus de l'axe x ; →B = 25 kN inclinée de 20° sous l'axe x]
+
+Exercice 3
+La tension du câble AB est T_1 = 18,5 kN, celle du câble AC est T_2 = 13 kN avec a = 45°.
+a) Déterminer la résultante →R de →T_1 et →T_2.
+b) Pour quelle valeur de a, →T_2 est-elle minimale si →R conserve la même valeur ?
+Réponse : R_x = 25 kN ; R_y ≈ 0 ; a = 60° ; T_1 ≈ 21,7 kN ; T_2 = 12,5 kN.
+[figure : barge tirée en A par deux remorqueurs ; remorqueur 1 en B tire avec →T_1 à 30° au-dessus de l'axe x ; remorqueur 2 en C tire avec →T_2 à l'angle α sous l'axe x]
+
+Exercice 4 [cadre « 4 » en marge ; exercice marqué ❑]
+Les actions →R_1, →R_2 et →R_3 schématisent les actions exercées par les remorqueurs. Déterminer la résultante des trois forces.
+[figure : navire tiré par trois remorqueurs ; →R_1 = 600 kN vers le bas, inclinée de 80° (angle indiqué à l'avant) ; →R_2 = 700 kN, angle de 105° indiqué ; →R_3 = 500 kN verticale vers le bas, angle de 90° indiqué ; distances horizontales entre les points d'application : 75 m puis 60 m]
+=== CHAPITRE : PRINCIPE FONDAMENTAL DE LA STATIQUE ===
+
+1. Principe des actions mutuelles
+Pour deux solides 0 et 1 en contact, l'action exercée par le solide 0 sur le solide 1 est égale et opposée à l'action exercée par le solide 1 sur le solide 0.
+→A_0/1 = - →A_1/0
+[Figure : un solide 1 (cercle) posé sur un solide 0 (sol hachuré), contact au point A. À côté : le solide 1 isolé avec la force →A_0/1 verticale vers le haut appliquée en A ; le sol 0 isolé avec la force →A_1/0 verticale vers le bas appliquée en A.]
+
+2. Principe de transmissibilité des forces
+L'équilibre, ou le mouvement d'un solide, reste inchangé si une force →F agissant en un point I est remplacée par une force →F' de même intensité, de même direction et de même sens, agissant en un point M appartenant à la ligne d'action (ou support) de la force →F.
+[Figure : à gauche, un solide avec une force →F appliquée en I, le point M étant sur la ligne d'action (trait mixte) de →F ; à droite, le même solide avec la force →F' = →F appliquée en M, sur la même ligne d'action passant par I.]
+
+3. Principe fondamental de la statique
+3-1- Enoncé
+Un solide indéformable en équilibre sous l'action de n forces extérieures (→F_1, →F_2, …, →F_n) reste en équilibre si :
+- La somme vectorielle →S de toutes les forces extérieures est nulle :
+→S = →F_1 + →F_2 + … + →F_n = →0
+- Le moment résultant M_I en n'importe quel point I de toutes les forces extérieures est nul :
+M_I = M_I(→F_1) + M_I(→F_2) + … + M_I(→F_n) = 0
+
+3.2- Application
+Potence à tirant
+Une potence 2 est supportée par un mur 1 et par un tirant 3. Sur cette potence, en B, se situe un palan dont le poids est connu. Les points A, C et D sont des articulations, modélisées par des liaisons pivot. L'ensemble est supposé en équilibre. On néglige les poids de la potence 2 et du tirant 3.
+On pourra considérer qu'il s'agit d'un problème plan.
+Attention : Le schéma ci-dessous n'est pas à l'échelle.
+[Figure : mur 1 vertical à gauche ; potence 2 horizontale articulée sur le mur en A (origine du repère, axe x horizontal vers la droite, axe y vertical vers le haut) ; tirant 3 incliné allant de D (sur le mur, en haut) à C (extrémité droite de la potence), faisant un angle de 30° avec la potence. Le palan en B exerce le poids →P vertical vers le bas. Cotes : AB = 2500 (horizontal), B à C = 900 (horizontal), C est 20 au-dessus de l'axe AB. P = 2000 N.]
+P = 2000 N
+
+Objet de l'étude
+Déterminez complètement les actions mécaniques en A et C appliquées au solide 2.
+
+RESOLUTION
+[Figure : la potence 2 isolée, articulée en A, avec →P vertical vers le bas en B et la direction du tirant (trait mixte incliné) arrivant en C.]
+
+Application du principe fondamental de la statique
+D'après le principe fondamental de la statique, le bras 1 reste en équilibre si :
+→A_1/2 + →P + →C_3/2 = →0   (1)
+M_A(→A_1/2) + M_A(→P) + M_A(→C_3/2) = 0   (2)
+
+Projection des équations (1) et (2) dans le repère (O, X, Y)
+→A_1/2 (A_1/2X ; A_1/2Y)   →P (0 ; -P)   →C_3/2 (C_3/2·cos30° ; - C_3/2·sin30°)
+
+(1) ⟹
+A_1/2X + 0 + C_3/2·cos30° = 0
+A_1/2Y - P - C_3/2·sin30° = 0
+
+M_A(→A_1/2) = 0 car A appartient au support de →A_1/2
+M_A(→P) = - 2500P
+M_A(→C_3/2) = 3400·C_3/2·sin30° - 20·C_3/2·cos30°
+
+(2) ⟹ 0 - 2500P + 3400·C_3/2·sin30° - 20·C_3/2·cos30° = 0
+
+Le principe fondamental de la statique projeté sur les axes (O,X) et (O,Y) du repère (OXY) est :
+A_1/2X + 0 + C_3/2·cos30° = 0
+A_1/2Y - P - C_3/2·sin30° = 0
+0 - 2500P + 3400·C_3/2·sin30° - 20·C_3/2·cos30° = 0
+
+EVALUATION (Durée : 20 Min)
+Le dispositif proposé fait partie d'un montage d'usinage. La pièce à usiner (4) est bridée en B par un renvoi (3) articulé (liaison pivot) en C sur le bâti (1) du montage. Le serrage de la pièce est réalisé par une vis de pression (2) agissant en A (contact ponctuel). Les poids des pièces sont négligées, →A_2/3 (3000 N) schématise l'action de la vis sur le renvoi, l'action du ressort est négligée.
+Déterminer les actions en B et en C appliquées au solide 3.
+[Figure : à gauche, dessin d'ensemble du montage d'usinage : bâti 1 (hachuré), vis de pression 2 horizontale en haut agissant en A sur le renvoi 3, renvoi 3 pivotant autour de l'axe 5 en C, ressort de rappel, pièce à usiner 4 bridée en B. À droite, le renvoi 3 isolé : A en haut à gauche, C en bas à gauche (axe du pivot), B en bas à droite ; cotes : 74 (distance verticale entre A et l'horizontale passant par C et B), 64 (distance horizontale entre C et B) ; axe y vertical.]
+
+=== CHAPITRE : SOLIDE SOUMIS A L'ACTION DE TROIS FORCES CONCOURANTES ===
+
+1-Conditions d'équilibre
+Un solide en équilibre sous l'action de trois forces extérieures coplanaires et concourantes reste en équilibre si :
+— les directions de ces forces se coupent en un même point (I) ;
+— la somme vectorielle de ces forces est nulle (le dynamique des forces est fermé).
+[Figure : un solide soumis à trois forces →F_1, →F_2, →F_3 dont les directions (en pointillés) se coupent au point I ; à côté, le dynamique des forces : triangle fermé formé par →F_1, →F_3, →F_2 mis bout à bout.]
+→F_1 + →F_2 + →F_3 = →0
+M_I(→F_1) + M_I(→F_2) + M_I(→F_3) = 0 + 0 + 0 = 0
+
+2-Détermination des forces extérieures
+2-1 étapes de résolution
+— Faire le bilan des forces extérieures appliquées au solide isolé (si le nombre d'inconnues est égale à 3 dont 2 intensités et une direction) alors :
+— Choisir une échelle des forces ;
+— Prolonger les deux directions connues, elles se coupent en un point noté I qui est le point de concoure des trois directions ;
+— Tracer la direction de la force inconnue ;
+— Tracer le dynamique des forces en commençant par la force entièrement connue à l'échelle choisie, la direction de cette force doit être parfaitement parallèle à celle de la figure initiale ayant servi à déterminer le point I ;
+— A l'extrémité et à l'origine de la force tracée, tracer les directions (parfaitement parallèles à celles de la figure initiale) des deux autres forces, ces deux directions tracées se coupent en un point ;
+— Tracer les deux forces en remarquant que l'extrémité de chaque force rencontre l'origine de l'autre ;
+— Mesurer la longueur de chaque vecteur force et multiplier la par l'échelle choisie ;
+Reporter les résultats obtenus sur le solide isolé.
+
+2-2 Application
+Potence à tirant
+Une potence 2 est supportée par un mur 1 et par un tirant 3. Sur cette potence, en B, se situe un palan dont le poids est connu. Les points A, C et D sont des articulations, modélisées par des liaisons pivot. L'ensemble est supposé en équilibre. On néglige les poids de la potence 2 et du tirant 3.
+On pourra considérer qu'il s'agit d'un problème plan.
+Attention : Le schéma ci-dessous n'est pas à l'échelle.
+P = 2000 N
+[Le schéma n'est pas reproduit sur cette page ; il s'agit de la même potence à tirant que dans le chapitre précédent : AB = 2500, BC = 900, C à 20 au-dessus de l'axe, tirant incliné à 30°.]
+
+Objet de l'étude
+Déterminez complètement sur le document 1 (sur les pages 2/3 et 3/3) par la méthode graphique, les actions mécaniques en A et C appliquées à la pièce 2.
+
+Détermination des forces extérieures
+On donne échelle des forces : 1 cm = 500 N
+[Figure : la potence 2 isolée, articulée en A, avec →P vertical vers le bas en B et la direction du tirant (trait mixte incliné) arrivant en C ; un repère « + Origine de →P » est placé à droite pour commencer le tracé du dynamique des forces.]
+
+RESULTATS
+‖→A_1/2‖ = ……………… et ‖→C_3/2‖ = ………………
+[Résultats laissés en blanc dans le document, à compléter par l'élève.]
+
+EVALUATION (durée : 10 min)
+Le dispositif proposé fait partie d'un montage d'usinage. La pièce à usiner (4) est bridée en B par un renvoi (3) articulé (liaison pivot) en C sur le bâti (1) du montage. Le serrage de la pièce est réalisé par une vis de pression (2) agissant en A (contact ponctuel). Les poids des pièces sont négligées, →A_2/3 (3000 N) schématise l'action de la vis sur le renvoi, l'action du ressort est négligée.
+[Figure : même dessin que l'évaluation précédente. À gauche, montage d'usinage : bâti 1, vis de pression 2 agissant en A, renvoi 3 pivotant en C (axe 5), ressort de rappel, pièce à usiner 4 bridée en B. À droite, le renvoi 3 isolé : A en haut, C en bas à gauche, B en bas à droite ; cotes 74 (verticale entre A et l'horizontale CB) et 64 (horizontale entre C et B) ; axe y vertical.]
+=== CHAPITRE : SOLIDE SOUMIS À L'ACTION DE TROIS FORCES CONCOURANTES ===
+
+
+EVALUATION (durée : 10 min)
+
+Echelle des forces : 1 cm = 1000 N
+
+[Figure : pièce 3 (levier/équerre) en équilibre sous l'action de trois forces aux points A, B et C. A en haut à gauche, C au centre d'un alésage en bas à gauche, B en bas à droite. Cotes : distance horizontale entre C et B = 64 ; distance verticale entre A et l'horizontale passant par C et B = 74. Un axe y vertical passe par C. Une croix « + » marque l'origine de →A_2/3 pour le tracé du dynamique.]
+
++ Origine de →A_2/3
+
+‖→B_4/3‖ = ………………… et ‖→C_5/3‖ = …………………
+
+
+CORRIGE DE L'EVALUATION (durée : 5 min)
+
+Echelle des forces : 1 cm = 1000 N
+
+[Même figure que l'évaluation : pièce 3, points A, B, C, cotes 64 et 74, axe y ; croix « + » origine de →A_2/3. Le tracé graphique n'est pas visible sur la page.]
+
++ Origine de →A_2/3
+
+Résultats :
+‖→B_4/3‖ = 3200 N et ‖→C_5/3‖ = 4300 N
+
+
+=== CHAPITRE : SOLIDE SOUMIS À QUATRE FORCES ===
+
+
+1. Conditions d'application
+
+Sur les quatre forces, nous avons deux qui sont entièrement connues et pour les deux autres on a une dont on connaît seulement la direction et l'autre seul son point d'application est connu.
+
+[Tableau bilan des forces extérieures]
+→F ext. | P.A | (Δ) | ‖→F‖
+→F_1 | A | direction connue (oblique, descendant vers la droite « \ ») | 1000 N
+→F_2 | B | direction connue (oblique, montant vers la droite « / ») | 700 N
+→F_4 | C | direction connue (oblique « / ») | ?
+→F_3 | D | ? | ?
+
+[Figure 1 : solide de forme ovale. →F_1 (connue) appliquée en A ; →F_2 (connue) appliquée en B ; →F_4 (module ?) appliquée en C, sa direction est tracée en pointillé ; →F_3 appliquée en D : direction ? module ?]
+
+2. Détermination des forces
+
+a) Méthode de résolution
+
+— Isoler le solide ;
+— Faire le bilan des actions mécaniques extérieures appliquées au solide, si le nombre de forces est quatre dont trois modules inconnus ;
+— Choisir une échelle des forces ;
+— Faire la somme vectorielle des forces entièrement connues pour obtenir leur résultante, on ramène le problème à un solide soumis à trois forces ;
+— Prolonger la direction de la résultante puis celle de la force dont on connaît seule la direction, elles se coupent en un point noté I qui est le point de concours des trois directions ;
+— Tracer la direction de la force inconnue ;
+— Tracer le dynamique des forces en commençant par la force entièrement connue à l'échelle choisie, la direction de cette force doit être parfaitement parallèle à celle de la figure initiale ayant servi à déterminer le point I ;
+— A l'extrémité et à l'origine de la force tracée, tracer les directions (parfaitement parallèles à celles de la figure initiale) des deux autres forces, ces deux directions tracées se coupent en un point ;
+— Tracer les deux forces en remarquant que l'extrémité de chaque force rencontre l'origine de l'autre ;
+— Mesurer la longueur de chaque vecteur force et multiplier la par l'échelle choisie ;
+Reporter les résultats obtenus sur le solide isolé.
+
+
+[Figure en 4 étapes illustrant la méthode :]
+[a) Situation initiale : solide ovale avec →F_1 (connue) en A, →F_2 (connue) en B, →F_4 (module ?) en C avec sa direction en pointillé, →F_3 en D (direction ? module ?).]
+[b) Résultante →R de →F_1 et →F_2 : les directions de →F_1 et →F_2 sont prolongées et se coupent en un point K ; en K on construit →R = →F_1 + →F_2 (règle du parallélogramme).]
+[c) Se ramener à 3 forces concourantes : le solide n'est plus soumis qu'à →R (passant par K), →F_4 (en C) et →F_3 (en D). La direction de →R et celle de →F_4 se coupent en I ; la direction de →F_3 est alors la droite (DI).]
+[Dynamique des forces : triangle fermé formé par →R, →F_3 et →F_4 ; →R est elle-même décomposée en →F_1 puis →F_2 (tracés en pointillé). Relation d'équilibre : →F_1 + →F_2 + →F_3 + →F_4 = →0.]
+
+a) Application
+
+[Zone laissée vide pour l'application sur la page.]
+
+
+EVALUATION (10 mn)
+
+[Figure : potence de maintien d'un palan fixée sur un mur (0). Pièces : 0 (mur), 1 (support vertical), 2 (tirant oblique DB), 3 (poutre horizontale en IPE), 4, 5, 6 (palan). Le support 1 est guidé en E (en haut) et en F (en bas) ; la poutre 3 est articulée en A sur 1 ; le tirant 2 relie D (sur 1) à B (extrémité de la poutre 3). Angle entre le support 1 et le tirant 2 : 73°. Cotes : 450 (horizontale, au niveau de E), 1620 (verticale entre E et A), 400 (verticale entre A et F), 240 (horizontale, au niveau de F), 2940 (horizontale, du support jusqu'à la verticale de M), 570, 200 (verticale, entre B et l'axe x de la poutre). Axes : y vertical, x horizontal le long de la poutre. Effort →P de 2000 daN vertical vers le bas sous M. Petit schéma de principe en haut à droite : 1, 2, 3, points E, D, A, F, B, 0. Illustration d'après J.L. FANCHON éd. NATHAN.]
+
+La figure ci-dessus représente une potence de maintien d'un palan. Le système du palan exerce sur la potence au point M un effort P de 2000 daN susceptible de se déplacer le long de la poutre (3).
+
+Les liaisons en A, B et D sont des liaisons pivots d'axe horizontal. La liaison E est un pivot glissant d'axe vertical, tandis que la liaison en F est un pivot d'axe vertical.
+
+On traitera le problème dans le plan de la figure, de façon graphique.
+
+L'action D_2/1 a été préalablement déterminée : ‖→D_2/1‖ = 4000 daN
+
+A la page 2/2 on a isolé le support 1, déterminer les actions →F_5/1, →E_4/1 et →A_3/1.
+
+
+EVALUATION (10 mn)
+
+‖→D_2/1‖ = 4000 daN     Echelle : 1 cm → 1000 daN
+
+[Figure : support 1 isolé (pièce verticale) avec ses quatre points E (en haut), D (articulation en haut à droite), A (en bas), F (tout en bas). Les directions des actions sont tracées en traits mixtes : (Δ)→E_4/1 en E, quasi horizontale ; (Δ)→D_2/1 en D, oblique descendant vers la droite ; (Δ)→A_3/1 en A, oblique légèrement montante vers la droite ; (Δ)→F_5/1 en F, quasi horizontale légèrement descendante. Une croix « + » marque l'origine du tracé du dynamique. Aucun résultat chiffré n'est donné sur la page.]
+
+
+=== CHAPITRE : SOLIDE SOUMIS À QUATRE FORCES (MÉTHODE DE CULMAN) ===
+
+
+Application
+
+[Figure : à gauche, photo d'un compacteur avec sa lame à l'avant. À droite, schéma de la lame 2 articulée en C sur le châssis 1 et manœuvrée en A par le vérin (3 corps + 4 piston) articulé en B sur 1 ; 0 = sol. Cotes : 470 et 250 (horizontales, à partir de l'axe y), 1350 (horizontale), AB = 1600, α = 33° (inclinaison du vérin AB), 200 (horizontale, près de C), a = 1000 (verticale entre B et C), 1000 (verticale entre C et le sol/axe x), 10° (inclinaison en F par rapport à l'axe x). Poids →P_2 (2000 daN) appliqué en G_2, vertical vers le bas. Le point F est le contact de la lame avec le sol. Axes y et x. Illustration d'après J.L. FANCHON éd. NATHAN.]
+
+La lame du compacteur, utilisée sur les chantiers pour tasser et égaliser les sols, est articulée en C sur un châssis (1) et est manœuvrée en A par un vérin hydraulique ((3) corps + (4) piston) articulé en B sur (1). Les liaisons en A, B et C sont des liaisons pivots dont les centres portent le même nom. On se place dans le plan de symétrie de l'appareil, la lame est en équilibre.
+
+On traitera le problème de façon graphique.
+
+On a isolé la lame 2 à la page 2/2 et déterminez les actions en A, en C et en F.
+
+
+Application
+
+Echelle : 1 cm → 1000 daN
+
+[Figure : lame 2 isolée avec les points A, C, G_2, F et le poids →P_2 (2000 daN). Directions tracées en traits mixtes : (Δ)→A_4/2 en A, oblique montante vers la droite (direction du vérin) ; (Δ)→C_1/2 en C, légèrement montante vers la droite ; en F, direction légèrement descendante vers la droite, annotée à la main « (Δ)→F_0/1 » (il s'agit de l'action du sol 0 sur la lame en F). Une croix « + » marque l'origine du tracé du dynamique. Aucun résultat chiffré n'est donné sur la page.]
+=== CHAPITRE : MOUVEMENTS DE SOLIDE ===
+
+1. Définitions
+
+1.1. Cinématique
+
+La cinématique est la partie de la mécanique qui étudie le mouvement des corps, indépendamment des forces qui les produisent.
+
+1.2. Repère de référence
+
+En cinématique, le mouvement d'un solide peut être défini par rapport à un autre solide choisi comme référence et appelé solide de référence.
+Un repère de référence est un repère d'espace (exemples : repères cartésiens (0 ; x, y) ou (0 ; x, y, z)) lié ou "collé" au solide de référence, permettant de repérer avec précision la position et le mouvement du solide.
+
+Exemple : Si l'on considère le mouvement de l'escalator (1) par rapport au sol (0), noté Mvt_1/0, le sol est le solide de référence.
+Un observateur, immobile au sol, voyant l'escalator (h), peut servir d'origine à un repère de référence lié à (0).
+Mvt_0/1 définit le mouvement inverse, l'escalator est le solide de référence. L'homme, immobile sur l'escalator, voit le sol défiler sous ses yeux et peut servir d'origine à un repère de référence lié à (1).
+
+[Figure : un homme (h) debout sur un escalator (1) qui descend vers le sol (0) ; bulle "Je suis immobile par rapport à l'escalator" ; au sol, repère (R_0) d'axes →x_0 et →y_0, avec la mention "Le repère R_0 est lié au sol 0".]
+
+1.3. Repère de temps
+
+Pour faire l'étude cinématique, on a toujours besoin de se situer dans le temps.
+Le temps peut être schématisé par une droite, orientée du passé vers l'avenir, avec au besoin une origine des temps (t = 0). L'image équivalente de cet espace est une montre ou un chronomètre. La lettre t, appelée date, symbolise un point de cet espace.
+L'unité de mesure du temps est la seconde, notée s.
+
+[Figure : un chronomètre et un axe du temps orienté de "passé" vers "futur", avec les points t = 0 (origine du temps), t_1, t_2 (l'intervalle t_2 − t_1 = durée entre t_1 et t_2) et t (date du mouvement).]
+
+1.4. Système de référence ou référentiel
+
+Un système de référence est l'addition ou la combinaison d'un repère de référence et d'un repère de temps.
+
+[Schéma : Référentiel = Repère de référence (axes d'origine 0) + Repère de temps (chronomètre, t).]
+
+Remarque : en cinématique, le mouvement des solides sera défini par rapport à un système de référence.
+
+1.5. Mouvement absolu
+
+Le mouvement d'un solide est dit absolu s'il est défini ou décrit par rapport à un référentiel absolu. Un référentiel absolu (ou galiléen) est un référentiel au repos absolu dans l'univers.
+Exemple : le mouvement de l'escalator par rapport au sol Mvt_1/0.
+
+1.6. Mouvement relatif
+
+Le mouvement d'un solide est dit relatif s'il est défini par rapport à un référentiel relatif. Un référentiel en mouvement dans l'univers est un référentiel relatif.
+Exemple : le mouvement de l'homme par rapport à l'escalator Mvt_h/1.
+
+2. Les principaux types de mouvements
+
+2.1. Mouvement de translation
+
+Un solide se déplace en translation si n'importe quelle ligne (AB) de celui-ci reste constamment parallèle à sa position initiale au cours du mouvement. À tout instant, il n'y a aucune rotation de AB.
+Exemple :
+[Figure "Translation rectiligne" : le segment A_0B_0 (position initiale) passe en AB (position finale) ; les points se déplacent sur des droites ; AB // A_0B_0 et A_0A = B_0B.]
+[Figure "Translation curviligne" : A_0 et B_0 se déplacent sur des courbes quelconques identiques jusqu'à A et B ; A_0B_0 // AB.]
+
+2.2. Mouvement de rotation
+
+Le solide tourne ou est animé d'un mouvement angulaire autour d'un axe fixe perpendiculaire au plan du mouvement. Les points du solide décrivent des cercles ou des circonférences centrés sur l'axe.
+Toutes les lignes ou droites du solide tournent du même angle à chaque instant.
+
+[Figure 1 : solide articulé en A = A_0 sur un bâti ; le point B_0 passe en B en décrivant un arc de cercle de centre A ; angle de rotation θ.]
+
+2.3. Mouvement plan
+
+Un mouvement plan général n'est ni une translation, ni une rotation. Tous les points du solide se déplacent dans des plans parallèles entre eux au cours du mouvement.
+
+[Figure 2 : le segment A_0B_0 passe en AB en se déplaçant sur des trajectoires courbes tout en tournant d'un angle θ.]
+
+Remarque : un mouvement plan peut être considéré comme la combinaison d'une translation et d'une rotation.
+
+2.4. Application
+
+Soit la flèche de pelle hydraulique suivante. On suppose que les trois vérins hydrauliques (10 + 11), (8 + 9) et (6 + 7) sont alimentés.
+
+[Figure 3 : flèche de pelle hydraulique. Bâti 0 avec articulations A et B ; flèche 1 articulée en B ; balancier 2 articulé sur 1 en F ; godet 5 articulé sur 2 en M ; vérin (10 + 11) entre A et C (tige 11, corps 10) ; vérin (8 + 9) entre D et E ; vérin (6 + 7) entre K et P ; biellettes 3 et 4 reliées aux points L, H, J ; pièces repérées 0 à 11.]
+
+Mvt_1/0 = rotation de centre B ;
+Mvt_2/1 = rotation de centre F ;
+Mvt_5/2 = rotation de centre M ;
+Mvt_3/2 = rotation de centre L ;
+Mvt_11/10 = translation rectiligne de direction (AC) ;
+Mvt_9/8 = translation rectiligne de direction (DE) ;
+Mvt_7/6 = translation rectiligne de direction (KP).
+Les mouvements suivants sont tous des mouvements plans généraux :
+Mvt_2/0 ; Mvt_5/0 ; Mvt_5/1 ; Mvt_3/0 ; Mvt_11/0 ; Mvt_4/2 ; Mvt_6/0 ; Mvt_6/1 ; etc.
+
+EVALUATION
+
+L'ensemble proposé représente schématiquement le système bielle (2) manivelle (1) et piston (3) d'un moteur à essence. Les liaisons en A, B et C sont des liaisons pivots dont les centres portent le même nom.
+Déterminer la nature des mouvements suivants : Mvt_1/0 ; Mvt_2/0 ; Mvt_3/0 et Mvt_2/3.
+
+[Figure 4 : manivelle 1 articulée en A sur le bâti (flèche de rotation autour de A) ; bielle 2 de B à C, avec G son centre de gravité ; piston 3 articulé en C, coulissant horizontalement dans le cylindre 0 (flèche de déplacement vers la gauche). Données : AB = 35 mm ; BC = 128 mm ; CG = 2·BG.]
+
+Mvt_1/0 : ……………………
+Mvt_2/0 : ……………………
+Mvt_3/0 : ……………………
+Mvt_2/3 : ……………………
+(Pas de corrigé fourni dans le document.)
+
+1.1. Application (fiche élève à compléter)
+
+Soit la flèche de pelle hydraulique suivante. On suppose que les trois vérins hydrauliques (10 + 11), (8 + 9) et (6 + 7) sont alimentés.
+
+[Figure 3 : même flèche de pelle hydraulique que ci-dessus (pièces 0 à 11, points A, B, C, D, E, F, H, J, K, L, M, P).]
+
+Identifiez les mouvements suivants :
+Mvt_1/0 : …………………… ;
+Mvt_2/1 : …………………… ;
+Mvt_5/2 : …………………… ;
+Mvt_3/2 : …………………… ;
+Mvt_11/10 : …………………… ;
+Mvt_9/8 : …………………… ;
+Mvt_7/6 : ……………………
+Mvt_2/0 : ……………………
+Mvt_5/0 : ……………………
+(Réponses : voir le corrigé du paragraphe 2.4 ci-dessus : Mvt_1/0 = rotation de centre B ; Mvt_2/1 = rotation de centre F ; Mvt_5/2 = rotation de centre M ; Mvt_3/2 = rotation de centre L ; Mvt_11/10 = translation rectiligne de direction (AC) ; Mvt_9/8 = translation rectiligne de direction (DE) ; Mvt_7/6 = translation rectiligne de direction (KP) ; Mvt_2/0 et Mvt_5/0 = mouvements plans généraux.)
+
+=== CHAPITRE : GÉNÉRALITÉS SUR LA RÉSISTANCE DES MATÉRIAUX ===
+
+1. But
+
+L'étude en RDM est une étape nécessaire entre la conception et la réalisation d'une pièce. Elle permet :
+- de calculer les dimensions de la pièce en fonction des efforts qu'elle subit ;
+- de déterminer le choix du matériau ;
+- de limiter son coût.
+Elle permettra également d'évaluer ses déformations éventuelles, et donc sa durée de vie.
+
+2. Notion de poutre
+
+[Figure : poutre de longueur L, de section variant progressivement (diamètre D à gauche), extrémités A et B, point G au milieu ; plan de symétrie Π de la poutre ; ligne moyenne (L_m) passant par A, G, B ; sections droites S_B et S_G ; condition indiquée : L > 4 ou 5 D.]
+
+On désigne par poutre un solide dont la section varie progressivement.
+La ligne moyenne de la poutre est le lieu des centres de surfaces des sections droites successives. Les sections droites sont les sections planes et perpendiculaires à la ligne moyenne de la poutre.
+
+3. Hypothèses
+
+3.1. Hypothèse sur les matériaux
+
+- Homogénéité : Un matériau est homogène lorsque tous les cristaux ou tous les grains de matières sont identiques (même constitution, même structure).
+- Isotropie : Un matériau est isotrope lorsque tous les points de sa structure ont les mêmes caractéristiques mécaniques dans toutes les directions de sa structure.
+
+3.2. Hypothèse sur les forces
+
+Les forces appliquées en un point sont des pointeurs, il n'est pas possible de les remplacer par un système de forces vectoriellement équivalent.
+Toutes les forces extérieures exercées sur la poutre sont contenues dans le plan de symétrie.
+
+3.3. Hypothèse sur les déformations
+
+On se place toujours dans le cas de petites déformations. Autrement dit, les déformations restent faibles comparativement aux dimensions de la poutre.
+
+3.4. Hypothèse de Saint-Venant
+
+Les résultats obtenus en RDM ne sont valables qu'à une distance suffisamment grande des points d'application des forces.
+
+3.5. Hypothèse de Navier-Bernoulli
+
+Au cours des déformations, les sections droites restent planes et perpendiculaires à la ligne moyenne.
+
+[Figure : poutre encastrée chargée en bout par une force →F, avant et après déformation. À gauche, "cas des petites déformations" : la poutre fléchit légèrement et les sections droites 0, 1, 2, 3, 4 restent planes et perpendiculaires à la ligne moyenne. À droite, "cas des grandes déformations" : décalage du point d'application de →F et gauchissement des sections droites.]
+
+4. Effort intérieur ou de cohésion
+
+Les efforts intérieurs ou de cohésion sont les efforts qui agissent à l'intérieur des poutres et qui assurent l'équilibre ou la cohésion de la structure sous l'action des charges extérieures exercées.
+
+4.1. Principe de calcul
+
+Les efforts intérieurs sont calculés avec le principe fondamental de la statique à partir des actions extérieures agissant sur la poutre.
+À partir d'un plan de coupe imaginaire (section S de barycentre G), on divise la poutre en deux tronçons fictifs (AG et GB). Chaque tronçon est en équilibre et l'application du principe fondamental de la statique, à l'un ou l'autre, permet de faire apparaître et de calculer les efforts intérieurs exercés entre les deux tronçons, au niveau de la coupure.
+
+[Figure : poutre AB coupée en (S) au point G, soumise à →F_1, →F_2 (côté tronçon 1, à gauche) et →F_3, →F_4 (côté tronçon 2, à droite). Après coupure : tronçon 1 (A–G) soumis à →F_1, →F_2 et à l'action du tronçon 2 : →R_2/1 et →M_G2/1 ; tronçon 2 (G–B) soumis à →F_3, →F_4 et à l'action du tronçon 1 : →R_1/2 et →M_G1/2.]
+
+4.2. Conventions de signe
+
+L'action entre les deux tronçons est une action d'encastrement qui se modélise par une résultante →R, et un moment résultant →M_G en G. Deux conventions de signe sont alors possibles :
+
+Convention 1 (somme des efforts à gauche de S)
+→R_G = →R_1/2 = −→R_2/1
+→M_G = →M_G1/2 = −→M_G2/1
+
+Convention 2 (somme des efforts à droite de S)
+→R_G = →R_2/1 = −→R_1/2
+→M_G = →M_G2/1 = −→M_G1/2
+
+Remarque : aucune convention n'est ni normalisée ni imposée.
+
+Avec la convention 1 et en appliquant le principe fondamental :
+→R_G = →R_1/2 = somme des forces à gauche de (S) = →F_1 + →F_2
+ou : →R_G = −(somme des forces à droite de (S)) = −(→F_3 + →F_4)
+→M_G = →M_G1/2 = →M_G(F_1) + →M_G(F_2) = (moment résultant en G des efforts à gauche de (S))
+où : →M_G = −→M_G(F_3) + →M_G(F_4) = −(moment résultant en G des efforts à droite de (S)).
+(Écrit tel quel dans le document ; d'après la phrase, il faut comprendre →M_G = −(→M_G(F_3) + →M_G(F_4)).)
+
+4.3. Composantes des efforts intérieurs
+
+[Figure : tronçon 1 vu en coupe au point G, repère (G ; x, y, z) avec x porté par la ligne moyenne ; composantes →N et →M_T sur x, →T_y et →M_fy sur y, →M_fz sur z ; mention "dessin avec la convention 2".]
+
+→R_G = N·→x + T_y·→y + T_z·→z
+→M_G = M_T·→x + M_fy·→y + M_fz·→z
+
+→N : effort normal, porté par la ligne moyenne x (→N = R_G·→x)
+→T = →T_y + →T_z : effort tranchant, perpendiculaire à la ligne moyenne
+→M_T : moment ou couple de torsion, porté par la ligne moyenne
+→M_f = →M_fy + →M_fz : moment fléchissant ou moment de flexion, perpendiculaire à la ligne moyenne.
+
+4.4. Sollicitations simples
+
+L'axe des x coïncide avec la ligne moyenne de la poutre et l'axe des y avec la verticale.
+Si une seule composante N, T, M_T ou M_f existe, alors que toutes les autres sont nulles, on dit que l'on a une sollicitation simple.
+Si deux composantes au moins sont non nulles, on dit que l'on a une sollicitation composée.
+
+[Tableau des sollicitations simples (colonne Observations : "Sollicitations simples") :]
+Cas | Exemple | N | T | M_T | M_f
+traction | barre tirée par −→F et →F à ses extrémités | N | 0 | 0 | 0
+cisaillement | pièce cisaillée entre deux forces opposées →F et −→F | 0 | T | 0 | 0
+torsion | barre soumise à deux couples opposés −M et M autour de son axe | 0 | 0 | M_T | 0
+flexion pure | poutre courbée par deux couples −M et M à ses extrémités (axes x, y) | 0 | 0 | 0 | M_fz
+
+5. Contraintes
+
+On définit la contrainte en un point M dans une section droite comme étant :
+→C(M, →n) = Δ→f / Δs
+
+Δs : élément de surface de centre M.
+Δ→f : effort élémentaire exercé sur Δs.
+→n : vecteur unitaire normal à Δs.
+
+[Figure : poutre cylindrique coupée, section de centre G ; petit élément Δs autour du point M ; effort élémentaire Δ→f appliqué en M ; normale →n et axe →x.]
+
+La contrainte est projetée :
+- Sur →n pour donner la contrainte normale σ (sigma)
+- Dans le plan de coupure pour donner la contrainte tangentielle ou de cisaillement τ (tau)
+
+Par définition une contrainte est assimilable à une pression : son unité est le Pascal = 1 N/m².
+En mécanique l'unité de longueur est le mm, les sections s'expriment donc en mm².
+On utilise donc plus communément le Méga Pascal (MPa) = 10^6 Pa.
+1 MPa = 1 N/mm²
+1 MPa = 10 bars.
+
+6. Coefficient de sécurité
+
+Pour qu'une structure (machine, véhicule, avion, bateau, immeuble...) puisse supporter en toute sécurité les charges qui normalement la sollicitent, il suffit qu'elle puisse résister à des charges plus élevées. La capacité à supporter ces charges constitue la résistance de la structure. Le coefficient de sécurité s est :
+
+s = (charges admissibles par la structure) / (charges habituellement exercées) = (résistance réelle de la structure) / (résistance strictement nécessaire)
+
+En pratique on utilise :
+s = Re / Rp = (limite élastique du matériau) / (contrainte tolérée dans la structure (résistance pratique))
+=== CHAPITRE : TRACTION ===
+
+1. Définition
+
+Une poutre est sollicitée en traction à chaque fois que les actions exercées aux extrémités se réduisent à deux forces égales et opposées de direction la ligne moyenne.
+
+[Figure : poutre AB soumise à -F en A et F en B, le long de la ligne moyenne ; coupure fictive (S) en G. Isolement du tronçon A-G : -F en A, efforts élémentaires Δf répartis sur la section (S), équivalents à l'effort normal N en G.]
+
+2. Contrainte normale
+
+Chaque élément de surface Δs supporte un effort de traction Δf (vecteur) parallèle à la ligne moyenne. Il y a répartition uniforme des contraintes dans la section droite d'où :
+
+σ = N / S
+σ : contrainte normale en MPa ou en N/mm²
+N : effort normal en N
+S : aire de la section droite en mm²
+
+3. Condition de résistance
+
+Soient :
+- R_e la résistance élastique du matériau en MPa ;
+- s le coefficient de sécurité (s > 1) sans unité ;
+- R_pe la résistance pratique à l'extension, avec R_pe = R_e / s
+On a la condition de résistance suivante :
+σ ≤ R_pe
+
+4. Déformation
+
+Soient :
+- L_0 : longueur initiale de la poutre (en mm) ;
+- L : longueur de la poutre après déformation (en mm) ;
+- ΔL = L - L_0 allongement de la poutre (en mm) ;
+- ε : allongement relatif de la poutre (sans unité).
+[Figure : poutre initiale A_0B_0 de longueur L_0 ; poutre déformée AB de longueur L sous -F et F ; allongement ΔL ; section (S) repérée à x_0 avant et x après déformation, élément Δx.]
+On a :
+ε = ΔL / L_0
+
+En déformation élastique, la contrainte σ varie linéairement en fonction de l'allongement relatif ε.
+
+Loi de HOOKE : σ = E·ε
+σ : contrainte normale en MPa ou en N/mm²
+E : module d'élasticité longitudinale (module d'Young) en MPa
+ε : allongement relatif de la poutre (sans unité).
+
+Application
+
+[Figure : potence à tirant fixée à un mur : fût pivotant 1, tirant 2 (entre D et B), poutre-rail 3, palan 4 ; charge P = 2 000 daN. Tirant 2 isolé, de diamètre Ø d : D_1/2 = 6 200 daN en D et B_3/2 = 6 200 daN en B, opposées selon BD.]
+
+La potence à tirant proposée est utilisée en manutention pour lever et déplacer des charges. Elle se compose d'un palan 4, d'une poutre-rail 3, d'un fût pivotant 1 et du tirant 2.
+Le tirant 2 est soumis à une sollicitation de traction : il est soumis à l'action de deux forces D_1/2 et B_3/2 égales et opposées, direction BD, intensité maximale 6 200 daN.
+Le tirant est cylindrique, de diamètre d inconnu, de longueur 2,8 m, et est réalisé en acier (limite élastique R_e = 300 MPa, le coefficient de sécurité est s = 5 et le module d'élasticité longitudinale E = 200 GPa).
+Déterminer le diamètre d du tirant et l'allongement de la poutre ΔL.
+
+Résolution
+
+Déterminons le diamètre d de la poutre.
+Posons la condition de résistance :
+σ = N / S ≤ R_pe = R_e / s avec S = π·d² / 4 et N = 62 000 N
+
+(4·N) / (π·d²) ≤ R_e / s  ⇒  4·N·s ≤ π·d²·R_e  ⇒  d² ≥ (4·N·s) / (π·R_e)
+
+d ≥ √( (4·N·s) / (π·R_e) )  ⇒  d ≥ √( (4 × 62000 × 5) / (π × 300) )  ⇒  d ≥ 28 mm
+
+Déterminons l'allongement de la poutre ΔL.
+D'après la loi de HOOKE on a : σ = E·ε
+Calculons ε :
+ε = σ / E  ⇒  ε = 100 / 200000  ⇒  ε = 0,0005
+
+ε = ΔL / L_0  ⇒  ΔL = ε·L_0  ⇒  ΔL = 0,0005 × 2.800
+
+ΔL = 1,4 mm
+
+EVALUATION (10 mn) – TRACTION
+
+Une poutre tubulaire en acier (la limite élastique R_e = 240 MPa), appartenant à la charpente métallique du Centre Pompidou à Paris, supporte un effort de traction de 400 kN. Le coefficient de sécurité adopté, par rapport à R_e est égal à 6.
+a) Déterminer le diamètre d de la poutre.
+
+Résolution
+[Lignes vides à compléter par l'élève – pas de corrigé dans le document]
+
+EXERCICES – TRACTION
+
+Exercice 4
+Deux tronçons (1) et (2) en matière plastique sont collés comme l'indique la figure. La résistance à la rupture par traction de la colle est de 235 daN·cm⁻² pour des températures variant de -60 °C à 120 °C. Si la section collée est rectangulaire (50 × 70 mm), déterminer l'effort de traction admissible par le joint collé.
+[Figure : deux tronçons 1 et 2 collés (colle), sollicités par -F et F ; section collée rectangulaire 70 × 50 mm (hachurée).]
+Réponse : 8 225 daN.
+
+Exercice 5
+Reprendre l'exercice 4 avec la section circulaire creuse proposée.
+[Figure : section circulaire creuse (couronne hachurée), diamètre extérieur 100 mm, diamètre intérieur 80 mm.]
+
+Exercice 6
+Une chaîne se compose d'une suite de maillons soudés les uns derrière les autres. La limite à la rupture de l'acier utilisé est de 63 daN·mm⁻². Déterminer la force d'extension maximale F que peut supporter la chaîne si le coefficient de sécurité adopté est de 5.
+[Figure : maillon de chaîne en fil de diamètre d = 20 mm, longueur 70 mm, largeur intérieure 30 mm ; sollicité par -F et F ; deux sections de fil hachurées dans le plan de coupe.]
+Réponse : 7 917 daN.
+
+Exercice 7
+Une poutre tubulaire (diamètre extérieur 400 mm, épaisseur e) en acier (limite à la rupture R_r = 380 MPa ; limite élastique R_e = 240 MPa), appartenant à la charpente métallique du Centre Pompidou à Paris, supporte un effort de traction de 400 kN. Le coefficient de sécurité adopté, par rapport à R_e, est égal à 6.
+a) Déterminer l'épaisseur e minimale admissible pour la construction.
+b) La longueur de la partie tubulaire de la poutre est de 3,5 m ; déterminer son allongement si E = 200 GPa.
+[Figure (Fig. 29) : poutre tubulaire tirée par 400 kN à chaque extrémité ; coupe A-A : tube de diamètre extérieur 400 mm et d'épaisseur e.]
+
+=== CHAPITRE : CISAILLEMENT ===
+
+1. Définition
+
+Un solide est sollicité au cisaillement, s'il est soumis à deux forces opposées qui tendent à faire glisser les deux tronçons d'une section droite l'un par rapport à l'autre des deux côtés.
+[Figure : pièce cisaillée entre deux lames, force F vers le bas d'un côté et -F vers le haut de l'autre, de part et d'autre de la section.]
+
+2. Contrainte tangentielle (τ)
+
+[Figure : cylindre coupé par la section S_1 (entre A et B, centre G) ; action A_1/3 en A ; efforts élémentaires Δf_1, Δf_2, …, Δf_n contenus dans le plan de la section.]
+
+τ = T / S
+[Vérification : la formule encadrée n'est pas lisible sur la fiche ; la relation usuelle, utilisée dans l'application qui suit, est τ = T / S.]
+τ : contrainte de cisaillement en MPa
+T : effort tranchant en Newton (N)
+S : aire de la section droite cisaillée en mm²
+
+T (vecteur) = Δf_1 + Δf_2 + … + Δf_n (somme vectorielle)
+
+Application
+
+[Figure : articulation (pivot) : chape 1, tirant 2, axe 3 de diamètre Ø d, circlips 4 ; efforts -F et F.]
+
+L'articulation proposée assure la liaison (pivot) entre la chape 1 et le tirant 2 au moyen d'un axe 3 arrêté en translation par deux circlips 4. La résistance admissible au cisaillement de l'axe 3 est égale à 80 MPa. Si le diamètre de l'axe est égal à 50 mm,
+déterminer l'effort tranchant T maximal transmissible par la liaison.
+
+Résolution
+
+Données : τ_adm = 80 MPa ; d = 50 mm
+
+Déterminons l'effort T maximal :
+T / (2S) ≤ τ_adm avec S = π·d² / 4  ⇒  T ≤ 2S·τ_adm  ⇒  T ≤ (τ_adm·π·d²) / 2
+
+AN : (π × 80 × 50²) / 2  ⇒  T ≤ 314159,26 N
+
+EVALUATION (10 mn) – CISAILLEMENT
+
+Une articulation cylindrique entre deux barres plates 1 et 2 est réalisée comme l'indique la figure. La liaison est assurée par un axe cylindrique 3 de diamètre d inconnu. L'effort maximal supporté par la liaison est de 5 000 daN. La résistance pratique (ou admissible) au cisaillement du matériau de l'axe est de 50 N/mm².
+[Figure : barres plates 1 et 2 superposées traversées par l'axe 3 de diamètre Ø d ; F vers le haut sur une barre, -F = 5 000 daN vers le bas sur l'autre.]
+
+Déterminer le diamètre d de l'axe 3. Indiquer la (ou les) section(s) cisaillée(s).
+
+Résolution
+[Lignes vides à compléter par l'élève – pas de corrigé dans le document]
