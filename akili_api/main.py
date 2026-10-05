@@ -213,6 +213,7 @@ def serie_match(serie_doc, serie_eleve):
 ETUDE_TYPES = {
     "COURS_ESSENTIEL": 45,
     "PROGRAMME": 40,
+    "FORMAT_EPREUVE": 30,
     "PROGRESSION_ANNUELLE": 38,
     "PROGRESSION_2NDE": 38,
     "PROGRESSION_1ERE": 38,
@@ -232,6 +233,7 @@ ETUDE_TYPES = {
 
 EXAMEN_TYPES = {
     "SUJET": 40,
+    "FORMAT_EPREUVE": 39,  # structure officielle de l'epreuve, bareme et exemple de sujet
     "ANNALE": 38,
     "BAC_BLANC": 36,
     "PREPA": 34,
