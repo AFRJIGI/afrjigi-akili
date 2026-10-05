@@ -307,6 +307,24 @@ CONSIGNE_TECHNIQUE = (
 )
 
 
+FORMATAGE_TEXTE_SIMPLE = (
+    "FORMATAGE : n'utilise JAMAIS de LaTeX (ni $, ni commande avec un backslash comme \\sigma ou \\frac). "
+    "Écris les formules en texte simple avec les symboles Unicode, lisibles sur WhatsApp : σ = N / S, "
+    "ε = ΔL / L₀, σ = E × ε, τ = T / S, M_A(F→) = F × d, √(Fx² + Fy²), angles α, θ, unités N, daN, mm², MPa."
+)
+
+
+def formatage_texte_simple(prompt):
+    """Matieres techniques : formules en texte simple (le bot WhatsApp n'affiche pas le LaTeX)."""
+    debut = prompt.find("FORMATAGE : Utilise le LaTeX")
+    if debut >= 0:
+        prompt = prompt[:debut] + FORMATAGE_TEXTE_SIMPLE
+    prompt = prompt.replace("formules/méthodes possibles, écrites en LaTeX,", "formules/méthodes possibles, écrites en texte simple,")
+    return re.sub(r'Exemple : "Quelle équation horaire.*?Réponds par a, b ou c\."',
+                  'Exemple : "Quelle relation utiliserais-tu ? (a) σ = E × ε  (b) σ = E / ε  (c) σ = ε / E. '
+                  'Réponds par a, b ou c."', prompt, flags=re.S)
+
+
 def niveau_bac_technique(serie, classe):
     texte = "BAC Technique"
     if (serie or "").strip():
@@ -1056,6 +1074,8 @@ FORMATAGE : Utilise le LaTeX ($inline$ ou $$display$$) pour TOUTES les expressio
             matiere_texte = MATIERES_TECHNIQUES_GUIDEES.get(matiere_propre) or {"MATHS": "Mathématiques", "SVT": "SVT (Sciences de la Vie et de la Terre)"}.get(matiere_propre, "Physique-Chimie")
             system_prompt = (system_prompt.replace("NIVEAU_PLACEHOLDER", niveau_texte)
                              .replace("LANGAGE_PLACEHOLDER", langage_texte).replace("MATIERE_PLACEHOLDER", matiere_texte))
+            if matiere_propre in MATIERES_TECHNIQUES_GUIDEES:
+                system_prompt = formatage_texte_simple(system_prompt)
         elif matiere_propre == "FRANÇAIS-BEPC-COMPOSITION":
             system_prompt = PROMPT_FR_BEPC_COMPO
         elif matiere_propre == "FRANÇAIS-BEPC-ORTHOGRAPHE":

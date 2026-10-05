@@ -47,6 +47,23 @@ class FormatageListesTests(unittest.TestCase):
 
 
 
+class LettresGrecquesTests(unittest.TestCase):
+    def test_loi_de_hooke_lisible(self):
+        texte = ("Elle relie la contrainte normale ($\\sigma$) et l'allongement relatif (\\epsilon).\n"
+                 "La formule : \\sigma = E \\times \\varepsilon, avec \\Delta L / L_0 et \\sigma_x.")
+        sortie = main.clean_whatsapp_response(texte)
+        self.assertIn("contrainte normale (σ)", sortie)
+        self.assertIn("relatif (ε)", sortie)
+        self.assertIn("σ = E × ε", sortie)
+        self.assertIn("ΔL / L_0", sortie.replace("Δ L", "ΔL"))
+        self.assertIn("σ_x", sortie)
+        self.assertNotIn("\\", sortie)
+
+    def test_commandes_proches_intactes(self):
+        self.assertEqual(main.clean_whatsapp_response("\\nabla f"), "\\nabla f")
+        self.assertEqual(main.clean_whatsapp_response("\\theta et \\eta et \\beta"), "θ et η et β")
+
+
 class TutoiementTests(unittest.TestCase):
     def test_consigne_de_tutoiement_envoyee_a_akili(self):
         from unittest import mock

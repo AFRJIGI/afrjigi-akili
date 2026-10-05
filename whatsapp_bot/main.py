@@ -1761,6 +1761,15 @@ def needs_onboarding(phone, profile, text):
     return False
 
 
+LETTRES_GRECQUES = {
+    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε", "varepsilon": "ε",
+    "zeta": "ζ", "eta": "η", "theta": "θ", "vartheta": "θ", "lambda": "λ", "mu": "μ", "nu": "ν",
+    "xi": "ξ", "rho": "ρ", "sigma": "σ", "tau": "τ", "phi": "φ", "varphi": "φ", "chi": "χ",
+    "psi": "ψ", "omega": "ω", "Gamma": "Γ", "Delta": "Δ", "Theta": "Θ", "Lambda": "Λ",
+    "Sigma": "Σ", "Phi": "Φ", "Psi": "Ψ", "Omega": "Ω",
+}
+
+
 def clean_whatsapp_response(message):
     """Nettoie les reponses avant envoi WhatsApp en gardant les retours a la ligne."""
     text = str(message or "").strip()
@@ -1768,6 +1777,10 @@ def clean_whatsapp_response(message):
     # Format WhatsApp : puces "- " ou "* " -> "• ", et gras Markdown "**texte**" -> "*texte*"
     text = re.sub(r"(?m)^[ \t]*[-*]\s+", "• ", text)
     text = re.sub(r"\*\*(.+?)\*\*", r"*\1*", text)
+
+    # Lettres grecques LaTeX (\sigma, \varepsilon, \Delta...) -> symbole Unicode.
+    text = re.sub(r"\\+(" + "|".join(sorted(LETTRES_GRECQUES, key=len, reverse=True)) + r")(?![A-Za-z])",
+                  lambda m: LETTRES_GRECQUES[m.group(1)], text)
 
     # Symboles LaTeX courants.
     text = re.sub(r"\\+infty\b", "∞", text)
