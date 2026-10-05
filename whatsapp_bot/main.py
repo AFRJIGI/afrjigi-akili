@@ -18,6 +18,7 @@ import tableau_de_bord
 from template_replies import retention_template_text
 import pedagogical_consent as pedagogical
 import espace_enseignant as prof
+import notation
 from marketing_consent import (
     OPTED_IN,
     claim_marketing_consent_prompt,
@@ -1829,6 +1830,8 @@ LETTRES_GRECQUES = {
 def clean_whatsapp_response(message):
     """Nettoie les reponses avant envoi WhatsApp en gardant les retours a la ligne."""
     text = str(message or "").strip()
+    # Formules LaTeX -> notation lisible (fractions, racines, exposants, indices, symboles).
+    text = notation.latex_vers_whatsapp(text)
 
     # Lignes de separation Markdown (---, ***) : inutiles sur WhatsApp.
     text = re.sub(r"(?m)^[ \t]*([-*_])\1{2,}[ \t]*\n?", "", text)
@@ -1925,8 +1928,6 @@ def clean_whatsapp_response(message):
 
     for old, new in replacements.items():
         text = text.replace(old, new)
-
-    text = re.sub(r"\{([^{}]+)\}", r"\1", text)
 
     # Preserve les retours a la ligne WhatsApp.
     text = text.replace("\r\n", "\n").replace("\r", "\n")

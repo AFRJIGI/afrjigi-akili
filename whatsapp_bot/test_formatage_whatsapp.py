@@ -55,12 +55,12 @@ class LettresGrecquesTests(unittest.TestCase):
         self.assertIn("contrainte normale (σ)", sortie)
         self.assertIn("relatif (ε)", sortie)
         self.assertIn("σ = E × ε", sortie)
-        self.assertIn("ΔL / L_0", sortie.replace("Δ L", "ΔL"))
-        self.assertIn("σ_x", sortie)
+        self.assertIn("ΔL / L₀", sortie.replace("Δ L", "ΔL"))
+        self.assertIn("σx", sortie)  # jamais de "_" : WhatsApp le prend pour de l'italique
         self.assertNotIn("\\", sortie)
 
     def test_commandes_proches_intactes(self):
-        self.assertEqual(main.clean_whatsapp_response("\\nabla f"), "\\nabla f")
+        self.assertEqual(main.clean_whatsapp_response("\\nabla f"), "∇ f")
         self.assertEqual(main.clean_whatsapp_response("\\theta et \\eta et \\beta"), "θ et η et β")
 
 
