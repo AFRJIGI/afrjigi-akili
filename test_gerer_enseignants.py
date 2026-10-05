@@ -15,9 +15,14 @@ class GererEnseignantsTests(unittest.TestCase):
         self.assertEqual(matieres, ["MECANIQUE_APPLIQUEE", "CMI"])
         self.assertEqual(classes, ["2nde F2", "1ère F2", "Tle F2"])
         for mauvais in [("", "MATHS", "Tle D"), ("M. X", "MATHEMATIQUES", "Tle D"), ("M. X", "MATHS", "Licence 1"),
-                        ("M. X", "MATHS", "")]:
+]:
             with self.assertRaises(ValueError):
                 preparer(*mauvais, CONNUES)
+
+    def test_classes_facultatives(self):
+        self.assertEqual(preparer("M. Brou", "MATHS", "", CONNUES), (["MATHS"], []))
+        message = message_pour_le_professeur("M. Brou", "PROF-BROU-1234", ["MATHS"], [], CONNUES)
+        self.assertIn("Akili vous demandera ensuite vos classes", message)
 
     def test_message(self):
         message = message_pour_le_professeur("M. Sidibé", "PROF-SIDIBE-4821", ["MECANIQUE_APPLIQUEE"], ["2nde F2"], CONNUES)

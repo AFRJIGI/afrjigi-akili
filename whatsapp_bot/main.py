@@ -3629,13 +3629,18 @@ def activer_code_enseignant(phone, profile, code):
     profile.setdefault("onboarding_completed_at", maintenant)
     if classes:
         appliquer_classe_enseignant(profile, classes[0])
+    else:
+        profile["attente_prof"] = "classes_libres"  # le code ne dit pas ses classes : on les lui demande
     passer_mode_enseignant(profile, prof.MODE_ASSISTANT)
     user_profiles[phone] = profile
     sauver_etat_whatsapp(phone, profile)
     send_whatsapp(phone, prof.message_bienvenue(
-        profile["enseignant_nom"], ", ".join(libelle_matiere(m) for m in matieres), ", ".join(classes) or "-"),
+        profile["enseignant_nom"], ", ".join(libelle_matiere(m) for m in matieres), ", ".join(classes) or "à préciser"),
         allow_audio=False)
-    envoyer_menu_enseignant(phone, profile)
+    if classes:
+        envoyer_menu_enseignant(phone, profile)
+    else:
+        send_whatsapp(phone, prof.MESSAGE_DEMANDE_CLASSES, allow_audio=False)
     print(f"ENSEIGNANT_ACTIVE code={code}", flush=True)
     return "enseignant_active"
 
@@ -3664,6 +3669,36 @@ def _confirmer_profil_enseignant(phone, profile):
     send_whatsapp(phone, f"C'est noté : {resume_enseignant(profile)} ({mode}).", allow_audio=False)
 
 
+def enregistrer_classes_enseignant(phone, profile, text, demande=False):
+    """L'enseignant ecrit ses classes ("2nde F2, Tle F2") ; demande=True : on vient de les lui demander."""
+    if demande:
+        profile["attente_prof"] = "classes_libres"
+        user_profiles[phone] = profile
+        sauver_etat_whatsapp(phone, profile)
+        send_whatsapp(phone, prof.MESSAGE_DEMANDE_CLASSES, allow_audio=False)
+        return "enseignant_classes_demande"
+    classes, inconnues = prof.lire_classes(text)
+    if not classes:
+        send_whatsapp(phone, "Je n'ai pas reconnu ces classes.\n\n" + prof.MESSAGE_DEMANDE_CLASSES, allow_audio=False)
+        return "enseignant_classes_non_reconnues"
+    profile["enseignant_classes"] = classes
+    appliquer_classe_enseignant(profile, classes[0])
+    profile["attente_prof"] = "menu"
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    try:
+        feedback_db.collection(prof.COLLECTION_CODES).document(profile.get("enseignant_code") or "-").update(
+            {"classes": classes})
+    except Exception as e:
+        print(f"Erreur classes enseignant: {repr(e)}", flush=True)
+    message = f"C'est noté, vos classes : {', '.join(classes)}."
+    if inconnues:
+        message += f"\n(Non reconnues, ignorées : {', '.join(inconnues)}.)"
+    send_whatsapp(phone, message, allow_audio=False)
+    envoyer_menu_enseignant(phone, profile)
+    return "enseignant_classes"
+
+
 def traiter_espace_enseignant(phone, profile, text):
     """Code d'acces, menu et signalements des enseignants. Renvoie la raison si le message
     est traite ici, None sinon (le message suit alors son chemin habituel vers Akili)."""
@@ -3678,6 +3713,9 @@ def traiter_espace_enseignant(phone, profile, text):
     def sauver():
         user_profiles[phone] = profile
         sauver_etat_whatsapp(phone, profile)
+
+    if attente == "classes_libres" or prof.est_commande_classes(text):
+        return enregistrer_classes_enseignant(phone, profile, text, demande=attente != "classes_libres")
 
     if prof.est_commande_menu(text):
         profile["attente_prof"] = "menu"
@@ -3726,7 +3764,7 @@ def traiter_espace_enseignant(phone, profile, text):
             profile.pop("attente_prof", None)
             sauver()
             send_whatsapp(phone, f"Votre espace a une seule matière et une seule classe ({resume_enseignant(profile)}). "
-                                 "Pour en ajouter, contactez l'équipe AfrJigi.", allow_audio=False)
+                                 "Pour ajouter des classes, écrivez « mes classes ».", allow_audio=False)
         return "enseignant_changer"
     if attente == "menu" and lettre == "d":
         profile["attente_prof"] = "signalement"

@@ -2,6 +2,7 @@
 
   python3 gerer_enseignants.py ajouter --nom "M. Sidibé" --matieres MECANIQUE_APPLIQUEE,CMI \\
           --classes "2nde F2,1ère F2,Tle F2"
+  python3 gerer_enseignants.py ajouter --nom "M. Brou" --matieres MATHS    # classes demandees par Akili
   python3 gerer_enseignants.py lister
   python3 gerer_enseignants.py signalements [--jours 14]
   python3 gerer_enseignants.py revoquer PROF-SIDIBE-4821
@@ -44,9 +45,7 @@ def preparer(nom, matieres, classes, connues):
     inconnues = [m for m in codes if m not in connues]
     if not codes or inconnues:
         raise ValueError(f"Matières inconnues : {inconnues or 'aucune'}. Codes possibles : {', '.join(sorted(connues))}")
-    libelles = [c.strip() for c in classes.split(",") if c.strip()]
-    if not libelles:
-        raise ValueError("--classes est obligatoire (ex. \"2nde F2,1ère F2\")")
+    libelles = [c.strip() for c in (classes or "").split(",") if c.strip()]
     if len(codes) > 10 or len(libelles) > 10:
         raise ValueError("10 matières et 10 classes au plus (liste WhatsApp)")
     for libelle in libelles:
@@ -59,8 +58,9 @@ def message_pour_le_professeur(nom, code, matieres, classes, connues):
         f"Bonjour {nom},\n\nMerci pour les documents que vous partagez avec Akili. Vous avez maintenant un "
         "espace enseignant pour tester Akili et l'utiliser pour préparer vos cours.\n\n"
         f"Écrivez simplement ce code à Akili sur WhatsApp : {code}\n\n"
-        f"Matières : {', '.join(connues.get(m, m) for m in matieres)}\nClasses : {', '.join(classes)}\n\n"
-        "Vous pourrez voir Akili comme vos élèves le voient, préparer leçons, exercices et évaluations avec "
+        f"Matières : {', '.join(connues.get(m, m) for m in matieres)}\n"
+        + (f"Classes : {', '.join(classes)}\n\n" if classes else "Akili vous demandera ensuite vos classes.\n\n")
+        + "Vous pourrez voir Akili comme vos élèves le voient, préparer leçons, exercices et évaluations avec "
         "corrigés, et signaler une erreur en écrivant « correction : » suivi de votre remarque. "
         "Ce code est personnel : il ne fonctionne que sur un seul numéro."
     )
@@ -76,7 +76,7 @@ def main():
     ajout = sous.add_parser("ajouter")
     ajout.add_argument("--nom", required=True)
     ajout.add_argument("--matieres", required=True)
-    ajout.add_argument("--classes", required=True)
+    ajout.add_argument("--classes", default="", help="facultatif : sinon Akili demande ses classes au professeur")
     sous.add_parser("lister")
     sig = sous.add_parser("signalements")
     sig.add_argument("--jours", type=int, default=14)

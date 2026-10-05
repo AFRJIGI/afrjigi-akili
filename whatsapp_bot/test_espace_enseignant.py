@@ -65,6 +65,10 @@ class ModuleTests(unittest.TestCase):
         for lettre, titre, _ in options:
             self.assertLessEqual(len(f"{lettre}. {titre}"), 24, titre)
 
+    def test_lire_classes(self):
+        self.assertEqual(prof.lire_classes("2nde F2, 1ère F2 et Tle F2"), (["2nde F2", "1ère F2", "Tle F2"], []))
+        self.assertEqual(prof.lire_classes("Tle D; 3e / licence"), (["Tle D", "3e"], ["licence"]))
+
     def test_signalement(self):
         self.assertEqual(prof.texte_signalement("Correction : le couple vaut 40 N·m"), "le couple vaut 40 N·m")
         self.assertIsNone(prof.texte_signalement("erreur"))
@@ -136,6 +140,23 @@ class ParcoursTests(Base):
         self.envoyer(texte("Prépare une évaluation de 30 min sur la traction", "q2"))
         self.assertTrue(self.akili)
         self.assertNotIn("attente_prof", self.etat)
+
+    def test_classes_demandees_au_professeur(self):
+        self.db.codes["PROF-BROU-1234"] = {"code": "PROF-BROU-1234", "nom": "M. Brou", "matieres": ["MATHS"],
+                                           "classes": [], "actif": True, "phone": ""}
+        self.assertEqual(self.envoyer(texte("PROF-BROU-1234", "b1"))["reason"], "enseignant_active")
+        self.assertEqual(self.envoyes[-1], prof.MESSAGE_DEMANDE_CLASSES)
+        self.assertFalse(main.is_profile_ready(self.etat))
+        self.assertEqual(self.envoyer(texte("bonjour", "b2"))["reason"], "enseignant_classes_non_reconnues")
+        self.assertEqual(self.envoyer(texte("2nde F2, Tle F2 et 1ère Z9", "b3"))["reason"], "enseignant_classes")
+        self.assertEqual(self.etat["enseignant_classes"], ["2nde F2", "Tle F2"])
+        self.assertIn("1ère Z9", self.envoyes[-1])
+        self.assertTrue(main.is_profile_ready(self.etat))
+        self.assertEqual(self.db.codes["PROF-BROU-1234"]["classes"], ["2nde F2", "Tle F2"])
+        self.assertEqual(self.choix[-1][1][0][0], "a")  # puis le menu
+        self.assertEqual(self.envoyer(texte("mes classes", "b4"))["reason"], "enseignant_classes_demande")
+        self.envoyer(texte("Tle D", "b5"))
+        self.assertEqual((self.etat["type_examen"], self.etat["serie"]), ("BAC_GENERAL", "D"))
 
     def test_codes_refuses(self):
         self.assertEqual(self.envoyer(texte("PROF-SIDIBE-1111", "r1"))["reason"], "enseignant_code_invalide")

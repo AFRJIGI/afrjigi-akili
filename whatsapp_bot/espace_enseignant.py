@@ -119,8 +119,34 @@ MESSAGE_DEMANDE_SIGNALEMENT = (
     "Décrivez l'erreur en un message : ce qui est faux et, si possible, la bonne réponse. "
     "Je transmets à l'équipe Akili avec la dernière réponse d'Akili.\n\n(Écrivez « annuler » pour revenir.)"
 )
+MESSAGE_DEMANDE_CLASSES = (
+    "Dans quelles classes enseignez-vous ? Écrivez-les séparées par des virgules.\n"
+    "Exemples : 2nde F2, 1ère F2, Tle F2 — ou : Tle D, 1ère C — ou : 3e, 4e"
+)
+COMMANDES_CLASSES = {"MES CLASSES", "MODIFIER MES CLASSES", "CHANGER MES CLASSES", "AJOUTER UNE CLASSE"}
 COMMANDES_MENU = {"MENU PROF", "ESPACE PROF", "ESPACE ENSEIGNANT", "MENU ENSEIGNANT", "MENU PROFESSEUR"}
 PREFIXES_SIGNALEMENT = ("CORRECTION", "ERREUR", "SIGNALEMENT", "SIGNALER")
+
+
+def lire_classes(texte):
+    """'2nde F2, 1ère F2 et Tle F2' -> (['2nde F2', '1ère F2', 'Tle F2'], [classes non reconnues])."""
+    reconnues, inconnues = [], []
+    for morceau in re.split(r"[,;/\n]+|\s+et\s+", str(texte or ""), flags=re.I):
+        morceau = " ".join(morceau.split()).strip(" .")
+        if not morceau:
+            continue
+        try:
+            classe_vers_profil(morceau)
+        except ValueError:
+            inconnues.append(morceau)
+            continue
+        if morceau not in reconnues:
+            reconnues.append(morceau)
+    return reconnues[:10], inconnues
+
+
+def est_commande_classes(texte):
+    return simple(texte) in COMMANDES_CLASSES
 
 
 def est_commande_menu(texte):
