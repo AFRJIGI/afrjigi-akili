@@ -522,6 +522,55 @@ def _est_deja_existant(exc):
     return any(c.__name__ in {"AlreadyExists", "Conflict"} for c in type(exc).__mro__)
 
 
+# Premier contact de chaque numero (compte des eleves pour le tableau de bord et la page d'impact).
+NUMEROS_COLLECTION = "whatsapp_numeros"
+_numeros_connus = set()
+
+
+def noter_numero_whatsapp(phone, recu_le):
+    """Une ecriture au plus par numero et par copie du service : create() echoue si deja connu."""
+    if not phone or phone in _numeros_connus:
+        return
+    try:
+        feedback_db.collection(NUMEROS_COLLECTION).document(str(phone)).create({"premier_contact": recu_le})
+    except Exception as e:
+        if not _est_deja_existant(e):
+            print(f"Erreur noter_numero_whatsapp: {repr(e)}", flush=True)
+            return
+    _numeros_connus.add(phone)
+
+
+def compter_utilisateurs(now=None):
+    """Total des numeros WhatsApp et nouveaux d'hier / d'aujourd'hui (requetes count, sans tout relire)."""
+    now = now or datetime.now(timezone.utc)
+    aujourd_hui = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    hier = aujourd_hui - timedelta(days=1)
+    collection = feedback_db.collection(NUMEROS_COLLECTION)
+
+    def compter(requete):
+        try:
+            return int(requete.count().get()[0][0].value)
+        except Exception as e:
+            print(f"Erreur compter_utilisateurs: {repr(e)}", flush=True)
+            return None
+
+    return {
+        "total": compter(collection),
+        "nouveaux_hier": compter(collection.where("premier_contact", ">=", hier.isoformat())
+                                 .where("premier_contact", "<", aujourd_hui.isoformat())),
+        "nouveaux_aujourdhui": compter(collection.where("premier_contact", ">=", aujourd_hui.isoformat())),
+    }
+
+
+def compter_enseignants_partenaires():
+    try:
+        return sum(1 for d in feedback_db.collection(prof.COLLECTION_CODES).stream()
+                   if (d.to_dict() or {}).get("actif", True) and (d.to_dict() or {}).get("phone"))
+    except Exception as e:
+        print(f"Erreur compter_enseignants_partenaires: {repr(e)}", flush=True)
+        return 0
+
+
 def reserver_message_whatsapp(message_id):
     """Vrai si ce message n'a encore ete pris par aucune copie du bot (create echoue s'il existe)."""
     if not message_id:
@@ -4760,7 +4809,38 @@ def construire_tableau(now=None):
         stats, sante=sante, echecs_jour=lire_echecs_jour(now), qualite=qualite,
         revisions_jour=sum(1 for r in revisions if r.get("statut") == "envoyee"),
         genere_le=now.strftime("%d/%m/%Y %H:%M"), libelle=libelle_matiere,
+        utilisateurs=compter_utilisateurs(now),
     )
+
+
+# ─── Page publique d'impact : totaux seulement, sans cle (lien sur afrjigi.com) ───
+_cache_impact = {"at": None, "donnees": None}
+IMPACT_CACHE_MINUTES = 30
+
+
+def donnees_impact(now=None):
+    now = now or datetime.now(timezone.utc)
+    if _cache_impact["at"] and now - _cache_impact["at"] < timedelta(minutes=IMPACT_CACHE_MINUTES):
+        return _cache_impact["donnees"]
+    debut = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    messages = _flux(feedback_db.collection("whatsapp_messages").where("created_at", ">=", debut),
+                     ["phone", "direction", "created_at", "matiere", "enseignant_verifie"])
+    donnees = tableau_de_bord.calculer_impact(messages, now, utilisateurs=compter_utilisateurs(now),
+                                              enseignants=compter_enseignants_partenaires())
+    _cache_impact.update({"at": now, "donnees": donnees})
+    return donnees
+
+
+@app.get("/impact")
+async def page_impact():
+    return HTMLResponse(tableau_de_bord.rendre_impact_html(donnees_impact()),
+                        headers={"Cache-Control": "public, max-age=900"})
+
+
+@app.get("/impact.json")
+async def impact_json():
+    return JSONResponse(donnees_impact(), headers={"Cache-Control": "public, max-age=900",
+                                                   "Access-Control-Allow-Origin": "*"})
 
 
 def journaliser_statuts_whatsapp(statuts):
@@ -4836,6 +4916,7 @@ async def _receive_message_impl(request: Request):
             recu_le = datetime.fromtimestamp(int(msg.get("timestamp")), timezone.utc).isoformat()
         except (TypeError, ValueError):
             recu_le = datetime.now(timezone.utc).isoformat()
+        noter_numero_whatsapp(phone, recu_le)
         incoming_was_audio = msg_type in {"audio", "voice"}
         audio_reply_context[phone] = incoming_was_audio
         print(f"WHATSAPP_AUDIO_REPLY incoming_was_audio={incoming_was_audio} msg_type={msg_type}", flush=True)

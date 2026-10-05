@@ -103,7 +103,8 @@ def _barres(serie, cle, suffixe=""):
     return '<div class="barres">' + "".join(barres) + "</div>"
 
 
-def rendre_html(stats, sante=None, echecs_jour=0, qualite=None, revisions_jour=0, genere_le=None, libelle=None):
+def rendre_html(stats, sante=None, echecs_jour=0, qualite=None, revisions_jour=0, genere_le=None, libelle=None,
+                utilisateurs=None):
     libelle = libelle or (lambda code: code)
     a = stats["aujourd_hui"]
     hm = stats.get("hier_meme_heure") or {}
@@ -111,7 +112,13 @@ def rendre_html(stats, sante=None, echecs_jour=0, qualite=None, revisions_jour=0
     total_notes = sum(notes.values())
     satisfaits = round(100 * notes.get("oui", 0) / total_notes) if total_notes else None
 
+    utilisateurs = utilisateurs or {}
+    hier = stats.get("hier") or {}
     tuiles = [
+        ("Élèves WhatsApp (total)", _nombre(utilisateurs.get("total")), '<span class="evol">depuis le lancement</span>'),
+        ("Nouveaux élèves hier", _nombre(utilisateurs.get("nouveaux_hier")),
+         f'<span class="evol">{_e(_nombre(utilisateurs.get("nouveaux_aujourdhui")))} aujourd\'hui</span>'),
+        ("Élèves actifs hier", hier.get("actifs", "—"), ""),
         ("Élèves actifs aujourd'hui", a["actifs"], _evolution(a["actifs"], hm.get("actifs"))),
         ("Messages d'élèves", a["messages"], _evolution(a["messages"], hm.get("messages"))),
         ("Revenus depuis hier", "—" if a["retour"] is None else f"{a['retour']:g} %", ""),
@@ -183,4 +190,112 @@ ul {{ margin:0; padding-left:18px }} li {{ margin:4px 0 }} .sante {{ list-style:
 <section><h2>Avis des 7 derniers jours</h2><p>{repartition}</p><ul>{commentaires}</ul></section>
 </div>
 {bloc_qualite}
+</main></body></html>"""
+
+
+# ─── Page publique d'impact (afrjigi.com/impact) : totaux seulement, en anglais ───
+
+LIBELLES_MATIERES_EN = {
+    "MATHS": "Mathematics", "PC": "Physics-Chemistry", "SVT": "Life & Earth Sciences", "FRANCAIS": "French",
+    "FRENCH": "French", "PHILO": "Philosophy", "HG": "History-Geography", "ANGLAIS": "English",
+    "ESPAGNOL": "Spanish", "ALLEMAND": "German", "EDHC": "Civic education", "ECO": "Economics",
+    "MECANIQUE_APPLIQUEE": "Applied mechanics", "MECANIQUE": "Mechanics", "CMI": "Industrial mechanical design",
+    "PHYSIQUE_APPLIQUEE": "Applied physics", "ELECTRONIQUE": "Electronics", "COMPTA_FIN": "Financial accounting",
+    "COMPTA_SOCIETES": "Corporate accounting", "COMPTA_ANALYTIQUE": "Cost accounting", "DROIT": "Law",
+    "MATHS_GENERAL": "Mathematics", "MATHS_FIN": "Financial mathematics",
+}
+
+
+def calculer_impact(messages, maintenant, utilisateurs=None, enseignants=0, nb_jours=7):
+    """Chiffres publics : aucun numero, aucun texte d'eleve. Les enseignants verifies sont exclus."""
+    eleves = [m for m in messages if not m.get("enseignant_verifie")]
+    stats = calculer_stats(eleves, [], maintenant, nb_jours=nb_jours)
+    debut = stats["serie"][0]["jour"]
+    actifs_semaine, matieres = set(), Counter()
+    vus = set()
+    for m in eleves:
+        if m.get("direction") != "inbound" or not m.get("phone"):
+            continue
+        j = jour_de(m.get("created_at"))
+        if not j or j < debut:
+            continue
+        actifs_semaine.add(m["phone"])
+        cle = (m["phone"], m.get("matiere"))
+        if m.get("matiere") and cle not in vus:
+            vus.add(cle)
+            matieres[LIBELLES_MATIERES_EN.get(str(m["matiere"]).upper(), str(m["matiere"]).title())] += 1
+    retours = [s["retour"] for s in stats["serie"] if s["retour"] is not None]
+    utilisateurs = utilisateurs or {}
+    hier = stats["hier"] or {}
+    return {
+        "students_total": utilisateurs.get("total"),
+        "new_students_yesterday": utilisateurs.get("nouveaux_hier"),
+        "new_students_today": utilisateurs.get("nouveaux_aujourdhui"),
+        "active_students_yesterday": hier.get("actifs"),
+        "active_students_today": stats["aujourd_hui"]["actifs"],
+        "active_students_7_days": len(actifs_semaine),
+        "student_messages_7_days": sum(s["messages"] for s in stats["serie"]),
+        "next_day_return_rate_7_days": round(sum(retours) / len(retours), 1) if retours else None,
+        "partner_teachers": enseignants,
+        "subjects_7_days": matieres.most_common(8),
+        "daily_active_students": [{"day": s["jour"].isoformat(), "active": s["actifs"]} for s in stats["serie"]],
+        "updated_at": maintenant.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+    }
+
+
+def _nombre(x):
+    return "—" if x is None else f"{x:,}".replace(",", " ")
+
+
+def rendre_impact_html(impact, lien_whatsapp="https://wa.me/13154030671", site="https://afrjigi.com"):
+    jours_en = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    retour = impact.get("next_day_return_rate_7_days")
+    tuiles = [
+        ("Students reached on WhatsApp", _nombre(impact.get("students_total")), "since launch"),
+        ("New students yesterday", _nombre(impact.get("new_students_yesterday")),
+         f"{_nombre(impact.get('new_students_today'))} so far today"),
+        ("Active students yesterday", _nombre(impact.get("active_students_yesterday")),
+         f"{_nombre(impact.get('active_students_today'))} so far today"),
+        ("Active students, last 7 days", _nombre(impact.get("active_students_7_days")), "distinct students"),
+        ("Student messages, last 7 days", _nombre(impact.get("student_messages_7_days")), "questions, answers, photos"),
+        ("Came back the next day", "—" if retour is None else f"{retour:g} %", "7-day average"),
+        ("Partner teachers", _nombre(impact.get("partner_teachers")), "sharing curricula and testing Akili"),
+    ]
+    html_tuiles = "".join(f'<div class="tuile"><div class="t">{_e(t)}</div><div class="v">{_e(v)}</div>'
+                          f'<div class="evol">{_e(d)}</div></div>' for t, v, d in tuiles)
+    serie = impact.get("daily_active_students") or []
+    plus_haut = max([s["active"] for s in serie] or [1]) or 1
+    barres = "".join(
+        f'<div class="barre"><span class="val">{s["active"]}</span><div class="b" style="height:'
+        f'{max(2, round(56 * s["active"] / plus_haut))}px"></div><span class="j">'
+        f'{jours_en[datetime.fromisoformat(s["day"]).weekday()]} {datetime.fromisoformat(s["day"]).day}</span></div>'
+        for s in serie)
+    matieres = "".join(f"<li>{_e(m)} <b>{n}</b></li>" for m, n in impact.get("subjects_7_days") or []) or "<li>—</li>"
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="1800"><title>Akili · Live impact</title>
+<meta name="description" content="Live usage figures of Akili, AfrJigi's AI tutor for students in Côte d'Ivoire.">
+<style>
+:root {{ --fond:#f6f7f9; --carte:#fff; --texte:#1c2430; --doux:#5b6675; --accent:#1f7a5a; --bord:#e3e6ea; }}
+@media (prefers-color-scheme: dark) {{ :root {{ --fond:#12161c; --carte:#1b2129; --texte:#e8ecf1; --doux:#9aa5b4; --accent:#3fb98b; --bord:#2a323d; }} }}
+* {{ box-sizing:border-box }} body {{ margin:0; background:var(--fond); color:var(--texte); font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif }}
+main {{ max-width:900px; margin:0 auto; padding:16px }} h1 {{ font-size:22px; margin:6px 0 2px }} h2 {{ font-size:16px; margin:0 0 10px }}
+.petit {{ color:var(--doux); font-size:13px }} section {{ background:var(--carte); border:1px solid var(--bord); border-radius:12px; padding:14px; margin-top:12px }}
+.tuiles {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; margin-top:14px }}
+.tuile {{ background:var(--carte); border:1px solid var(--bord); border-radius:12px; padding:12px }}
+.t {{ color:var(--doux); font-size:13px }} .v {{ font-size:28px; font-weight:650; margin-top:2px }} .evol {{ font-size:12px; color:var(--doux) }}
+.barres {{ display:flex; gap:6px; align-items:flex-end; height:100px }} .barre {{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:3px }}
+.b {{ width:100%; max-width:46px; background:var(--accent); border-radius:4px 4px 0 0 }} .val {{ font-size:12px }} .j {{ font-size:11px; color:var(--doux); white-space:nowrap }}
+ul {{ margin:0; padding-left:18px }} li {{ margin:4px 0 }} a {{ color:var(--accent) }}
+.actions {{ display:flex; flex-wrap:wrap; gap:10px; margin-top:12px }} .bouton {{ display:inline-block; padding:9px 14px; border-radius:99px; border:1px solid var(--accent); text-decoration:none; font-weight:600 }}
+.bouton.plein {{ background:var(--accent); color:#fff }}
+</style></head><body><main>
+<p class="petit"><a href="{_e(site)}">AfrJigi</a> · Akili, AI tutor for students in Côte d'Ivoire</p>
+<h1>Akili · Live impact</h1>
+<p class="petit">Live figures from Akili on WhatsApp, updated {_e(impact.get("updated_at"))}. Aggregated totals only: no personal data is published.</p>
+<div class="actions"><a class="bouton plein" href="{_e(lien_whatsapp)}">Try Akili on WhatsApp</a><a class="bouton" href="{_e(site)}">About AfrJigi</a></div>
+<div class="tuiles">{html_tuiles}</div>
+<section><h2>Active students per day, last 7 days</h2><div class="barres">{barres}</div></section>
+<section><h2>Subjects studied, last 7 days</h2><p class="petit">Number of students per subject.</p><ul>{matieres}</ul></section>
+<p class="petit">Partner teachers' test accounts are excluded. Days are counted in Abidjan time (UTC).</p>
 </main></body></html>"""
