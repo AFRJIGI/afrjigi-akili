@@ -17,7 +17,8 @@ def msg(phone, jours, matiere="MATHS", **extra):
 
 MESSAGES = [msg("2250101", 1), msg("2250101", 0), msg("2250102", 1, "PHILO"), msg("2250103", 3, "PC"),
             msg("2250199", 0, "MATHS", enseignant_verifie=True),
-            {"phone": "2250104", "direction": "outbound", "created_at": MAINTENANT.isoformat()}]
+            {"phone": "2250104", "direction": "outbound", "created_at": MAINTENANT.isoformat()},
+            msg("2250105", 0, "MATHS", processing_stage="onboarding_choice")]  # inscription : matiere par defaut
 UTILISATEURS = {"total": 4123, "nouveaux_hier": 37, "nouveaux_aujourdhui": 12}
 
 
@@ -27,11 +28,11 @@ class ImpactTests(unittest.TestCase):
         self.assertEqual(impact["students_total"], 4123)
         self.assertEqual(impact["new_students_yesterday"], 37)
         self.assertEqual(impact["active_students_yesterday"], 2)
-        self.assertEqual(impact["active_students_today"], 1)          # l'enseignant n'est pas compte
-        self.assertEqual(impact["active_students_7_days"], 3)
+        self.assertEqual(impact["active_students_today"], 2)          # l'enseignant n'est pas compte
+        self.assertEqual(impact["active_students_7_days"], 4)
         self.assertEqual(impact["next_day_return_rate_7_days"], 25.0)  # moyenne de 0 % (J-3) et 50 % (hier -> aujourd'hui)
         self.assertEqual(impact["partner_teachers"], 5)
-        self.assertIn(("Mathematics", 1), impact["subjects_7_days"])
+        self.assertIn(("Mathematics", 1), impact["subjects_7_days"])  # l'eleve en inscription ne compte pas en maths
         self.assertEqual(len(impact["daily_active_students"]), 7)
 
     def test_aucune_donnee_personnelle(self):

@@ -19,6 +19,17 @@ def jour_de(iso):
         return None
 
 
+# Etapes ou l'eleve travaille vraiment une matiere. Pendant l'inscription, le profil porte
+# la matiere par defaut (MATHS) : la compter gonflait les maths.
+ETAPES_APPRENTISSAGE = {"akili_api", "suite_reponse", "pending_question_answered", "teacher_direct_request"}
+
+
+def matiere_travaillee(m):
+    if "processing_stage" in m and m.get("processing_stage") not in ETAPES_APPRENTISSAGE:
+        return None
+    return m.get("matiere") or None
+
+
 def calculer_stats(messages, avis, maintenant, nb_jours=7):
     """Chiffres des nb_jours derniers jours (jour UTC = jour d'Abidjan)."""
     aujourd_hui = maintenant.astimezone(timezone.utc).date()
@@ -40,8 +51,8 @@ def calculer_stats(messages, avis, maintenant, nb_jours=7):
         if j == hier and datetime.fromisoformat(str(m["created_at"])).astimezone(timezone.utc).time() <= heure_actuelle:
             actifs_hier_meme_heure.add(m["phone"])
             messages_hier_meme_heure += 1
-        if j == aujourd_hui and m.get("matiere"):
-            derniere_matiere[m["phone"]] = m["matiere"]
+        if j == aujourd_hui and matiere_travaillee(m):
+            derniere_matiere[m["phone"]] = matiere_travaillee(m)
 
     serie = []
     for i, j in enumerate(jours):
@@ -220,10 +231,11 @@ def calculer_impact(messages, maintenant, utilisateurs=None, enseignants=0, nb_j
         if not j or j < debut:
             continue
         actifs_semaine.add(m["phone"])
-        cle = (m["phone"], m.get("matiere"))
-        if m.get("matiere") and cle not in vus:
+        matiere = matiere_travaillee(m)
+        cle = (m["phone"], matiere)
+        if matiere and cle not in vus:
             vus.add(cle)
-            matieres[LIBELLES_MATIERES_EN.get(str(m["matiere"]).upper(), str(m["matiere"]).title())] += 1
+            matieres[LIBELLES_MATIERES_EN.get(str(matiere).upper(), str(matiere).title())] += 1
     retours = [s["retour"] for s in stats["serie"] if s["retour"] is not None]
     utilisateurs = utilisateurs or {}
     hier = stats["hier"] or {}

@@ -4786,7 +4786,7 @@ def construire_tableau(now=None):
     debut = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     aujourd_hui = now.strftime("%Y-%m-%d")
     messages = _flux(feedback_db.collection("whatsapp_messages").where("created_at", ">=", debut),
-                     ["phone", "direction", "created_at", "matiere"])
+                     ["phone", "direction", "created_at", "matiere", "processing_stage"])
     avis = _flux(feedback_db.collection("feedback_whatsapp").where("created_at", ">=", debut),
                  ["type", "note", "feedback", "statut", "matiere_detectee", "created_at"])
     revisions = _flux(feedback_db.collection(REVISIONS_COLLECTION).where("revision_at", ">=", aujourd_hui),
@@ -4824,7 +4824,7 @@ def donnees_impact(now=None):
         return _cache_impact["donnees"]
     debut = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     messages = _flux(feedback_db.collection("whatsapp_messages").where("created_at", ">=", debut),
-                     ["phone", "direction", "created_at", "matiere", "enseignant_verifie"])
+                     ["phone", "direction", "created_at", "matiere", "enseignant_verifie", "processing_stage"])
     donnees = tableau_de_bord.calculer_impact(messages, now, utilisateurs=compter_utilisateurs(now),
                                               enseignants=compter_enseignants_partenaires())
     _cache_impact.update({"at": now, "donnees": donnees})
