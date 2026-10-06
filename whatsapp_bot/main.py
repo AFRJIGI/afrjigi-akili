@@ -866,11 +866,15 @@ def download_whatsapp_media(media_id, filename="whatsapp_media", fallback_mime="
         return None
 
 
-def detect_matiere_from_text(message):
+def detect_matiere_from_text(message, mots_cles_programme=True):
+    """Matiere citee dans le message. Les mots-cles du programme de philosophie (ETAT, SOCIETE,
+    TRAVAIL, DROIT, TECHNIQUE...) ne servent que si l'eleve n'a pas encore choisi de matiere :
+    sinon « Debit 4452 Etat » ou « la societe a un capital » faisait passer un eleve de
+    comptabilite en philosophie (test du 6 oct.)."""
     msg = normalize_for_match(message)
     matiere_patterns = [
         ("MATHS", ["MATH", "MATHS", "MATHEMATIQUES"]),
-        ("PHILO", ["PHILO", "PHILOSOPHIE"] + PHILO_KEYWORDS),
+        ("PHILO", ["PHILO", "PHILOSOPHIE"] + (PHILO_KEYWORDS if mots_cles_programme else [])),
         ("PC", ["PC", "PHYSIQUE", "CHIMIE", "PHYSIQUE CHIMIE"]),
         ("SVT", ["SVT", "SCIENCES DE LA VIE ET DE LA TERRE"]),
         ("HG", ["HG", "HISTOIRE", "GEOGRAPHIE", "HISTOIRE GEOGRAPHIE"]),
@@ -1815,7 +1819,11 @@ def needs_onboarding(phone, profile, text):
         ask_seconde(phone)
         return True
 
-    matiere_explicit = detect_matiere_from_text(text)
+    # Profil verrouille : la matiere ne change que par le menu ou une demande explicite.
+    # Matiere deja choisie : seul le nom d'une matiere la change, pas un mot du programme.
+    verrouille = is_profile_locked(profile) and not is_explicit_profile_change_request(text)
+    matiere_explicit = None if verrouille else detect_matiere_from_text(
+        text, mots_cles_programme=not profile.get("matiere_confirmed"))
     if matiere_explicit:
         profile["matiere"] = matiere_explicit
         profile["matiere_confirmed"] = True
@@ -3391,13 +3399,21 @@ def has_recent_phone_context(phone):
 
 
 
-def get_recent_phone_context_text(phone, max_items=6):
-    """Retourne le contexte récent en mémoire, sinon le dernier contexte sauvegardé dans Firestore."""
+def cle_conversation_profil(phone, profile):
+    profile = profile or {}
+    return (f"{phone}:{profile.get('type_examen')}:{profile.get('serie', 'TOUTES')}:"
+            f"{profile.get('matiere', 'MATHS')}:{profile.get('mode')}")
+
+
+def get_recent_phone_context_text(phone, max_items=6, cle=None):
+    """Retourne le contexte récent en mémoire, sinon le dernier contexte sauvegardé dans Firestore.
+    Avec `cle`, seulement la conversation en cours : avant, les echanges d'une autre matiere du
+    meme eleve (philosophie...) se melangeaient a sa reponse courte."""
     prefix = f"{phone}:"
     best_items = []
 
     for key, items in conversations.items():
-        if key.startswith(prefix) and items:
+        if key.startswith(prefix) and items and (cle is None or key == cle):
             best_items.extend(items[-max_items:])
 
     last_assistant = load_last_assistant_context(phone)
@@ -3420,8 +3436,8 @@ def get_recent_phone_context_text(phone, max_items=6):
 
 
 
-def short_answer_has_exercise_context(phone):
-    ctx_brut = get_recent_phone_context_text(phone)
+def short_answer_has_exercise_context(phone, cle=None):
+    ctx_brut = get_recent_phone_context_text(phone, cle=cle)
     ctx = normalize_for_match(ctx_brut)
     markers = [
         "VRAI OU FAUX",
@@ -3450,8 +3466,8 @@ def short_answer_has_exercise_context(phone):
     return False
 
 
-def build_short_answer_prompt(phone, answer):
-    ctx = get_recent_phone_context_text(phone)
+def build_short_answer_prompt(phone, answer, cle=None):
+    ctx = get_recent_phone_context_text(phone, cle=cle)
     return (
         "L'élève vient de répondre uniquement : "
         f"{answer}\n\n"
@@ -5255,7 +5271,8 @@ async def _receive_message_impl(request: Request):
             return {"status": "ok", "reason": "suite_reponse"}
 
         if is_contextual_exercise_answer(text) and not profile.get("onboarding_step"):
-            if not short_answer_has_exercise_context(phone):
+            cle_en_cours = cle_conversation_profil(phone, profile)
+            if not short_answer_has_exercise_context(phone, cle=cle_en_cours):
                 send_whatsapp(
                     phone,
                     "Je veux être sûr de répondre sur le bon exercice. Renvoie-moi la question ou une photo, et je continue avec toi."
@@ -5264,7 +5281,7 @@ async def _receive_message_impl(request: Request):
                 print("SHORT_ANSWER_CONTEXT_EARLY without_context", flush=True)
                 return {"status": "ok", "reason": "contextual_answer_without_context"}
 
-            text = build_short_answer_prompt(phone, text)
+            text = build_short_answer_prompt(phone, text, cle=cle_en_cours)
             print("SHORT_ANSWER_CONTEXT_EARLY enforced", flush=True)
 
         if command.startswith("reset\n") or command.startswith("reset\r"):
