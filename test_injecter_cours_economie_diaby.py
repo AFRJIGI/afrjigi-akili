@@ -28,7 +28,7 @@ class CoursEconomieTests(unittest.TestCase):
 
     def test_series(self):
         for d in DOCS:
-            attendu = "BG1G2" if d["partie"] == "Économie générale" else "G1G2"
+            attendu = "G1G2"  # la serie B a son programme SES : pas ce support de BTS
             self.assertEqual(d["serie"], attendu)
             self.assertEqual((d["matiere"], d["examen"], d["type_doc"]), ("ECO", "BAC_TECHNIQUE", "COURS_ESSENTIEL"))
 

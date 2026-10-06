@@ -5,7 +5,8 @@ Le texte a deja ete extrait du PDF dans donnees/cours_economie_m_diaby_2026.json
 (script donnees/construire_cours_economie_m_diaby.py). Chaque extrait devient un document
 COURS_ESSENTIEL de la matiere ECO (BAC Technique) :
   - Economie generale (comptabilite nationale, croissance, sous-developpement, relations
-    economiques internationales, change, balance des paiements) : series B, G1, G2 ;
+    economiques internationales, change, balance des paiements) : series G1, G2 (pas B,
+    qui suit son programme SES) ;
   - Economie et organisation des entreprises : series G1, G2.
 Akili s'en sert pour expliquer les notions avec le contenu des enseignants.
 

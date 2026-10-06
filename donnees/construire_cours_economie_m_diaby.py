@@ -10,7 +10,8 @@ TAILLE_CIBLE, TAILLE_MAX = 2400, 3000
 PUCES = {"-", "•", "▪", "➢", "*", "✓", "o", ""}
 # (code, libelle, series)
 PARTIES = [
-    ("ECONOMIE GENERALE", "Économie générale", "BG1G2"),
+    # G1/G2 seulement : support de BTS ; la serie B suit son propre programme SES (avis de M. Coulibaly).
+    ("ECONOMIE GENERALE", "Économie générale", "G1G2"),
     ("ECONOMIE ET ORGANISATION DES ENTREPRISES", "Économie et organisation des entreprises", "G1G2"),
 ]
 
