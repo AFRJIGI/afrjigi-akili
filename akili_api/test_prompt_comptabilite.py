@@ -21,7 +21,9 @@ class PromptComptabiliteTests(unittest.TestCase):
         self.assertIn("tu ne fais JAMAIS l'exercice entier", prompt)
         self.assertIn("une seule étape par message", prompt)
         self.assertIn("SYSCOHADA", prompt)
-        self.assertIn("(2) comptes à débiter et à créditer", prompt)
+        self.assertIn("(2) sens de l'écriture : UNE seule question pour toute l'écriture", prompt)
+        self.assertIn("ne demande jamais compte par compte s'il augmente ou diminue", prompt)  # test du 6 oct. : trop lent
+        self.assertIn("4 échanges environ", prompt)
         self.assertIn("Crédit 401 Fournisseurs : 590 000", prompt)
         self.assertIn("sans oublier le compte de TVA", prompt)  # au 1er test, la TVA n'etait pas abordee
         self.assertIn("700 caractères au maximum", prompt)

@@ -387,13 +387,16 @@ MATIERES_COMPTABLES = {
     "COMPTA_SOCIETES": "Comptabilité des sociétés", "COMPTA_ANALYTIQUE": "Comptabilité analytique",
 }
 ETAPES_FINANCIERE = (
-    "(1) analyse de l'opération : quels comptes sont touchés, augmentent-ils ou diminuent-ils ; "
-    "(2) comptes à débiter et à créditer, sans oublier le compte de TVA quand l'opération en comporte "
-    "(4452 sur un achat, 4431 sur une vente) ; (3) calcul des montants : HT, réductions commerciales et "
-    "financières, TVA au taux de l'énoncé (18 % en Côte d'Ivoire sauf indication contraire), TTC ; "
-    "(4) écriture au journal ; (5) report au grand livre et balance si l'énoncé le demande ; "
-    "(6) vérification : total débit = total crédit. Pour les travaux d'inventaire (amortissements, "
-    "dépréciations, régularisations), fais d'abord calculer la dotation ou le montant, puis passer l'écriture."
+    "(1) comptes touchés : UNE seule question pour l'ensemble des comptes de l'opération, sans oublier le "
+    "compte de TVA quand il y en a (4452 sur un achat, 4431 sur une vente) ; (2) sens de l'écriture : UNE "
+    "seule question pour toute l'écriture, sous forme de schémas complets à comparer, par exemple "
+    "(a) Débit 601 et 4452, Crédit 401 (b) Débit 401, Crédit 601 et 4452 ; ne demande jamais compte par "
+    "compte s'il augmente ou diminue ; (3) calcul des montants en une question : HT après réductions "
+    "commerciales et financières s'il y en a, TVA au taux de l'énoncé (18 % en Côte d'Ivoire sauf indication "
+    "contraire), puis TTC ; (4) l'élève complète l'écriture au journal avec ses montants et vérifie que "
+    "total débit = total crédit ; (5) report au grand livre et balance seulement si l'énoncé le demande. "
+    "Pour les travaux d'inventaire (amortissements, dépréciations, régularisations), fais d'abord calculer "
+    "la dotation ou le montant, puis passer l'écriture."
 )
 ETAPES_COMPTABLES = {
     "COMPTA": ETAPES_FINANCIERE,
@@ -430,6 +433,8 @@ TA MÉTHODE PAS À PAS (une seule étape par message) :
 6. CORRECTION : si c'est juste, confirme-le clairement. Si c'est faux, dis-le dès le début ("Non, ce n'est pas ça."), avec bienveillance, explique brièvement pourquoi, puis repose la question autrement. N'écris jamais "presque" pour une réponse fausse.
 7. Termine chaque exercice par une vérification faite par l'élève (équilibre débit = crédit, totaux du tableau, cohérence du résultat).
 8. Ne donne la solution qu'en dernier recours, si l'élève reste bloqué après plusieurs indices, et même alors une écriture ou une ligne de tableau à la fois.
+
+RYTHME : une écriture courante (achat, vente, règlement, frais) se fait en 4 échanges environ, pas plus. Ne découpe jamais une étape compte par compte. Si l'élève répond juste, avance ; s'il se trompe, détaille seulement l'étape où il bloque.
 
 QUESTION DE COURS : pour une définition ou une notion, réponds court et précis, avec un petit exemple chiffré (entreprise ivoirienne, F CFA), puis propose une courte application.
 
