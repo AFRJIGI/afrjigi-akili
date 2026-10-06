@@ -2876,6 +2876,51 @@ def consigne_matiere_choisie(matiere, serie=None, type_examen=None, classe=None)
     )
 
 
+CONSIGNE_PHOTO_AUTRE_MATIERE = (
+    "PHOTO OU DOCUMENT D'UNE AUTRE MATIERE : si l'exercice de la photo ou du document joint relève clairement "
+    "d'une autre matière que la matière choisie (par exemple un exercice de mathématiques alors que l'élève a "
+    "choisi l'anglais), écris en toute première ligne, seule : [AUTRE_MATIERE: nom de la matière], puis aide "
+    "l'élève sur cet exercice comme d'habitude. N'écris jamais cette ligne si l'exercice correspond à la matière "
+    "choisie.\n"
+)
+BALISE_AUTRE_MATIERE = re.compile(r"\[\s*AUTRE[ _]MATI[EÈ]RE\s*:\s*([^\]\n]{1,60})\]\s*", re.I)
+CODES_MATIERES_GENERAL = ["MATHS", "PC", "SVT", "FRANCAIS", "PHILO", "HG", "ESPAGNOL", "ALLEMAND", "ANGLAIS"]
+CODES_MATIERES_BEPC = ["MATHS", "PC", "SVT", "FRANCAIS", "HG", "EDHC", "ESPAGNOL", "ALLEMAND", "ANGLAIS"]
+
+
+def extraire_autre_matiere(reponse):
+    """(reponse sans la balise [AUTRE_MATIERE: ...], nom de la matiere ou "")."""
+    trouve = BALISE_AUTRE_MATIERE.search(reponse or "")
+    if not trouve:
+        return reponse, ""
+    return BALISE_AUTRE_MATIERE.sub("", reponse).strip(), trouve.group(1).strip()
+
+
+def code_matiere_pour_eleve(profile, nom):
+    """Code d'une matiere proposee au niveau de l'eleve, a partir du nom donne par Akili (« Mathématiques »)."""
+    profile = profile or {}
+    if profile.get("type_examen") == "BAC_TECHNIQUE":
+        candidats = [code for code, _ in matieres_technique(profile.get("serie"))]
+    elif (profile.get("serie") or "").upper() == "BEPC":
+        candidats = CODES_MATIERES_BEPC
+    else:
+        candidats = CODES_MATIERES_GENERAL
+    cible = normalize_for_match(nom)
+    if not cible:
+        return None
+    for code in candidats:  # nom complet : « Construction mécanique industrielle » -> CMI
+        libelle = normalize_for_match(LIBELLES_MATIERES.get(code, code))
+        if cible == libelle or cible == code:
+            return code
+    detecte = detect_matiere_from_text(nom, mots_cles_programme=False)
+    if not detecte:
+        return None
+    for code in candidats:  # « Mathématiques » en BAC Technique -> MATHS_GENERAL
+        if code == detecte or code.startswith(detecte + "_"):
+            return code
+    return None
+
+
 def libelle_matiere(code):
     code = (code or "").strip()
     return LIBELLES_MATIERES.get(code.upper(), code)
@@ -4158,6 +4203,22 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
 
     reponse = soften_exercise_number_references(reponse)
 
+    # Photo d'une autre matiere (controle qualite du 6 oct. : inscrit en anglais, photo de maths ;
+    # Akili aidait en maths mais le profil et le bilan restaient en anglais).
+    reponse, autre_matiere = extraire_autre_matiere(reponse)
+    nouvelle_matiere = code_matiere_pour_eleve(profile, autre_matiere) if autre_matiere and media_file else None
+    if nouvelle_matiere and nouvelle_matiere != matiere and not espace_enseignant_actif(profile):
+        ancienne = libelle_matiere(matiere)
+        profile["matiere"] = matiere = nouvelle_matiere
+        profile["matiere_confirmed"] = True
+        conversation_key = f"{phone}:{type_examen}:{serie}:{matiere}:{mode}"
+        hist_nouvelle = charger_historique_conv(conversation_key)
+        conversations[conversation_key] = list(hist_nouvelle or [])
+        sauver_etat_whatsapp(phone, profile)
+        reponse = (f"Ta photo est un exercice de {libelle_matiere(matiere)} : je passe en {libelle_matiere(matiere)}. "
+                   f"Écris menu pour revenir en {ancienne}.\n\n" + reponse)
+        print(f"MATIERE changee par la photo : {ancienne} -> {matiere}", flush=True)
+
     if p0_enabled():
         expected_revision = int((stored_active_session or {}).get("revision", 0))
         next_active_session = transition_after_success(
@@ -4682,6 +4743,8 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             + (f"\nGUIDELINES MATIERE:\n{subject_guidelines}\n" if subject_guidelines else "")
         )
         instructions_whatsapp += consigne_matiere_choisie(matiere, serie, type_examen, classe)
+        if media_file is not None and (user_type or "").upper() != "ENSEIGNANT":
+            instructions_whatsapp += CONSIGNE_PHOTO_AUTRE_MATIERE
 
         format_guard = ""
         if (user_type or "").upper() == "ENSEIGNANT" and (matiere or "").upper() == "ESPAGNOL":
