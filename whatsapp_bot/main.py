@@ -3915,6 +3915,35 @@ def doit_retenir_enonce(texte, historique_vide, enonce_actuel=""):
     return _a_des_donnees_chiffrees(texte) and not _a_des_donnees_chiffrees(enonce_actuel)
 
 
+MARQUEURS_EXERCICE_AKILI = ("NOUVEL EXERCICE", "EXERCICE SUIVANT", "AUTRE EXERCICE", "PASSONS A UN",
+                            "VOICI UN EXERCICE", "VOICI L EXERCICE", "VOICI TON EXERCICE")
+
+
+def _normaliser_meme_longueur(texte):
+    """Comme normalize_for_match, mais un caractere pour un caractere (les positions restent valables)."""
+    sortie = []
+    for c in texte or "":
+        base = (unicodedata.normalize("NFKD", c) or c)[0].upper()
+        sortie.append(base if base.isascii() and base.isalnum() else " ")
+    return "".join(sortie)
+
+
+def exercice_propose_par_akili(reponse):
+    """Exercice qu'Akili vient de proposer (« Passons a un nouvel exercice. Le 7 octobre... »), a partir
+    du marqueur. Sinon l'enonce retenu restait l'ancien exercice de l'eleve (achat a 500 000) pendant
+    qu'on travaillait le nouveau (vente a 800 000)."""
+    texte = reponse or ""
+    plat = _normaliser_meme_longueur(texte)
+    positions = []
+    for marqueur in MARQUEURS_EXERCICE_AKILI:
+        trouve = re.search(r"(?<![A-Z0-9])" + r" +".join(marqueur.split()) + r"(?![A-Z0-9])", plat)
+        if trouve:
+            positions.append(trouve.start())
+    if not positions:
+        return ""
+    return texte[min(positions):].strip()[:ENONCE_MAX_CARACTERES]
+
+
 def enonce_en_cours(profile, conversation_key):
     enonce = (profile or {}).get("enonce_en_cours") or {}
     return enonce.get("texte", "") if enonce.get("cle") == conversation_key else ""
@@ -4081,6 +4110,11 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     conversations[conversation_key].append({"role": "user", "content": texte_eleve})
     conversations[conversation_key].append({"role": "assistant", "content": recu})
     conversations[conversation_key] = conversations[conversation_key][-10:]
+    exercice_akili = exercice_propose_par_akili(recu)
+    if exercice_akili:
+        profile["enonce_en_cours"] = {"cle": conversation_key, "texte": "Exercice proposé par Akili : " + exercice_akili}
+        sauver_etat_whatsapp(phone, profile)
+        print(f"ENONCE retenu (exercice propose par Akili, {len(exercice_akili)} car.)", flush=True)
     sauver_historique_conv(conversation_key, conversations[conversation_key])
     journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve, recu)
 
@@ -4453,7 +4487,8 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             "ENONCE DE L'EXERCICE EN COURS (envoye par l'eleve au debut ; il reste valable pour toute la suite : "
             "reprends-en les donnees et les montants, ne les redemande jamais a l'eleve) :\n"
             f"{enonce}\n\n"
-            if enonce and enonce not in contexte and enonce != (question or "").strip() else ""
+            if enonce and enonce.removeprefix("Exercice proposé par Akili : ") not in contexte
+            and enonce != (question or "").strip() else ""
         )
         active_session_context = build_active_session_prompt(active_session)
         active_context_instruction = (
