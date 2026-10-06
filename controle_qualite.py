@@ -67,6 +67,36 @@ CONVERSATION :
 {transcription}"""
 
 
+CHAMPS_LUS = ["phone", "direction", "text", "matiere", "serie", "type_examen", "mode", "created_at"]
+TAILLE_PAGE = 1000
+
+
+def lire_messages(db, debut, taille_page=TAILLE_PAGE, essais=3):
+    """Messages depuis `debut`, par pages courtes et seulement les champs utiles. Une seule
+    requete sur 24 h depassait le delai de Firestore (« 503 Stream removed (ping timeout) »)."""
+    import time
+    messages, dernier = [], None
+    while True:
+        requete = (db.collection("whatsapp_messages").where("created_at", ">=", debut)
+                   .order_by("created_at").select(CHAMPS_LUS).limit(taille_page))
+        if dernier is not None:
+            requete = requete.start_after(dernier)
+        for essai in range(essais):
+            try:
+                page = list(requete.stream())
+                break
+            except Exception as exc:
+                if essai == essais - 1:
+                    raise
+                print(f"  lecture interrompue ({type(exc).__name__}), nouvel essai...")
+                time.sleep(2 * (essai + 1))
+        messages += [d.to_dict() or {} for d in page]
+        if len(page) < taille_page:
+            return messages
+        dernier = page[-1]
+        print(f"  {len(messages)} messages lus...")
+
+
 def masquer(phone):
     phone = str(phone or "")
     return "..." + phone[-4:] if len(phone) > 4 else phone
@@ -168,7 +198,7 @@ def main():
     db = firestore.Client(project=PROJECT_ID)
     maintenant = datetime.now(timezone.utc)
     debut = (maintenant - timedelta(hours=args.heures)).isoformat()
-    messages = [d.to_dict() for d in db.collection("whatsapp_messages").where("created_at", ">=", debut).stream()]
+    messages = lire_messages(db, debut)
     conversations = regrouper(messages)
     jour = maintenant.strftime("%Y-%m-%d")
     choisis = echantillon(conversations, args.n, graine=jour)

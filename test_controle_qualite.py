@@ -69,3 +69,67 @@ class ControleQualiteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FauxDoc:
+    def __init__(self, donnees):
+        self.donnees = donnees
+
+    def to_dict(self):
+        return dict(self.donnees)
+
+
+class FausseRequete:
+    def __init__(self, db, apres=None, taille=None):
+        self.db, self.apres, self.taille = db, apres, taille
+
+    def where(self, *a):
+        return self
+
+    def order_by(self, *a):
+        return self
+
+    def select(self, champs):
+        self.db.champs = champs
+        return self
+
+    def limit(self, n):
+        return FausseRequete(self.db, self.apres, n)
+
+    def start_after(self, doc):
+        return FausseRequete(self.db, doc, self.taille)
+
+    def stream(self):
+        self.db.appels += 1
+        if self.db.pannes:
+            self.db.pannes -= 1
+            raise RuntimeError("503 Stream removed (ping timeout)")
+        debut = 0 if self.apres is None else self.db.docs.index(self.apres) + 1
+        return iter(self.db.docs[debut:debut + self.taille])
+
+
+class FausseDb:
+    def __init__(self, n, pannes=0):
+        self.docs = [FauxDoc({"phone": "225", "created_at": f"2026-10-06T10:{i:04d}"}) for i in range(n)]
+        self.pannes, self.appels, self.champs = pannes, 0, None
+
+    def collection(self, nom):
+        return FausseRequete(self)
+
+
+class LectureParPagesTests(unittest.TestCase):
+    def test_toutes_les_pages_et_champs_utiles(self):
+        db = FausseDb(25)
+        messages = cq.lire_messages(db, "2026-10-05", taille_page=10)
+        self.assertEqual(len(messages), 25)
+        self.assertEqual(db.appels, 3)
+        self.assertIn("matiere", db.champs)
+
+    def test_nouvel_essai_apres_coupure(self):
+        cq_sleep = __import__("time").sleep
+        __import__("time").sleep = lambda s: None
+        try:
+            db = FausseDb(5, pannes=1)
+            self.assertEqual(len(cq.lire_messages(db, "2026-10-05", taille_page=10)), 5)
+        finally:
+            __import__("time").sleep = cq_sleep
