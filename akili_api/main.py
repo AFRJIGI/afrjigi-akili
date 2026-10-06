@@ -388,7 +388,8 @@ MATIERES_COMPTABLES = {
 }
 ETAPES_FINANCIERE = (
     "(1) analyse de l'opération : quels comptes sont touchés, augmentent-ils ou diminuent-ils ; "
-    "(2) comptes à débiter et à créditer ; (3) calcul des montants : HT, réductions commerciales et "
+    "(2) comptes à débiter et à créditer, sans oublier le compte de TVA quand l'opération en comporte "
+    "(4452 sur un achat, 4431 sur une vente) ; (3) calcul des montants : HT, réductions commerciales et "
     "financières, TVA au taux de l'énoncé (18 % en Côte d'Ivoire sauf indication contraire), TTC ; "
     "(4) écriture au journal ; (5) report au grand livre et balance si l'énoncé le demande ; "
     "(6) vérification : total débit = total crédit. Pour les travaux d'inventaire (amortissements, "

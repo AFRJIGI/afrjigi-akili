@@ -1432,10 +1432,25 @@ def message_profil_pret(profile):
     )
 
 
+def repartir_a_zero_apres_menu(phone, profile):
+    """Apres le menu, Akili dit « Envoie maintenant ton exercice » : on repart d'une page blanche.
+    Sinon l'historique de la meme matiere revenait avec la question en cours, et Akili
+    repondait a sa propre question au lieu de reprendre l'exercice renvoye (test compta, 6 oct.)."""
+    profile["nouveau_depart"] = True
+    for cle in [k for k in conversations if k.startswith(f"{phone}:")]:
+        conversations.pop(cle, None)
+    try:
+        # Dernier message d'Akili et suite en attente : une reponse courte ne s'y rattache plus.
+        feedback_db.collection("whatsapp_contexts").document(str(phone)).delete()
+    except Exception as e:
+        print(f"Erreur effacer contexte apres menu: {repr(e)}", flush=True)
+
+
 def terminer_inscription(phone, profile, deja_inscrit=False):
     """Fin de l'inscription des la matiere choisie : mode etude par defaut, la ville et
     l'ecole sont demandees plus tard (apres la premiere seance), sans bloquer l'eleve."""
     profile["mode"] = profile.get("mode") or "etude"
+    repartir_a_zero_apres_menu(phone, profile)
     profile = mark_onboarding_completed(phone, profile)
     user_profiles[phone] = profile
     sauver_etat_whatsapp(phone, profile)
@@ -3891,6 +3906,11 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     if hist_sauve is not None:
         conversations[conversation_key] = list(hist_sauve)
         print(f"HISTORIQUE recharge depuis Firestore: {len(hist_sauve)} messages", flush=True)
+    if profile.pop("nouveau_depart", False):
+        conversations[conversation_key] = []
+        sauver_historique_conv(conversation_key, [])
+        sauver_etat_whatsapp(phone, profile)
+        print("NOUVEAU_DEPART apres le menu : historique de cette matiere remis a zero", flush=True)
 
     if message_id:
         send_whatsapp_typing_indicator(message_id)

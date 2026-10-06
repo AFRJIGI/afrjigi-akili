@@ -23,6 +23,7 @@ class PromptComptabiliteTests(unittest.TestCase):
         self.assertIn("SYSCOHADA", prompt)
         self.assertIn("(2) comptes à débiter et à créditer", prompt)
         self.assertIn("Crédit 401 Fournisseurs : 590 000", prompt)
+        self.assertIn("sans oublier le compte de TVA", prompt)  # au 1er test, la TVA n'etait pas abordee
         self.assertIn("700 caractères au maximum", prompt)
         self.assertNotIn("PLACEHOLDER", prompt)
         self.assertNotIn("$", prompt)
