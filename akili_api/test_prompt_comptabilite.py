@@ -24,7 +24,10 @@ class PromptComptabiliteTests(unittest.TestCase):
         self.assertIn("(2) sens de l'écriture : UNE seule question pour toute l'écriture", prompt)
         self.assertIn("ne demande jamais compte par compte s'il augmente ou diminue", prompt)  # test du 6 oct. : trop lent
         self.assertIn("4 échanges environ", prompt)
-        self.assertIn("Crédit 401 Fournisseurs : 590 000", prompt)
+        self.assertIn("Crédit 401 Fournisseurs : 236 000", prompt)
+        # Test du 6 oct. : Akili a refuse 90 000 et calcule la TVA sur le TTC (590 000 x 18 %).
+        self.assertIn("JAMAIS sur le TTC", prompt)
+        self.assertIn("refais toi-même le calcul à partir des montants de l'ÉNONCÉ DE DÉPART", prompt)
         self.assertIn("sans oublier le compte de TVA", prompt)  # au 1er test, la TVA n'etait pas abordee
         self.assertIn("700 caractères au maximum", prompt)
         self.assertNotIn("PLACEHOLDER", prompt)
