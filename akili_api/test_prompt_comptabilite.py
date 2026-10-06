@@ -30,6 +30,8 @@ class PromptComptabiliteTests(unittest.TestCase):
         self.assertIn("refais toi-même le calcul à partir des montants de l'ÉNONCÉ DE DÉPART", prompt)
         self.assertIn("sans oublier le compte de TVA", prompt)  # au 1er test, la TVA n'etait pas abordee
         self.assertIn("700 caractères au maximum", prompt)
+        # Test du 6 oct. : fini sans ecriture complete, puis « un sujet de philosophie pour le BAC ? »
+        self.assertIn("propose un exercice semblable de Comptabilité financière, jamais d'une autre matière", prompt)
         self.assertNotIn("PLACEHOLDER", prompt)
         self.assertNotIn("$", prompt)
 

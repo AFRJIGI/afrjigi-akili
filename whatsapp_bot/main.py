@@ -1437,6 +1437,7 @@ def repartir_a_zero_apres_menu(phone, profile):
     Sinon l'historique de la meme matiere revenait avec la question en cours, et Akili
     repondait a sa propre question au lieu de reprendre l'exercice renvoye (test compta, 6 oct.)."""
     profile["nouveau_depart"] = True
+    profile.pop("enonce_en_cours", None)
     for cle in [k for k in conversations if k.startswith(f"{phone}:")]:
         conversations.pop(cle, None)
     try:
@@ -3870,6 +3871,39 @@ def traiter_espace_enseignant(phone, profile, text):
     return None
 
 
+# Enonce de l'exercice en cours : l'historique envoye a Akili ne garde que les derniers echanges.
+# Test compta du 6 oct. : apres 3 echanges, l'enonce (500 000 F HT, TVA 18 %) sortait de l'historique ;
+# Akili redemandait les montants, calculait la TVA sur le TTC, puis proposait de la philosophie.
+ENONCE_MAX_CARACTERES = 1200
+MARQUEURS_ENONCE = ("EXERCICE", "ENONCE", "SUJET", "PASSE L ECRITURE", "PASSER L ECRITURE", "ENREGISTRE",
+                    "COMPTABILISE", "ON DONNE", "SOIT LA", "SOIT LE", "SOIT F", "RESOUS", "CALCULE")
+
+
+def _a_des_donnees_chiffrees(texte):
+    return bool(re.search(r"\d{3}", re.sub(r"(?<=\d)[ .\u202f\u00a0](?=\d{3})", "", texte or "")))
+
+
+def doit_retenir_enonce(texte, historique_vide, enonce_actuel=""):
+    """Message a garder comme enonce : le premier message d'une conversation, un nouvel exercice
+    clairement annonce, ou le premier message chiffre apres une simple demande (« je veux reviser »).
+    Une reponse de l'eleve (« Debit 601 : 500 000... ») ne remplace pas un enonce deja chiffre."""
+    if not texte or is_short_pedagogical_answer(texte) or is_contextual_exercise_answer(texte):
+        return False
+    t = normalize_for_match(texte)
+    if historique_vide:
+        return len(t) >= 20
+    if len(t) < 60:
+        return False
+    if any(has_expr(t, m) for m in MARQUEURS_ENONCE):
+        return True
+    return _a_des_donnees_chiffrees(texte) and not _a_des_donnees_chiffrees(enonce_actuel)
+
+
+def enonce_en_cours(profile, conversation_key):
+    enonce = (profile or {}).get("enonce_en_cours") or {}
+    return enonce.get("texte", "") if enonce.get("cle") == conversation_key else ""
+
+
 def answer_learning_request(phone, profile, text, media_file=None, message_id=None, reply_audio=False,
                             document_context=None):
     profile = mark_first_learning_request(phone, profile)
@@ -3945,6 +3979,12 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         )
         return
 
+    if media_file is None and doit_retenir_enonce(texte_eleve, not conversations.get(conversation_key),
+                                                  enonce_en_cours(profile, conversation_key)):
+        profile["enonce_en_cours"] = {"cle": conversation_key, "texte": texte_eleve[:ENONCE_MAX_CARACTERES]}
+        sauver_etat_whatsapp(phone, profile)
+        print(f"ENONCE retenu ({len(texte_eleve)} car.)", flush=True)
+
     try:
         akili_result = get_akili_response(
             text,
@@ -3955,6 +3995,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
             type_examen,
             mode,
             media_file=media_file,
+            enonce=enonce_en_cours(profile, conversation_key) if media_file is None else "",
             user_type=type_utilisateur_akili(profile),
             espace_enseignant=espace_enseignant_actif(profile),
             active_session=prepared_active_session if p0_enabled() else None,
@@ -4376,7 +4417,8 @@ def strip_filler_opening(text):
 
 def get_akili_response(question, matiere, serie, history, phone="whatsapp_user", type_examen=None,
                        mode=None, media_file=None, user_type=None, raise_on_error=False,
-                       return_details=False, active_session=None, classe=None, espace_enseignant=False):
+                       return_details=False, active_session=None, classe=None, espace_enseignant=False,
+                       enonce=""):
     try:
         # Sécurité: si l'appelant oublie user_type, on redétecte ici.
         if not user_type and is_teacher_request(question):
@@ -4388,8 +4430,15 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
 
         contexte = "\n".join([
             f"{'Élève' if m['role'] == 'user' else 'Akili'}: {m['content']}"
-            for m in history[-6:]
+            for m in history[-8:]
         ])
+        enonce = (enonce or "").strip()
+        enonce_instruction = (
+            "ENONCE DE L'EXERCICE EN COURS (envoye par l'eleve au debut ; il reste valable pour toute la suite : "
+            "reprends-en les donnees et les montants, ne les redemande jamais a l'eleve) :\n"
+            f"{enonce}\n\n"
+            if enonce and enonce not in contexte and enonce != (question or "").strip() else ""
+        )
         active_session_context = build_active_session_prompt(active_session)
         active_context_instruction = (
             "ETAT PEDAGOGIQUE ACTIF STRUCTURE (reprends exactement cette activité; "
@@ -4519,6 +4568,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
                 f"{format_guard}"
                 f"{active_context_instruction}"
                 f"{short_answer_instruction}"
+                f"{enonce_instruction}"
                 f"HISTORIQUE RECENT:\n{contexte}\n\n"
                 f"QUESTION REELLE DE L'ELEVE:\n{question}"
             )
@@ -4541,7 +4591,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             "mode": mode,
             # L'API Akili attend un tableau JSON et ignorait auparavant ce champ
             # parce qu'elle recevait une chaîne déjà mise en forme.
-            "history": json.dumps(history[-6:], ensure_ascii=False),
+            "history": json.dumps(history[-8:], ensure_ascii=False),
             # L'API ne passe en assistant enseignant (corriges complets) que pour un enseignant
             # verifie par code : "je suis prof" seul reste un profil declare.
             "user_type": "ENSEIGNANT" if espace_enseignant else (
