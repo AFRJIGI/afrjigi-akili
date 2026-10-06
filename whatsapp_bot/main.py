@@ -1409,6 +1409,20 @@ def ask_matiere(phone, serie="TOUTES"):
                   [(LETTRES_CHOIX[i], m, "") for i, m in enumerate(matieres)])
 
 
+def ouvrir_choix_matiere(phone, profile):
+    """Liste des matieres du niveau de l'eleve (commande « changer de matiere » ou demande en clair)."""
+    profile.pop("pending_question", None)
+    profile["onboarding_step"] = "matiere"
+    profile.pop("profile_locked", None)
+    profile.pop("matiere_confirmed", None)
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    if profile.get("type_examen") == "BAC_TECHNIQUE":
+        ask_matiere_technique(phone, profile.get("serie"))
+    else:
+        ask_matiere(phone, profile.get("serie", "TOUTES"))
+
+
 def ask_mode(phone):
     envoyer_choix(phone, "Tu veux travailler comment ?", [
         ("a", "Mode Étude", "Akili t'explique pas à pas"),
@@ -2004,6 +2018,43 @@ DEMANDES_DE_SUITE = {
 }
 
 
+OPTION_CHOIX = re.compile(r"(?:^|(?<=\s))\(?([a-eA-E])\s*[).]\s")
+
+
+def _debut_de_question(texte, pos):
+    """Debut de la phrase de question qui finit juste avant `pos` (« ...quel est son role ? »), sinon pos."""
+    avant = texte[:pos].rstrip()
+    if not avant.endswith(("?", ":")):
+        return pos
+    return max(avant.rfind("\n") + 1, avant.rfind(". ") + 2, avant.rfind("! ") + 2, 0)
+
+
+def coupure_hors_options(texte, coupe):
+    """Si la coupure tombe dans une liste a) b) c), ou juste entre la question et ses options, on coupe
+    avant la question : la question et toutes ses options partent ensemble avec la suite (controle
+    qualite du 6 oct. : l'eleve ne voyait que a) et b) et devait choisir parmi des options invisibles)."""
+    avant, apres = texte[:coupe], texte[coupe:]
+    suivante = OPTION_CHOIX.search(apres)
+    if not suivante or suivante.start() > 300:
+        return coupe
+    if suivante.group(1).lower() == "a":
+        if apres[:suivante.start()].strip():
+            return coupe
+        nouvelle = _debut_de_question(texte, coupe)
+    else:
+        options_a = [m.start() for m in OPTION_CHOIX.finditer(avant) if m.group(1).lower() == "a"]
+        if not options_a:
+            return coupe
+        debut_a = options_a[-1]
+        debut_ligne = avant.rfind("\n", 0, debut_a) + 1
+        if avant[debut_ligne:debut_a].strip():
+            # options sur la meme ligne que la question : on coupe au debut de cette phrase
+            nouvelle = max(debut_ligne, avant.rfind(". ", debut_ligne, debut_a) + 2)
+        else:
+            nouvelle = _debut_de_question(texte, debut_ligne)
+    return nouvelle if 120 <= nouvelle < coupe else coupe
+
+
 def decouper_message(message, limit=850, max_parts=1):
     """Coupe un texte deja nettoye : (parties envoyees, reste non envoye)."""
     parts = []
@@ -2031,11 +2082,12 @@ def decouper_message(message, limit=850, max_parts=1):
             space_break = cut.rfind(" ")
             last_break = space_break if space_break > 120 else effective_limit
 
-        part = cut[:last_break + 1].strip()
+        coupe = coupure_hors_options(remaining, last_break + 1)
+        part = remaining[:coupe].strip()
         if part:
             parts.append(part)
 
-        remaining = remaining[last_break + 1:].strip()
+        remaining = remaining[coupe:].strip()
 
     return parts, remaining
 
@@ -2589,18 +2641,55 @@ EXPRESSIONS_AU_REVOIR = [
     "ON S ARRETE LA", "ON S ARRETE ICI", "ON ARRETE LA", "ON ARRETE ICI",
     "FIN DE SESSION", "FIN DE LA SESSION", "TERMINER LA SESSION", "ARRETER LA SESSION",
     "JE VAIS DORMIR", "JE DOIS Y ALLER", "JE DOIS PARTIR",
+    # Controle qualite du 6 oct. : « Je peux aller dormir maintenant » relancait un nouvel exercice.
+    "ALLER DORMIR", "JE VAIS ME COUCHER", "JE VAIS ME REPOSER", "ON CONTINUE DEMAIN",
+    "ON REPRENDRA DEMAIN", "ON REPREND DEMAIN", "JE CONTINUE DEMAIN", "ON VERRA LA SUITE DEMAIN",
 ]
+# Ces fins de seance restent valables meme posees en question (« je peux aller dormir ? »).
+EXPRESSIONS_AU_REVOIR_QUESTION = ["ALLER DORMIR", "ME COUCHER", "ON CONTINUE DEMAIN", "ON REPREND DEMAIN"]
 
 
 def est_message_au_revoir(text):
     """Vrai si l'eleve termine sa session ("merci, au revoir", "bonne nuit", "je m'arrete la").
     "j'ai fini" / "terminer" ne comptent pas : en mode examen, ils demandent la correction."""
-    if "?" in (text or ""):
-        return False
     msg = normalize_for_match(text)
     if not msg or len(msg.split()) > 10:
         return False
+    if "?" in (text or ""):
+        return any(has_expr(msg, expr) for expr in EXPRESSIONS_AU_REVOIR_QUESTION)
     return any(has_expr(msg, expr) for expr in EXPRESSIONS_AU_REVOIR)
+
+
+# Controle qualite du 6 oct. : « je veux plus de svt », « allons sur la redaction » -> Akili reposait
+# la meme question de SVT. Ces demandes ouvrent maintenant la liste des matieres.
+DEMANDES_CHANGEMENT_MATIERE = [
+    "CHANGER DE MATIERE", "CHANGER MATIERE", "CHANGE DE MATIERE", "AUTRE MATIERE", "UNE AUTRE MATIERE",
+    "ON CHANGE DE MATIERE", "JE VEUX CHANGER DE MATIERE", "CHANGEONS DE MATIERE",
+]
+VERBES_PASSAGE = r"(?:PASSONS|PASSER|ON PASSE|ALLONS|ALLER|ON VA|JE VEUX FAIRE|JE PREFERE|FAISONS|ON FAIT)"
+
+
+def est_demande_changement_matiere(text, matiere_actuelle=""):
+    """L'eleve veut quitter sa matiere : « je veux plus de svt », « je ne veux plus », « une autre
+    matiere », « allons sur la redaction », « passons aux maths » (autre matiere que la sienne)."""
+    msg = normalize_for_match(text)
+    mots = msg.split()
+    if not msg or len(mots) > 15:
+        return False
+    if any(has_expr(msg, d) for d in DEMANDES_CHANGEMENT_MATIERE):
+        return True
+    citee = detect_matiere_from_text(text, mots_cles_programme=False)
+    actuelle = (matiere_actuelle or "").upper()
+    autre_matiere = bool(citee) and not (actuelle == citee or actuelle.startswith(citee + "_"))
+    # « je veux plus de svt » / « je ne veux plus (continuer) » ; pas « je veux plus d'exercices » (= davantage).
+    refus = re.search(r"(?<![A-Z0-9])JE (?:NE )?VEUX PLUS(?: (.*))?$", msg)
+    if refus:
+        suite = (refus.group(1) or "").strip()
+        return (not suite or bool(citee)
+                or re.fullmatch(r"(?:CONTINUER|CA|RIEN|CETTE MATIERE|DE CETTE MATIERE)(?: .*)?", suite) is not None)
+    if re.search(r"(?<![A-Z0-9])" + VERBES_PASSAGE + r"(?![A-Z0-9])", msg):
+        return autre_matiere or has_expr(msg, "REDACTION")
+    return False
 
 
 def _session_bilan_ref(phone):
@@ -4212,6 +4301,17 @@ def lock_profile_if_ready(profile):
         profile["onboarding_step"] = ""
     return profile
 
+def classe_intermediaire_du_texte(msg):
+    """« 2NDE C » -> SECONDE_C, « PREMIERE D » -> PREMIERE_D, « 1ERE A2 » -> PREMIERE_A (texte normalise).
+    Seules les classes intermediaires proposees par le menu sont reconnues."""
+    m = re.search(r"(?<![A-Z0-9])(SECONDE|2NDE|2ND|PREMIERE|1ERE|1IERE)\s*(A1|A2|A|C|D)(?![A-Z0-9])", msg or "")
+    if not m:
+        return None
+    classe = "SECONDE" if m.group(1) in {"SECONDE", "2NDE", "2ND"} else "PREMIERE"
+    code = f"{classe}_{m.group(2)[0]}"
+    return code if code in LIBELLES_CLASSES_INTERMEDIAIRES else None
+
+
 def update_profile_from_text(profile, message):
     msg = normalize_for_match(message)
 
@@ -4233,12 +4333,15 @@ def update_profile_from_text(profile, message):
         profile["serie"] = "BEPC"
         profile["type_examen"] = "BEPC"
 
-    # Detecte les niveaux du BAC General.
-    for serie in ["A1", "A2", "C", "D", "A"]:
+    # Detecte les niveaux du BAC General. « 2nde C » ou « 1ere D » est une classe intermediaire
+    # (controle qualite du 6 oct. : « 2nde c » donnait Terminale C).
+    classe_inter = classe_intermediaire_du_texte(msg)
+    if classe_inter:
+        profile["serie"] = classe_inter
+        profile["type_examen"] = "CLASSE_INTERMEDIAIRE"
+    for serie in ([] if classe_inter else ["A1", "A2", "C", "D", "A"]):
         patterns = [
-            f"SERIE {serie}", f"TERMINALE {serie}", f"TERMINAL {serie}",
-            f"TLE {serie}", f"1ERE {serie}", f"PREMIERE {serie}",
-            f"SECONDE {serie}", f"2NDE {serie}",
+            f"SERIE {serie}", f"TERMINALE {serie}", f"TERMINAL {serie}", f"TLE {serie}",
         ]
         if any(has_expr(msg, pat) for pat in patterns):
             profile["serie"] = serie
@@ -4295,7 +4398,7 @@ def infer_type_examen(serie, message):
     msg = (message or "").upper()
     serie = (serie or "").upper().strip()
 
-    if serie in {"6E", "5E", "4E"} or re.search(
+    if serie in LIBELLES_CLASSES_INTERMEDIAIRES or serie in {"6E", "5E", "4E"} or re.search(
         r"(?<![A-Z0-9])(6|5|4)\s*(?:E|ÈME|EME)(?![A-Z0-9])", msg
     ):
         return "CLASSE_INTERMEDIAIRE"
@@ -5300,6 +5403,14 @@ async def _receive_message_impl(request: Request):
             track_inbound("fin_session_au_revoir", profile)
             return {"status": "ok", "reason": "fin_session"}
 
+        if (not onboarding_step and is_profile_ready(profile) and media_file is None
+                and not espace_enseignant_actif(profile)
+                and est_demande_changement_matiere(text, profile.get("matiere"))):
+            send_whatsapp(phone, "D'accord, on change de matière.", allow_audio=False)
+            ouvrir_choix_matiere(phone, profile)
+            track_inbound("matiere_change_requested_free_text", profile)
+            return {"status": "ok", "reason": "changement_matiere"}
+
         if (not onboarding_step and is_profile_ready(profile) and est_demande_de_suite(text)
                 and envoyer_suite_en_attente(phone, profile, text)):
             track_inbound("suite_reponse", profile)
@@ -5390,14 +5501,7 @@ async def _receive_message_impl(request: Request):
             profile = user_profiles[phone] or {"serie": "TOUTES", "matiere": "MATHS"}
             profile.pop("pending_question", None)
             if profile.get("type_examen") and profile.get("serie") not in {"TOUTES", "", None}:
-                profile["onboarding_step"] = "matiere"
-                profile.pop("profile_locked", None)
-                profile.pop("matiere_confirmed", None)
-                user_profiles[phone] = profile
-                if profile.get("type_examen") == "BAC_TECHNIQUE":
-                    ask_matiere_technique(phone, profile.get("serie"))
-                else:
-                    ask_matiere(phone, profile.get("serie", "TOUTES"))
+                ouvrir_choix_matiere(phone, profile)
                 track_inbound("matiere_change_requested", profile)
                 return {"status": "ok"}
             profile["onboarding_step"] = "exam"
