@@ -5,7 +5,7 @@ from pathlib import Path
 SOURCE = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
 NOMS = {"MATIERES_TECHNIQUES_GUIDEES", "LIBELLES_MATIERES_API", "LIBELLES_CLASSES_GENERALES",
         "LIBELLES_CLASSES_TECHNIQUE", "niveau_bac_technique", "niveau_enseignant",
-        "MATIERES_COMPTABLES", "ETAPES_FINANCIERE", "ETAPES_COMPTABLES", "PROMPT_COMPTABILITE",
+        "MATIERES_COMPTABLES", "ETAPES_FINANCIERE", "COMPTES_SYSCOHADA", "ETAPES_COMPTABLES", "PROMPT_COMPTABILITE",
         "prompt_comptabilite", "prompt_general_guide"}
 ns = {}
 noeuds = [n for n in ast.parse(SOURCE).body
@@ -26,6 +26,15 @@ class PromptComptabiliteTests(unittest.TestCase):
         self.assertIn("700 caractères au maximum", prompt)
         self.assertNotIn("PLACEHOLDER", prompt)
         self.assertNotIn("$", prompt)
+
+    def test_comptes_de_reference(self):
+        prompt = ns["prompt_comptabilite"]("COMPTA_FIN", "BAC_TECHNIQUE", "G2", "")
+        self.assertIn("604 Achats stockés de matières et fournitures consommables", prompt)
+        self.assertIn("605 Autres achats", prompt)
+        self.assertIn("TOUTES les options, y compris les fausses", prompt)
+        numeros = [c.strip().split(" ")[0] for c in ns["COMPTES_SYSCOHADA"].rstrip(".").split(";")]
+        self.assertEqual(len(numeros), len(set(numeros)))
+        self.assertTrue(all(n.isdigit() for n in numeros))
 
     def test_etapes_par_matiere(self):
         analytique = ns["prompt_comptabilite"]("COMPTA_ANALYTIQUE", "BAC_TECHNIQUE", "G2", "")

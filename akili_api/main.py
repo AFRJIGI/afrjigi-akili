@@ -415,7 +415,10 @@ PROMPT_COMPTABILITE = """Tu es Akili, professeur de MATIERE_PLACEHOLDER pour le 
 
 NIVEAU DE L'ÉLÈVE : l'élève prépare le NIVEAU_PLACEHOLDER. Ne parle pas d'un autre examen.
 
-RÉFÉRENTIEL : système comptable OHADA (SYSCOHADA révisé), montants en francs CFA. Utilise les numéros et intitulés de comptes du plan SYSCOHADA. Si tu n'es pas sûr d'un numéro de compte, donne l'intitulé et demande à l'élève de vérifier dans son plan comptable : n'invente jamais un numéro. Appuie-toi sur les documents officiels du contexte et n'introduis rien qui soit hors du programme de sa série.
+RÉFÉRENTIEL : système comptable OHADA (SYSCOHADA révisé), montants en francs CFA. Utilise les numéros et intitulés de comptes du plan SYSCOHADA. Si tu n'es pas sûr d'un numéro de compte, donne l'intitulé et demande à l'élève de vérifier dans son plan comptable : n'invente jamais un numéro.
+
+COMPTES DE RÉFÉRENCE (SYSCOHADA révisé) : COMPTES_PLACEHOLDER
+Dans un choix a, b, c, TOUTES les options, y compris les fausses, doivent être de vrais comptes pris dans cette liste ou dans les documents du contexte, avec leur numéro et leur intitulé exacts : n'invente jamais un intitulé pour un numéro (par exemple, 604 et 605 ne sont pas des achats d'études ni de matériel). Pour un compte absent de la liste, donne seulement son intitulé, sans numéro. Appuie-toi sur les documents officiels du contexte et n'introduis rien qui soit hors du programme de sa série.
 
 TA MÉTHODE PAS À PAS (une seule étape par message) :
 1. Reformule brièvement l'opération ou l'énoncé (date, nature, montants) pour confirmer la lecture.
@@ -438,12 +441,32 @@ Pour un calcul ou un tableau, une ligne par élément : "Main-d'œuvre : 120 h �
 LONGUEUR (impératif) : toute ta réponse doit tenir en 700 caractères au maximum ; si c'est plus long, donne seulement l'étape en cours puis termine par ta question."""
 
 
+# Comptes courants du plan SYSCOHADA revise : les options fausses des choix a/b/c doivent aussi etre exactes.
+COMPTES_SYSCOHADA = (
+    "101 Capital social ; 1011 Capital souscrit, non appelé ; 1012 Capital souscrit, appelé, non versé ; "
+    "1013 Capital souscrit, appelé, versé, non amorti ; 1051 Primes d'émission ; 109 Apporteurs, capital "
+    "souscrit, non appelé ; 111 Réserve légale ; 121 Report à nouveau créditeur ; 131 Résultat net : bénéfice ; "
+    "139 Résultat net : perte ; 162 Emprunts et dettes auprès des établissements de crédit ; "
+    "244 Matériel et mobilier ; 245 Matériel de transport ; 284 Amortissements du matériel ; 31 Marchandises ; "
+    "401 Fournisseurs, dettes en compte ; 411 Clients ; 422 Personnel, rémunérations dues ; 431 Sécurité sociale ; "
+    "4431 État, TVA facturée sur ventes ; 4441 État, TVA due ; 4452 État, TVA récupérable sur achats ; "
+    "461 Associés, opérations sur le capital ; 465 Associés, dividendes à payer ; 521 Banques ; 571 Caisse ; "
+    "601 Achats de marchandises ; 6019 Rabais, remises et ristournes obtenus (non ventilés) ; "
+    "602 Achats de matières premières et fournitures liées ; 6031 Variations des stocks de marchandises ; "
+    "604 Achats stockés de matières et fournitures consommables ; 605 Autres achats ; 611 Transports sur achats ; "
+    "661 Rémunérations directes versées au personnel national ; 664 Charges sociales ; 673 Escomptes accordés ; "
+    "681 Dotations aux amortissements d'exploitation ; 701 Ventes de marchandises ; 702 Ventes de produits finis ; "
+    "706 Services vendus ; 7019 Rabais, remises et ristournes accordés (non ventilés) ; 773 Escomptes obtenus."
+)
+
+
 def prompt_comptabilite(matiere, examen, serie, classe):
     """Comptabilite financiere, des societes, analytique : tuteur guide, ecriture par ecriture."""
     code = (matiere or "").strip().upper()
     return (PROMPT_COMPTABILITE.replace("MATIERE_PLACEHOLDER", MATIERES_COMPTABLES.get(code, "Comptabilité"))
             .replace("NIVEAU_PLACEHOLDER", niveau_enseignant(examen, serie, classe))
-            .replace("ETAPES_PLACEHOLDER", ETAPES_COMPTABLES.get(code, ETAPES_FINANCIERE)))
+            .replace("ETAPES_PLACEHOLDER", ETAPES_COMPTABLES.get(code, ETAPES_FINANCIERE))
+            .replace("COMPTES_PLACEHOLDER", COMPTES_SYSCOHADA))
 
 
 def prompt_general_guide(matiere, examen, serie, classe):
