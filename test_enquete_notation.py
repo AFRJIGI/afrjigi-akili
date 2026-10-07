@@ -20,5 +20,21 @@ class EnqueteNotationTests(unittest.TestCase):
         self.assertEqual(plaintes[0][1], "…0304")
 
 
+class TracesEtEnsemblesTests(unittest.TestCase):
+    def test_traces_du_bot_et_ensembles_ignores(self):
+        messages = [
+            {"direction": "outbound", "matiere": "MATHS", "text": "[vector_formula_image]"},
+            {"direction": "outbound", "matiere": "MATHS", "text": "[audio_reply]"},
+            {"direction": "outbound", "matiere": "MATHS", "text": "Df = ℝ privé de {3}. Et {-1 ; 1} ?"},
+            {"direction": "outbound", "matiere": "MATHS", "text": "Df = ℝ setminus {3} et x^{2}"},
+        ]
+        par_matiere, _, _ = analyser(messages, {"MATHS"})
+        stats = par_matiere["MATHS"]
+        self.assertEqual(stats["messages"], 2)
+        self.assertEqual(stats["avec_defaut"], 1)
+        self.assertIn("commande LaTeX restee en mot (setminus, mathbb...)", stats["defauts"])
+        self.assertIn("accolades { }", stats["defauts"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -25,7 +25,14 @@ DEFAUTS = {
     "fraction a parentheses vides ou doubles": r"\(\(\s*\d+\s*\)\)|\(\s*\)/|/\(\s*\)",
     "mot casse par l'ancien nettoyage (danst, mvecteur)": r"dans[a-z]|\wvecteur",
     "titre Markdown (###) ou **": r"(?m)^\s*#{1,6}\s|\*\*",
+    "commande LaTeX restee en mot (setminus, mathbb...)":
+        r"\b(setminus|mathbb|mathrm|frac|dfrac|sqrt|infty|leq|geq|neq|cdot|overrightarrow|text)\b",
 }
+# Traces du bot enregistrees comme messages (« [vector_formula_image] », « [audio_reply] ») : ce ne sont pas
+# des textes recus par l'eleve. Le 7 oct., elles faisaient les 159 « indices avec _ » de l'enquete.
+TRACE_DU_BOT = re.compile(r"^\[[a-z_]+\]$")
+# Ensemble ecrit avec ses accolades (ℝ privé de {3}, {-1 ; 1}) : notation correcte, pas un reste de LaTeX.
+ENSEMBLE = re.compile(r"(?<![\^_A-Za-z])\{[^{}^_\\]{1,40}\}")
 PLAINTES = r"comprend(s|re)? (pas|rien)|c.est quoi (ce|cette|ça)|symbole|bizarre|illisible|je vois (des|un) |" \
            r"carr[ée]s? |racine|fraction|exposant|notation|écriture|ecriture|\\\\|\$"
 
@@ -47,9 +54,13 @@ def analyser(messages, matieres):
         if matieres and matiere not in matieres:
             continue
         if m.get("direction") == "outbound":
+            if TRACE_DU_BOT.match(texte.strip()):
+                continue
             stats = par_matiere[matiere]
             stats["messages"] += 1
-            trouves = [nom for nom, motif in motifs.items() if motif.search(texte)]
+            sans_ensembles = ENSEMBLE.sub("", texte)
+            trouves = [nom for nom, motif in motifs.items()
+                       if motif.search(sans_ensembles if nom.startswith("accolades") else texte)]
             if trouves:
                 stats["avec_defaut"] += 1
                 stats["defauts"].update(trouves)

@@ -11,6 +11,12 @@ CAS = [
     (r"$u_{n+1} = 2u_n + 3$ et $u_0 = 1$", "uₙ₊₁ = 2uₙ + 3 et u₀ = 1"),
     (r"$e^{-x}$ et $e^{2x-1}$", "e^(-x) et e^(2x-1)"),
     (r"$f(x) = (3x-1)e^{2x}$", "f(x) = (3x-1)e^(2x)"),
+    # enquete du 7 octobre (messages reellement envoyes)
+    ("a^m × a^p = a^(m+p)", "a^m × a^p = a^(m+p)"),
+    ("*a^m / a^p = a^(m-p)*", "*a^m / a^p = a^(m-p)*"),
+    ("10^(-3) et x^(2)", "10⁻³ et x²"),
+    ("lim(x → 2^>) x/(x-2) et x → 2^<", "lim(x → 2⁺) x/(x-2) et x → 2⁻"),
+    (r"$\mathbb{R} \setminus \{3\}$", "ℝ privé de {3}"),
     # cas releves dans l'enquete du 5 octobre (messages reellement envoyes)
     (r"$V_i = \frac{A_{i-1}A_{i+1}}{2\tau}$", "Vᵢ = (Aᵢ₋₁Aᵢ₊₁)/(2τ)"),
     (r"$\lim_{x \to -\infty} x^4 = \dots$", "lim(x → -∞) x⁴ = …"),

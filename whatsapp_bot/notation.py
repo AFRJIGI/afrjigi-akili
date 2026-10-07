@@ -29,6 +29,8 @@ SYMBOLES = {
     "Upsilon": "Υ", "Phi": "Φ", "Psi": "Ψ", "Omega": "Ω",
     "quad": "  ", "qquad": "   ", ",": " ", ";": " ", ":": " ", "!": "", " ": " ", "%": "%", "&": "&",
     "#": "#", "$": "$", "{": "{", "}": "}", "_": " ", "|": "‖", "backslash": "\\",
+    # Enquete notation du 7 oct. : « ℝ setminus {3} » arrivait chez les eleves.
+    "setminus": " privé de ", "smallsetminus": " privé de ",
 }
 FONCTIONS = {"sin", "cos", "tan", "cot", "sinh", "cosh", "tanh", "arcsin", "arccos", "arctan", "ln", "log",
              "exp", "lim", "max", "min", "sup", "inf", "det", "arg", "deg", "gcd", "dim", "ker", "Im", "Re",
@@ -172,6 +174,22 @@ class _Lecteur:
         return bas, haut
 
 
+def _parentheses(lecteur):
+    """Lit « (...) » equilibre au curseur. Rend le contenu sans parentheses s'il peut s'ecrire
+    entierement en exposant ou en indice (« -3 » -> ⁻³), sinon avec ses parentheses (« (m+p) »)."""
+    debut, n = lecteur.i, 0
+    while not lecteur.fini():
+        n += lecteur.s[lecteur.i] == "("
+        n -= lecteur.s[lecteur.i] == ")"
+        lecteur.i += 1
+        if n == 0:
+            break
+    interieur = convertir(lecteur.s[debut + 1:lecteur.i - 1]).strip()
+    if interieur and all(ch in "0123456789+-−=n" for ch in interieur):
+        return interieur
+    return f"({interieur})"
+
+
 def convertir(texte):
     """LaTeX (sans les $) -> texte lisible."""
     lecteur, sortie = _Lecteur(texte), []
@@ -185,7 +203,13 @@ def convertir(texte):
             sortie.append(_commande(nom, lecteur, sortie))
         elif c in "^_":
             lecteur.i += 1
-            valeur = lecteur.groupe()
+            lecteur.espaces()
+            if not lecteur.fini() and lecteur.s[lecteur.i] == "(":
+                # a^(m+p), 10^(-3) ecrits sans accolades : tout le contenu des parentheses est l'exposant.
+                # Avant, seule la « ( » montait en exposant : « a⁽m+p) » (enquete notation du 7 oct.).
+                valeur = _parentheses(lecteur)
+            else:
+                valeur = lecteur.groupe()
             sortie.append(_exposant(valeur) if c == "^" else _indice(valeur))
         elif c in "{}":
             lecteur.i += 1  # accolades de regroupement
@@ -276,6 +300,9 @@ COMMANDE_NUE = re.compile(r"\\[A-Za-z]+|\\[{}|,;!% ]")
 def latex_vers_whatsapp(texte):
     """Convertit les formules ($...$, \\(...\\), \\[...\\]) et les commandes LaTeX restees seules."""
     texte = str(texte or "")
+    # « x → 2^> » / « 2^< » : limite a droite / a gauche (enquete notation du 7 oct.).
+    texte = re.sub(r"(?<=[\w)])\^\s*>", "⁺", texte)
+    texte = re.sub(r"(?<=[\w)])\^\s*<", "⁻", texte)
     if "\\" not in texte and "$" not in texte and not re.search(r"[\^_]\{|[A-Za-z0-9)][\^_][A-Za-z0-9(]", texte):
         return texte
 
