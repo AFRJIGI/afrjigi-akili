@@ -133,3 +133,15 @@ class LectureParPagesTests(unittest.TestCase):
             self.assertEqual(len(cq.lire_messages(db, "2026-10-05", taille_page=10)), 5)
         finally:
             __import__("time").sleep = cq_sleep
+
+
+class TranscriptionLongueTests(unittest.TestCase):
+    def test_message_de_850_caracteres_entier(self):
+        liste = [msg("2250100000009", "outbound", "x" * 850, 1)]
+        self.assertIn("x" * 850, cq.transcription(liste))
+        self.assertNotIn("suite non recopiee", cq.transcription(liste))
+
+    def test_message_tres_long_marque(self):
+        texte = cq.transcription([msg("2250100000009", "outbound", "y" * 2000, 1)])
+        self.assertIn("[suite non recopiee pour la relecture]", texte)
+        self.assertIn("[liste]", cq.GRILLE)

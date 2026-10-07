@@ -1165,7 +1165,8 @@ def choice_key(text):
 
 
 MESSAGE_HORS_CHAMP = (
-    "Akili accompagne les élèves de la 6e à la Terminale : BEPC, BAC Général et BAC Technique. "
+    "Akili accompagne pour l'instant les élèves de la 6e à la Terminale : BEPC, BAC Général et BAC Technique. "
+    "Le BTS et l'université ne sont pas encore disponibles, ils arriveront plus tard. "
     "Si tu es dans l'une de ces classes, choisis ton niveau :"
 )
 
@@ -1330,6 +1331,10 @@ def envoyer_choix(phone, question, options, vous=False):
             lignes.append((lettre, titre, precision))
         consigne = CONSIGNE_LISTE_VOUS if vous else CONSIGNE_LISTE
         if send_whatsapp_liste(phone, f"{question}\n\n{consigne}", lignes):
+            # Trace lisible de la liste : sans elle, le controle qualite voyait « Reponds d'abord a cette
+            # question : » suivi de rien, et signalait une liste jamais envoyee.
+            save_whatsapp_event(phone, "outbound", "[liste] " + texte_choix(question, options, vous=vous),
+                                user_profiles.get(phone) or {}, extra={"processing_stage": "liste_choix"})
             return
     send_whatsapp(phone, texte_choix(question, options, vous=vous))
 
@@ -1407,6 +1412,73 @@ def ask_matiere(phone, serie="TOUTES"):
     matieres = MATIERES_BEPC if serie == "BEPC" else MATIERES_GENERAL
     envoyer_choix(phone, "Quelle matière veux-tu travailler ?",
                   [(LETTRES_CHOIX[i], m, "") for i, m in enumerate(matieres)])
+
+
+SERIES_TECHNIQUES = ("G1", "G2", "F1", "F2", "F3", "F4", "F7", "B", "E")
+CLASSES_DU_TEXTE = {"SECONDE": "SECONDE", "2NDE": "SECONDE", "2ND": "SECONDE", "PREMIERE": "PREMIERE",
+                    "1ERE": "PREMIERE", "1IERE": "PREMIERE", "TERMINALE": "TERMINALE", "TLE": "TERMINALE"}
+SIGNES_NIVEAU = ("JE SUIS EN", "JE SUIS DANS", "EN CLASSE DE", "MA CLASSE", "JE FAIS LA", "JE SUIS AU", "MON NIVEAU")
+
+
+def niveau_declare(text):
+    """Niveau que l'eleve annonce (« je suis en 2nde C », « en classe de premiere G1 », « 2ndc ») :
+    {type_examen, serie, classe} ou None. Seulement si le message annonce bien un niveau."""
+    msg = normalize_for_match(text)
+    mots = msg.split()
+    if not msg or len(mots) > 14:
+        return None
+    # Message court (« 2ndc », « Tle D ») : seulement avec un mot de classe, pas « 5e » seul
+    # (qui peut etre une reponse d'exercice).
+    court = len(mots) <= 3 and re.search(r"(?<![A-Z0-9])(SECONDE|2NDE|2ND|PREMIERE|1ERE|1IERE|TERMINALE|TLE|TROISIEME|3EME)", msg)
+    if not (court or any(has_expr(msg, s) for s in SIGNES_NIVEAU)):
+        return None
+    tech = re.search(r"(?<![A-Z0-9])(SECONDE|2NDE|2ND(?!E)|PREMIERE|1ERE|1IERE|TERMINALE|TLE)\s*("
+                     + "|".join(SERIES_TECHNIQUES) + r")(?![A-Z0-9])", msg)
+    if tech:
+        return {"type_examen": "BAC_TECHNIQUE", "serie": tech.group(2), "classe": CLASSES_DU_TEXTE[tech.group(1)]}
+    inter = classe_intermediaire_du_texte(msg)
+    if inter:
+        return {"type_examen": "CLASSE_INTERMEDIAIRE", "serie": inter, "classe": ""}
+    generale = re.search(r"(?<![A-Z0-9])(TERMINALE|TLE)\s*(A1|A2|C|D)(?![A-Z0-9])", msg)
+    if generale:
+        return {"type_examen": "BAC_GENERAL", "serie": generale.group(2), "classe": ""}
+    petite = re.search(r"(?<![A-Z0-9])(6|5|4)\s*(?:E|EME)(?![A-Z0-9])", msg)
+    if petite:
+        return {"type_examen": "CLASSE_INTERMEDIAIRE", "serie": f"{petite.group(1)}E", "classe": ""}
+    if any(has_expr(msg, x) for x in ["3E", "3EME", "TROISIEME"]):
+        return {"type_examen": "BEPC", "serie": "BEPC", "classe": ""}
+    return None
+
+
+def niveau_different(profile, niveau):
+    actuel = {"type_examen": profile.get("type_examen"), "serie": (profile.get("serie") or "").upper(),
+              "classe": (profile.get("classe") or "") if niveau["type_examen"] == "BAC_TECHNIQUE" else ""}
+    return actuel != niveau
+
+
+def matiere_proposee(profile, matiere):
+    if profile.get("type_examen") == "BAC_TECHNIQUE":
+        return matiere in [code for code, _ in matieres_technique(profile.get("serie"))]
+    if (profile.get("serie") or "").upper() == "BEPC":
+        return matiere in CODES_MATIERES_BEPC
+    return matiere in CODES_MATIERES_GENERAL
+
+
+def appliquer_niveau_declare(phone, profile, niveau):
+    """Met le profil au niveau annonce par l'eleve. Garde la matiere si elle existe a ce niveau,
+    sinon ouvre la liste des matieres (controle qualite du 7 oct. : un eleve de 2nde C inscrit
+    en BEPC restait bloque en 3e malgre ses demandes)."""
+    profile["type_examen"], profile["serie"] = niveau["type_examen"], niveau["serie"]
+    if niveau["classe"]:
+        profile["classe"] = niveau["classe"]
+    else:
+        profile.pop("classe", None)
+    niveau_texte = ", ".join(resume_profil(profile).split(", ")[:-2])  # sans la matiere ni le mode
+    send_whatsapp(phone, f"D'accord, je mets ton profil à jour : {niveau_texte}.", allow_audio=False)
+    if matiere_proposee(profile, profile.get("matiere")):
+        terminer_inscription(phone, profile, deja_inscrit=True)
+    else:
+        ouvrir_choix_matiere(phone, profile)
 
 
 def ouvrir_choix_matiere(phone, profile):
@@ -4731,6 +4803,8 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             "- Ne modifie JAMAIS un symbole, une variable, un exposant ou un indice inconnu donné par l'élève dans l'énoncé (par exemple x, y, z, n dans une formule comme CxHyOz, ou tout coefficient littéral). Recopie-le exactement tel quel, y compris dans tes propres reformulations de l'énoncé. N'invente jamais une valeur numérique à la place d'une lettre inconnue, même s'il existe un exemple courant avec cette valeur.\n"
             "- Guide l'élève étape par étape.\n"
             "- Ne donne qu'une seule étape à la fois.\n"
+            "- ELEVE BLOQUE (important) : si l'élève écrit qu'il ne comprend pas, qu'il ne sait pas, qu'il a besoin d'aide, ou s'il se trompe deux fois sur la même question, ne repose JAMAIS la même question. Explique autrement en deux ou trois phrases simples avec un exemple concret, donne un indice précis ou la première moitié de la réponse, puis pose une question plus facile.\n"
+            "- VALIDATION : avant d'écrire qu'une réponse est juste, vérifie-la entièrement. Une réponse incomplète ou mal écrite (par exemple -2 au lieu de -2t, ou R 3 au lieu de R privé de 3) n'est pas juste : dis ce qui manque. Ne valide jamais une réponse que l'élève n'a pas donnée.\n"
             "- Termine toujours par une question courte à l'élève.\n"
             "- Ne commence jamais par une phrase d'accroche du type \'Salut, je comprends que tu cherches...\'. Va directement au contenu utile.\n"
             "- Ne récite pas la présentation générale du programme de la matière si la matière, la série et le mode sont déjà connus. Propose directement un exercice ou une explication concrète, sans demander à l'élève de choisir un sous-thème lui-même.\n"
@@ -5466,6 +5540,13 @@ async def _receive_message_impl(request: Request):
             track_inbound("fin_session_au_revoir", profile)
             return {"status": "ok", "reason": "fin_session"}
 
+        niveau_annonce = (niveau_declare(text) if not onboarding_step and is_profile_ready(profile)
+                          and media_file is None and not est_enseignant_verifie(profile) else None)
+        if niveau_annonce and niveau_different(profile, niveau_annonce):
+            appliquer_niveau_declare(phone, profile, niveau_annonce)
+            track_inbound("niveau_corrige_par_eleve", profile)
+            return {"status": "ok", "reason": "niveau_corrige"}
+
         if (not onboarding_step and is_profile_ready(profile) and media_file is None
                 and not espace_enseignant_actif(profile)
                 and est_demande_changement_matiere(text, profile.get("matiere"))):
@@ -5675,6 +5756,19 @@ async def _receive_message_impl(request: Request):
                                         media_file=media_reprise, document_context=contexte_reprise)
                 track_inbound("pending_question_answered", profile_after_choice)
 
+            return {"status": "ok"}
+
+        if (is_other_or_concours(text) and not is_profile_ready(profile) and not is_teacher_request(text)
+                and media_file is None):
+            # « je suis en 2e annee de BTS » etait gardee comme une question et l'inscription tournait
+            # en boucle (controle qualite du 7 oct.).
+            profile = repartir_premiere_question(profile)
+            profile.pop("pending_question", None)
+            profile.pop("pending_question_display", None)
+            user_profiles[phone] = profile
+            send_whatsapp(phone, MESSAGE_HORS_CHAMP)
+            ask_exam(phone)
+            track_inbound("hors_champ_bts_universite", profile)
             return {"status": "ok"}
 
         if is_learning_request(text) and not is_profile_ready(profile) and not is_teacher_request(text):

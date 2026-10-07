@@ -26,6 +26,9 @@ PROJECT_ID = "astute-curve-307922"
 LOCATION = "us-central1"
 MIN_MESSAGES_ELEVE = 3
 MAX_MESSAGES = 30
+# Avant : 600 caracteres, alors qu'Akili envoie jusqu'a 850 ; le relecteur prenait la coupure
+# de la transcription pour un message tronque (7 « bug_technique » sur 20 conversations le 7 oct.).
+LONGUEUR_LUE = 1500
 
 # Messages automatiques de l'inscription : une conversation qui n'a que ca n'est pas evaluee.
 DEBUTS_AUTOMATIQUES = (
@@ -55,6 +58,9 @@ Signale chaque probleme avec un de ces types :
 
 Important : juge uniquement Akili. Une erreur de l'eleve, corrigee par Akili, n'est pas un probleme.
 "[photo]", "[document]" et "[audio]" signalent un fichier reellement envoye par l'eleve.
+"[liste] ..." est une liste de choix a toucher que l'eleve a bien recue sur WhatsApp.
+"[suite non recopiee pour la relecture]" veut dire que la transcription est raccourcie ici : ce n'est pas
+un message coupe chez l'eleve. Un vrai message coupe se termine par « Je m'arrete ici. Ecris suite... ».
 Les messages automatiques de l'inscription (niveau, serie, matiere, mode, ville, ecole) ne sont pas a juger
 sur le fond ; signale seulement une vraie boucle ou un choix de l'eleve mal enregistre.
 
@@ -132,7 +138,9 @@ def transcription(liste):
     lignes = []
     for m in liste[-MAX_MESSAGES:]:
         qui = "ELEVE" if m.get("direction") == "inbound" else "AKILI"
-        texte = re.sub(r"\s+", " ", str(m.get("text") or ""))[:600]
+        texte = re.sub(r"\s+", " ", str(m.get("text") or ""))
+        if len(texte) > LONGUEUR_LUE:
+            texte = texte[:LONGUEUR_LUE] + " [suite non recopiee pour la relecture]"
         lignes.append(f"[{str(m.get('created_at', ''))[11:16]}] {qui} : {texte}")
     return "\n".join(lignes)
 
