@@ -78,3 +78,21 @@ class SourceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class InvitationDesLePremierBilanTests(unittest.TestCase):
+    def test_invitation_avant_ville_et_ecole(self):
+        appels = []
+        with mock.patch.object(main, "maybe_send_marketing_consent_prompt",
+                               side_effect=lambda p: appels.append("invitation") or True), \
+                mock.patch.object(main, "demander_ville_ecole_si_besoin",
+                                  side_effect=lambda p: appels.append("ville") or True), \
+                mock.patch.object(main, "demander_avis_seance", side_effect=lambda p: appels.append("avis")), \
+                mock.patch.object(main, "reserver_bilan", return_value={"nb_echanges": 3}), \
+                mock.patch.object(main, "generer_bilan_session", return_value="Bilan"), \
+                mock.patch.object(main, "send_whatsapp"), mock.patch.object(main, "noter_session_bilan"), \
+                mock.patch.object(main, "planifier_revision"), \
+                mock.patch.object(main, "charger_etat_whatsapp", return_value={"matiere": "MATHS"}):
+            main.envoyer_fin_de_session(PHONE, source="au_revoir")
+        main.user_profiles.pop(PHONE, None)
+        self.assertEqual(appels, ["invitation"])  # ville et ecole au bilan suivant

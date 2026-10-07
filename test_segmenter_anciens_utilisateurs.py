@@ -54,6 +54,8 @@ class SegmentationTests(unittest.TestCase):
         self.assertEqual(seg.consentement(None, None), "sans_accord")
         self.assertEqual(seg.consentement(OUI, NON), "stop")  # STOP l'emporte toujours
         self.assertEqual(seg.consentement(NON, None), "stop")
+        promo_oui = seg.marketing.build_marketing_consent_record("opted_in")
+        self.assertEqual(seg.consentement(None, promo_oui), "relancable")  # « OUI MARKETING »
 
     def test_lecture_des_consentements_par_lots(self):
         class Doc:
@@ -111,7 +113,7 @@ class SegmentationTests(unittest.TestCase):
                   {"segment": "exclu_actif", "consentement": "", "matiere": "", "type_examen": ""}]
         texte = seg.rapport(lignes)
         self.assertIn("Habitués partis (3 jours de travail ou plus) : 2  -> relançables 1, sans accord 1, STOP 0", texte)
-        self.assertIn("1 actifs récemment", texte)
+        self.assertIn("1 actifs récemment (dont 0 ont déjà accepté les rappels)", texte)
 
 
 if __name__ == "__main__":

@@ -83,7 +83,10 @@ def consentement(pedago, promo):
     if marketing.classify_marketing_consent(promo) == marketing.OPTED_OUT or \
             pedagogique.classify(pedago) == marketing.OPTED_OUT:
         return "stop"
-    if pedagogique.classify(pedago) == marketing.OPTED_IN:
+    # Accord aux rappels pedagogiques (bouton) ou aux messages d'Akili (« OUI MARKETING ») : les deux sont
+    # des accords explicites ; un STOP sur l'un ou l'autre l'emporte (teste juste au-dessus).
+    if pedagogique.classify(pedago) == marketing.OPTED_IN or \
+            marketing.classify_marketing_consent(promo) == marketing.OPTED_IN:
         return "relancable"
     return "sans_accord"
 
@@ -136,7 +139,9 @@ def lire_consentements(db, phones, taille=300):
 
 def rapport(lignes):
     total = Counter(l["segment"] for l in lignes)
-    lignes_txt = [f"{len(lignes)} numéros", f"  exclus : {total['exclu_actif']} actifs récemment, "
+    accords_actifs = sum(1 for l in lignes if l["segment"] == "exclu_actif" and l["consentement"] == "relancable")
+    lignes_txt = [f"{len(lignes)} numéros", f"  exclus : {total['exclu_actif']} actifs récemment "
+                                            f"(dont {accords_actifs} ont déjà accepté les rappels), "
                                             f"{total['exclu_enseignant']} enseignants", ""]
     for seg in SEGMENTS:
         groupe = [l for l in lignes if l["segment"] == seg]
@@ -165,7 +170,7 @@ def main():
 
     print(f"Lecture des messages depuis le {args.depuis}...")
     infos = resumer(lire_messages(db, args.depuis))
-    candidats = sorted(p for p, i in infos.items() if segment(i, limite) in SEGMENTS)
+    candidats = sorted(p for p, i in infos.items() if segment(i, limite) in SEGMENTS + ["exclu_actif"])
     print(f"{len(infos)} numéros, lecture des consentements de {len(candidats)} candidats...")
     accords = lire_consentements(db, candidats)
 
@@ -174,7 +179,8 @@ def main():
         seg = segment(info, limite)
         lignes.append({
             "phone": phone, "segment": seg,
-            "consentement": consentement(*accords.get(phone, (None, None))) if seg in SEGMENTS else "",
+            "consentement": (consentement(*accords.get(phone, (None, None)))
+                             if seg in SEGMENTS + ["exclu_actif"] else ""),
             "matiere": info["matiere"], "serie": info["serie"], "type_examen": info["type_examen"],
             "jours_travail": len(info["jours_travail"]), "messages_eleve": info["entrants"],
             "premier_message": info["premier"][:10], "dernier_message": info["dernier"][:10],

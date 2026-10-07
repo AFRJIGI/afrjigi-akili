@@ -3409,9 +3409,11 @@ def envoyer_fin_de_session(phone, source="au_revoir"):
     planifier_revision(phone, session, texte)
     if est_enseignant_verifie(profil):
         return True  # enseignant en mode eleve : ni ville/ecole, ni invitation, ni boutons d'avis
-    # Un seul message apres le bilan : la ville et l'ecole (premiere fois), sinon l'invitation
-    # aux rappels pedagogiques (une seule fois), sinon les boutons d'avis.
-    if not demander_ville_ecole_si_besoin(phone) and not maybe_send_marketing_consent_prompt(phone):
+    # Un seul message apres le bilan : l'invitation aux rappels pedagogiques (une seule fois, des le
+    # premier bilan), sinon la ville et l'ecole, sinon les boutons d'avis. Avant, l'invitation n'arrivait
+    # qu'au deuxieme bilan : 216 invitations seulement pour pres de 4 000 eleves, et aucun ancien
+    # utilisateur relancable (segmentation du 7 oct.).
+    if not maybe_send_marketing_consent_prompt(phone) and not demander_ville_ecole_si_besoin(phone):
         demander_avis_seance(phone)
     print(f"FIN_SESSION envoyee source={source} echanges={session.get('nb_echanges')}", flush=True)
     return True
