@@ -1179,6 +1179,10 @@ DEMANDES_EXPLICATION = [
     "COMMENT ON FAIT", "COMMENT FAIRE", "AIDE MOI", "AIDEZ MOI", "TRAITE MOI", "TRAITE CET EXERCICE",
     "RESOUS", "RESOUDRE POUR MOI", "DONNE MOI LA REPONSE", "DONNE LA REPONSE", "JE SUIS BLOQUE",
     "JE NE SAIS PAS", "JE SAIS PAS", "MONTRE MOI",
+    # Controle qualite du 7 oct. (23 h) : en mode examen, l'eleve attendait la solution et Akili repetait
+    # trois fois la consigne de l'examen jusqu'a « tu es inutile ».
+    "JE VOUS ATTENDS", "JE T ATTENDS", "VOUS ATTEND", "J ATTENDS", "INUTILE", "TU SERS A RIEN",
+    "CORRIGE L EXERCICE", "CORRIGE MOI L EXERCICE", "FAIS L EXERCICE", "FAIS LE POUR MOI",
 ]
 OFFRE_MODE_ETUDE = (
     "En mode examen, Akili ne donne pas d'explication : tu résous seul, puis il corrige et note ta copie.\n\n"
@@ -1195,10 +1199,25 @@ def demande_explication(text):
     return any(has_expr(msg, expr) for expr in DEMANDES_EXPLICATION)
 
 
+def attend_sa_copie(phone, text):
+    """Akili vient de donner la consigne du mode examen (resoudre sur papier, envoyer la photo de la copie)
+    et l'eleve repond par un court message sans calcul : il n'a pas compris le fonctionnement."""
+    msg = normalize_for_match(text)
+    if not msg or len(msg.split()) > 8 or re.search(r"[0-9=]", text or ""):
+        return False
+    if msg in {"OK", "OKAY", "OK MERCI", "D ACCORD", "DAC", "MERCI", "OUI", "C EST BON", "COMPRIS", "BIEN RECU"}:
+        return False  # « ok » : il va composer
+    dernier = normalize_for_match(load_last_assistant_context(phone))
+    return "FEUILLE" in dernier and "COPIE" in dernier
+
+
 def proposer_mode_etude(phone, profile, text, now=None):
-    """Vrai si on vient de proposer le mode etude (eleve en mode examen qui demande de l'aide)."""
+    """Vrai si on vient de proposer le mode etude (eleve en mode examen qui demande de l'aide, ou qui
+    repond a la consigne de l'examen sans envoyer sa copie)."""
     now = now or datetime.now(timezone.utc)
-    if (profile.get("mode") or "") != "examen" or not demande_explication(text):
+    if (profile.get("mode") or "") != "examen":
+        return False
+    if not (demande_explication(text) or attend_sa_copie(phone, text)):
         return False
     refus = parse_datetime(profile.get("offre_mode_etude_refusee_at"))
     if refus and now - refus < timedelta(minutes=OFFRE_MODE_PAUSE_MINUTES):
@@ -3186,8 +3205,10 @@ QUESTION_VILLE_ECOLE = (
     "Exemple : Bouaké, Lycée moderne 1\n\n"
     "Écris « passer » si tu préfères ne pas répondre."
 )
-MESSAGE_MERCI_VILLE_ECOLE = "Merci, c'est noté ! À bientôt sur Akili."
-MESSAGE_PASSER_VILLE_ECOLE = "D'accord, pas de souci. À bientôt sur Akili !"
+# Controle qualite du 7 oct. (23 h) : « À bientôt sur Akili » donnait l'impression de clore la seance
+# alors que l'eleve voulait continuer son exercice.
+MESSAGE_MERCI_VILLE_ECOLE = "Merci, c'est noté ! On continue quand tu veux : envoie ta question ou réponds à ma dernière question."
+MESSAGE_PASSER_VILLE_ECOLE = "D'accord, pas de souci. On continue quand tu veux !"
 VILLE_ECOLE_MINUTES = 60
 MOTS_ECOLE = {"LYCEE", "COLLEGE", "ECOLE", "GROUPE", "INSTITUT", "INSTITUTION", "CEG", "EPP", "COMPLEXE",
               "LTP", "CET", "CENTRE", "ETABLISSEMENT", "LT", "LM", "LYCE"}
@@ -4898,6 +4919,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             "- Ne donne qu'une seule étape à la fois.\n"
             "- ELEVE BLOQUE (important) : si l'élève écrit qu'il ne comprend pas, qu'il ne sait pas, qu'il a besoin d'aide, ou s'il se trompe deux fois sur la même question, ne repose JAMAIS la même question. Explique autrement en deux ou trois phrases simples avec un exemple concret, donne un indice précis ou la première moitié de la réponse, puis pose une question plus facile.\n"
             "- VALIDATION : avant d'écrire qu'une réponse est juste, vérifie-la entièrement. Une réponse incomplète ou mal écrite (par exemple -2 au lieu de -2t, ou R 3 au lieu de R privé de 3) n'est pas juste : dis ce qui manque. Ne valide jamais une réponse que l'élève n'a pas donnée.\n"
+            "- NIVEAU HORS PROGRAMME : Akili accompagne de la 6e à la Terminale. Si l'élève demande un niveau du primaire (CM1, CM2...), dis-le en une phrase, puis propose les bases de 6e les plus proches de sa demande, sans lui imposer une leçon de 3e.\n"
             "- DEMANDE PRECISE DE L'ELEVE : s'il demande une partie précise (l'introduction, la question 2, la suite de l'exercice, un exemple corrigé), fais-la maintenant, même si tu avais prévu un autre ordre. Ne repose jamais ta question précédente à la place.\n"
             "- Termine toujours par UNE seule question courte à l'élève (un seul point d'interrogation par message).\n"
             "- Ne commence jamais par une phrase d'accroche du type \'Salut, je comprends que tu cherches...\'. Va directement au contenu utile.\n"
