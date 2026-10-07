@@ -1409,9 +1409,18 @@ MATIERES_GENERAL = ["Mathématiques", "Physique-Chimie", "SVT", "Français", "Ph
                     "Histoire-Géographie", "Espagnol", "Allemand", "Anglais"]
 
 
+SERIES_COLLEGE = {"BEPC", "6E", "5E", "4E"}
+
+
+def est_college(serie):
+    """6e, 5e, 4e et 3e : matieres du college (EDHC, pas de philosophie). Controle qualite du 7 oct. :
+    un eleve de 4e avait pu choisir la philosophie, et Akili refusait de l'aider."""
+    return (serie or "").upper().strip() in SERIES_COLLEGE
+
+
 def ask_matiere(phone, serie="TOUTES"):
     serie = (serie or "").upper().strip()
-    matieres = MATIERES_BEPC if serie == "BEPC" else MATIERES_GENERAL
+    matieres = MATIERES_BEPC if est_college(serie) else MATIERES_GENERAL
     envoyer_choix(phone, "Quelle matière veux-tu travailler ?",
                   [(LETTRES_CHOIX[i], m, "") for i, m in enumerate(matieres)])
 
@@ -1461,7 +1470,7 @@ def niveau_different(profile, niveau):
 def matiere_proposee(profile, matiere):
     if profile.get("type_examen") == "BAC_TECHNIQUE":
         return matiere in [code for code, _ in matieres_technique(profile.get("serie"))]
-    if (profile.get("serie") or "").upper() == "BEPC":
+    if est_college(profile.get("serie")):
         return matiere in CODES_MATIERES_BEPC
     return matiere in CODES_MATIERES_GENERAL
 
@@ -1584,7 +1593,7 @@ def mot_cle_vers_lettre(step, text, profile):
     if step == "matiere" and profile.get("type_examen") != "BAC_TECHNIQUE":
         matiere = detect_matiere_from_text(text)
         if matiere:
-            if (profile.get("serie") or "").upper().strip() == "BEPC":
+            if est_college(profile.get("serie")):
                 values = {"a": "MATHS", "b": "PC", "c": "SVT", "d": "FRANCAIS", "e": "HG", "f": "EDHC", "g": "ESPAGNOL", "h": "ALLEMAND", "i": "ANGLAIS"}
             else:
                 values = {"a": "MATHS", "b": "PC", "c": "SVT", "d": "FRANCAIS", "e": "PHILO", "f": "HG", "g": "ESPAGNOL", "h": "ALLEMAND", "i": "ANGLAIS"}
@@ -1811,7 +1820,7 @@ def handle_onboarding_choice(phone, profile, text):
         if profile.get("type_examen") == "BAC_TECHNIQUE":
             values = choix_matieres_technique(profile.get("serie"))
         else:
-            if (profile.get("serie") or "").upper().strip() == "BEPC":
+            if est_college(profile.get("serie")):
                 values = {"a": "MATHS", "b": "PC", "c": "SVT", "d": "FRANCAIS", "e": "HG", "f": "EDHC", "g": "ESPAGNOL", "h": "ALLEMAND", "i": "ANGLAIS"}
             else:
                 values = {"a": "MATHS", "b": "PC", "c": "SVT", "d": "FRANCAIS", "e": "PHILO", "f": "HG", "g": "ESPAGNOL", "h": "ALLEMAND", "i": "ANGLAIS"}
@@ -2794,13 +2803,19 @@ def est_demande_changement_matiere(text, matiere_actuelle=""):
     matiere », « allons sur la redaction », « passons aux maths » (autre matiere que la sienne)."""
     msg = normalize_for_match(text)
     mots = msg.split()
-    if not msg or len(mots) > 15:
-        return False
-    if any(has_expr(msg, d) for d in DEMANDES_CHANGEMENT_MATIERE):
-        return True
+    if not msg or len(mots) > 40 or prefixe_avis(text):
+        return False  # « Retour : Akili est lent sur mon exercice de maths » est un avis
     citee = detect_matiere_from_text(text, mots_cles_programme=False)
     actuelle = (matiere_actuelle or "").upper()
     autre_matiere = bool(citee) and not (actuelle == citee or actuelle.startswith(citee + "_"))
+    # « je vais traiter mon exercice d'histoire geo » en pleine seance de maths (controle qualite du 7 oct.).
+    if autre_matiere and re.search(r"(?<![A-Z0-9])(?:MON|MA|UN|UNE|CE|CET|CETTE) (?:EXERCICE|DEVOIR|SUJET|LECON|COURS|"
+                                   r"INTERRO|INTERROGATION|EVALUATION)S? (?:\w+ )?(?:DE|D|EN)(?![A-Z0-9])", msg):
+        return True
+    if len(mots) > 15:
+        return False
+    if any(has_expr(msg, d) for d in DEMANDES_CHANGEMENT_MATIERE):
+        return True
     # « je veux plus de svt » / « je ne veux plus (continuer) » ; pas « je veux plus d'exercices » (= davantage).
     refus = re.search(r"(?<![A-Z0-9])JE (?:NE )?VEUX PLUS(?: (.*))?$", msg)
     if refus:
@@ -3023,7 +3038,7 @@ def code_matiere_pour_eleve(profile, nom):
     profile = profile or {}
     if profile.get("type_examen") == "BAC_TECHNIQUE":
         candidats = [code for code, _ in matieres_technique(profile.get("serie"))]
-    elif (profile.get("serie") or "").upper() == "BEPC":
+    elif est_college(profile.get("serie")):
         candidats = CODES_MATIERES_BEPC
     else:
         candidats = CODES_MATIERES_GENERAL
@@ -4883,7 +4898,8 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             "- Ne donne qu'une seule étape à la fois.\n"
             "- ELEVE BLOQUE (important) : si l'élève écrit qu'il ne comprend pas, qu'il ne sait pas, qu'il a besoin d'aide, ou s'il se trompe deux fois sur la même question, ne repose JAMAIS la même question. Explique autrement en deux ou trois phrases simples avec un exemple concret, donne un indice précis ou la première moitié de la réponse, puis pose une question plus facile.\n"
             "- VALIDATION : avant d'écrire qu'une réponse est juste, vérifie-la entièrement. Une réponse incomplète ou mal écrite (par exemple -2 au lieu de -2t, ou R 3 au lieu de R privé de 3) n'est pas juste : dis ce qui manque. Ne valide jamais une réponse que l'élève n'a pas donnée.\n"
-            "- Termine toujours par une question courte à l'élève.\n"
+            "- DEMANDE PRECISE DE L'ELEVE : s'il demande une partie précise (l'introduction, la question 2, la suite de l'exercice, un exemple corrigé), fais-la maintenant, même si tu avais prévu un autre ordre. Ne repose jamais ta question précédente à la place.\n"
+            "- Termine toujours par UNE seule question courte à l'élève (un seul point d'interrogation par message).\n"
             "- Ne commence jamais par une phrase d'accroche du type \'Salut, je comprends que tu cherches...\'. Va directement au contenu utile.\n"
             "- Ne récite pas la présentation générale du programme de la matière si la matière, la série et le mode sont déjà connus. Propose directement un exercice ou une explication concrète, sans demander à l'élève de choisir un sous-thème lui-même.\n"
             "- Ne répète pas un contexte ou une information déjà donnée dans les messages précédents de cette conversation.\n"
@@ -4972,32 +4988,49 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
         print(f"AKILI_API payload: {payload}", flush=True)
         request_files = {k: (None, str(v)) for k, v in payload.items() if v is not None}
 
-        opened_file = None
+        def poster():
+            opened_file = None
+            try:
+                if media_file is not None:
+                    media_path = Path(media_file)
+                    mime_type = "application/octet-stream"
+                    suffix = media_path.suffix.lower()
+
+                    if suffix in {".jpg", ".jpeg"}:
+                        mime_type = "image/jpeg"
+                    elif suffix == ".png":
+                        mime_type = "image/png"
+                    elif suffix == ".pdf":
+                        mime_type = "application/pdf"
+                    elif suffix in {".ogg", ".opus"}:
+                        mime_type = "audio/ogg"
+                    elif suffix == ".mp3":
+                        mime_type = "audio/mpeg"
+
+                    opened_file = media_path.open("rb")
+                    request_files["file"] = (media_path.name, opened_file, mime_type)
+                    print(f"AKILI_API media upload path={media_path} mime={mime_type}", flush=True)
+
+                return requests.post(AKILI_API_URL, files=request_files, timeout=90)
+            finally:
+                if opened_file:
+                    opened_file.close()
+
+        # Un nouvel essai si l'API refuse tout de suite (503, 429, connexion coupee) : l'eleve recevait
+        # « Désolé, je rencontre une petite difficulté technique » (controle qualite du 7 oct.).
+        # Pas de nouvel essai apres un delai depasse : l'eleve attendrait trois minutes.
         try:
-            if media_file is not None:
-                media_path = Path(media_file)
-                mime_type = "application/octet-stream"
-                suffix = media_path.suffix.lower()
-
-                if suffix in {".jpg", ".jpeg"}:
-                    mime_type = "image/jpeg"
-                elif suffix == ".png":
-                    mime_type = "image/png"
-                elif suffix == ".pdf":
-                    mime_type = "application/pdf"
-                elif suffix in {".ogg", ".opus"}:
-                    mime_type = "audio/ogg"
-                elif suffix == ".mp3":
-                    mime_type = "audio/mpeg"
-
-                opened_file = media_path.open("rb")
-                request_files["file"] = (media_path.name, opened_file, mime_type)
-                print(f"AKILI_API media upload path={media_path} mime={mime_type}", flush=True)
-
-            res = requests.post(AKILI_API_URL, files=request_files, timeout=90)
-        finally:
-            if opened_file:
-                opened_file.close()
+            res = poster()
+            if res.status_code in (429, 500, 502, 503, 504):
+                print(f"AKILI_API status {res.status_code} : nouvel essai", flush=True)
+                time.sleep(2)
+                res = poster()
+        except requests.exceptions.ConnectionError as exc:
+            if isinstance(exc, requests.exceptions.Timeout):
+                raise  # ConnectTimeout : delai deja ecoule
+            print(f"AKILI_API connexion coupee ({exc!r}) : nouvel essai", flush=True)
+            time.sleep(2)
+            res = poster()
         print(f"AKILI_API status: {res.status_code}", flush=True)
         print(f"AKILI_API body: {res.text}", flush=True)
 
