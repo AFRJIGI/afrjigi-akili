@@ -469,6 +469,24 @@ COMPTES_SYSCOHADA = (
 )
 
 
+# Toutes les matieres sur WhatsApp, eleves seulement. Controle qualite du 7 oct. : 12 conversations sur 20
+# avec des messages trop longs, surtout en philosophie, dont la consigne demande a l'etape 1 les
+# definitions de chaque notion, les paradoxes et les problematiques d'un coup.
+LONGUEUR_WHATSAPP = (
+    "LONGUEUR SUR WHATSAPP (impératif, prioritaire sur les étapes décrites plus haut) : toute ta réponse "
+    "doit tenir en 700 caractères au maximum, c'est la taille d'un message WhatsApp. Si une étape demande "
+    "beaucoup de contenu (définitions de plusieurs notions, plusieurs paradoxes ou problématiques, un plan "
+    "avec ses arguments, une longue explication), découpe-la : traite une seule partie (par exemple une seule "
+    "notion du sujet), puis termine par une question courte à l'élève ; la partie suivante viendra au "
+    "message suivant."
+)
+
+
+def vient_de_whatsapp(email):
+    """Le bot WhatsApp envoie « <numero>@afrjigi.com » ; l'application web envoie le vrai e-mail."""
+    return bool(re.fullmatch(r"\d{6,15}@afrjigi\.com", (email or "").strip()))
+
+
 def prompt_comptabilite(matiere, examen, serie, classe):
     """Comptabilite financiere, des societes, analytique : tuteur guide, ecriture par ecriture."""
     code = (matiere or "").strip().upper()
@@ -1444,6 +1462,8 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
 
         if not enseignant:
             system_prompt = system_prompt + "\n\n" + instructions_mode(mode_registre, examen_registre)
+            if vient_de_whatsapp(clean_email):
+                system_prompt = system_prompt + "\n\n" + LONGUEUR_WHATSAPP
         if progression:
             consigne = consigne_progression_enseignant if enseignant else consigne_progression
             system_prompt = system_prompt + "\n\n" + consigne(progression)
