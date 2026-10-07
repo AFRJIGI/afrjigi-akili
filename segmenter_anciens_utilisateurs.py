@@ -88,14 +88,29 @@ def consentement(pedago, promo):
     return "sans_accord"
 
 
-def lire_messages(db, debut, taille_page=1000):
+def lire_page(requete, essais=5, attente=None):
+    """Une page de resultats, avec nouvel essai : Firestore coupe parfois la lecture (« 503 Stream
+    removed (ping timeout) »), et la reprise automatique plante dans Cloud Shell (conflit de versions)."""
+    import time
+    attente = attente or time.sleep
+    for essai in range(essais):
+        try:
+            return list(requete.stream())
+        except Exception as exc:  # 503, ou AttributeError '_retry' de la bibliotheque
+            if essai == essais - 1:
+                raise
+            print(f"  lecture interrompue ({type(exc).__name__}), nouvel essai {essai + 2}/{essais}...")
+            attente(3 * (essai + 1))
+
+
+def lire_messages(db, debut, taille_page=500):
     messages, dernier = [], None
     while True:
         requete = (db.collection("whatsapp_messages").where("created_at", ">=", debut)
                    .order_by("created_at").select(CHAMPS).limit(taille_page))
         if dernier is not None:
             requete = requete.start_after(dernier)
-        page = list(requete.stream())
+        page = lire_page(requete)
         messages += [d.to_dict() or {} for d in page]
         if len(page) < taille_page:
             return messages

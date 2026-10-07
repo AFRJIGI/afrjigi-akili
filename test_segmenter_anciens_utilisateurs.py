@@ -92,6 +92,19 @@ class SegmentationTests(unittest.TestCase):
         self.assertEqual(seg.consentement(*accords["225002"]), "sans_accord")
         self.assertEqual(Db.appels, 4)  # 2 lots x 2 collections
 
+    def test_nouvel_essai_apres_coupure(self):
+        class Requete:
+            appels = 0
+
+            def stream(self):
+                Requete.appels += 1
+                if Requete.appels < 3:
+                    raise AttributeError("'_UnaryStreamMultiCallable' object has no attribute '_retry'")
+                return iter(["doc"])
+
+        self.assertEqual(seg.lire_page(Requete(), attente=lambda s: None), ["doc"])
+        self.assertEqual(Requete.appels, 3)
+
     def test_rapport(self):
         lignes = [{"segment": "habitues", "consentement": "relancable", "matiere": "MATHS", "type_examen": "BAC_GENERAL"},
                   {"segment": "habitues", "consentement": "sans_accord", "matiere": "PC", "type_examen": "BAC_GENERAL"},
