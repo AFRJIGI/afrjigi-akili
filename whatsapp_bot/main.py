@@ -897,7 +897,9 @@ def is_other_or_concours(message):
     msg = normalize_for_match(message)
     return any(has_expr(msg, x) for x in [
         "CONCOURS", "INFIRMIER", "INFIRMIERE", "LICENCE", "UNIVERSITE",
-        "MEDECINE", "SUPERIEUR", "BTS"
+        "MEDECINE", "SUPERIEUR", "BTS",
+        # Controle qualite du 7 oct. : « L1 » partait chez Akili, qui inventait un exercice.
+        "L1", "L2", "L3", "MASTER", "FAC", "FACULTE",
     ])
 
 
@@ -1845,6 +1847,8 @@ def reposer_si_choix_attendu(phone, profile, text):
     Une vraie question (longue) continue son chemin habituel."""
     if profile.get("onboarding_step") not in ETAPES_A_REPOSER:
         return False
+    if is_other_or_concours(text) and not is_profile_ready(profile):
+        return False  # « j'suis en licence 1 » : message hors champ, pas « je n'ai pas compris ton choix »
     nb_mots = len(normalize_for_match(text).split())
     if profile.get("onboarding_step") == "exam" and not re.fullmatch(r"[A-Za-z]", (text or "").strip()):
         return False
@@ -1887,6 +1891,47 @@ def reposer_question_onboarding(phone, profile):
 
 
 MESSAGE_REPRISE_INSCRIPTION = "Bonjour ! On continue ton inscription là où tu t'es arrêté."
+ETAPES_DU_MENU = {"menu_choice", "matiere", "mode"}
+
+
+def profil_deja_complet(profile):
+    """Eleve deja inscrit : niveau, serie, matiere (proposee a ce niveau) et mode connus."""
+    profile = profile or {}
+    return bool(
+        profile.get("onboarding_completed_at")
+        and profile.get("type_examen")
+        and profile.get("serie") not in {"TOUTES", "", None}
+        and profile.get("mode")
+        and profile.get("matiere")
+        and matiere_proposee(profile, profile.get("matiere"))
+    )
+
+
+def abandonner_choix_en_attente(phone, profile, text):
+    """Eleve deja inscrit qui a ouvert le menu (ou la liste des matieres) puis continue son exercice sans
+    rien choisir : on referme la liste et il garde son profil. Vrai si la liste a ete refermee.
+    Controle qualite du 7 oct. : la liste restait ouverte ; « je veux plus faire de maths » relancait toute
+    l'inscription (BAC A2 -> BEPC) et un « a » d'exercice pouvait etre pris pour un choix de la liste."""
+    step = profile.get("onboarding_step")
+    if step not in ETAPES_DU_MENU or not profil_deja_complet(profile) or is_multiple_choice_answer(text):
+        return False
+    court = len(normalize_for_match(text).split()) <= 6
+    if choice_key(text) or (court and mot_cle_vers_lettre(step, text, profile)):
+        return False  # c'est bien un choix de la liste
+    profile["onboarding_step"] = ""
+    profile["profile_ready"] = True
+    profile["profile_locked"] = True
+    profile["matiere_confirmed"] = True
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    print(f"LISTE_REFERMEE etape={step}", flush=True)
+    return True
+
+
+def message_bon_retour(profile):
+    return (f"Bon retour sur Akili ! Ton profil : {resume_profil(profile)}.\n\n"
+            "Envoie ton exercice, une photo ou le chapitre à travailler. "
+            "Pour changer de matière ou de niveau, écris menu.")
 
 
 def needs_onboarding(phone, profile, text):
@@ -2716,6 +2761,9 @@ EXPRESSIONS_AU_REVOIR = [
     # Controle qualite du 6 oct. : « Je peux aller dormir maintenant » relancait un nouvel exercice.
     "ALLER DORMIR", "JE VAIS ME COUCHER", "JE VAIS ME REPOSER", "ON CONTINUE DEMAIN",
     "ON REPRENDRA DEMAIN", "ON REPREND DEMAIN", "JE CONTINUE DEMAIN", "ON VERRA LA SUITE DEMAIN",
+    # Controle qualite du 7 oct. : « stp j'ai sommeil » puis « laisse tomber » -> Akili relancait l'exercice.
+    "J AI SOMMEIL", "J AI TROP SOMMEIL", "JE SUIS FATIGUE", "JE SUIS FATIGUEE", "JE SUIS TROP FATIGUE",
+    "LAISSE TOMBER", "ON LAISSE TOMBER",
 ]
 # Ces fins de seance restent valables meme posees en question (« je peux aller dormir ? »).
 EXPRESSIONS_AU_REVOIR_QUESTION = ["ALLER DORMIR", "ME COUCHER", "ON CONTINUE DEMAIN", "ON REPREND DEMAIN"]
@@ -2944,7 +2992,9 @@ def consigne_matiere_choisie(matiere, serie=None, type_examen=None, classe=None)
         + (f" ({niveau})" if niveau else "")
         + ". Reste strictement dans cette matière : chaque exercice, explication ou exemple que tu proposes "
         "doit porter sur cette matière, jamais sur une autre. Si l'élève envoie un sujet d'une autre matière, "
-        "aide-le quand même sur ce sujet.\n"
+        "aide-le quand même sur ce sujet. Ne dis JAMAIS que tu ne peux aider que dans cette matière et ne te "
+        "présente pas comme « professeur de » cette seule matière. Si l'élève demande une autre matière, "
+        "réponds-lui d'écrire menu pour la choisir.\n"
     )
 
 
@@ -3613,6 +3663,20 @@ def cle_conversation_profil(phone, profile):
             f"{profile.get('matiere', 'MATHS')}:{profile.get('mode')}")
 
 
+def historique_en_cours(cle):
+    """Historique de la conversation `cle` : memoire de cette copie Cloud Run, sinon Firestore.
+    Controle qualite du 7 oct. : « ∆= 3 » en plein exercice recevait « Renvoie-moi la question »
+    parce que le message arrivait sur une copie qui n'avait pas l'historique en memoire."""
+    if not cle:
+        return []
+    items = conversations.get(cle)
+    if not items:
+        sauve = charger_historique_conv(cle)
+        if sauve:
+            items = conversations[cle] = list(sauve)
+    return items or []
+
+
 def get_recent_phone_context_text(phone, max_items=6, cle=None):
     """Retourne le contexte récent en mémoire, sinon le dernier contexte sauvegardé dans Firestore.
     Avec `cle`, seulement la conversation en cours : avant, les echanges d'une autre matiere du
@@ -3620,9 +3684,12 @@ def get_recent_phone_context_text(phone, max_items=6, cle=None):
     prefix = f"{phone}:"
     best_items = []
 
-    for key, items in conversations.items():
-        if key.startswith(prefix) and items and (cle is None or key == cle):
-            best_items.extend(items[-max_items:])
+    if cle is not None:
+        best_items = list(historique_en_cours(cle)[-max_items:])
+    else:
+        for key, items in conversations.items():
+            if key.startswith(prefix) and items:
+                best_items.extend(items[-max_items:])
 
     last_assistant = load_last_assistant_context(phone)
     if best_items:
@@ -3645,6 +3712,9 @@ def get_recent_phone_context_text(phone, max_items=6, cle=None):
 
 
 def short_answer_has_exercise_context(phone, cle=None):
+    # Akili a deja echange avec l'eleve dans cette matiere : la reponse courte s'y rattache.
+    if cle and any(m.get("role") == "assistant" and m.get("content") for m in historique_en_cours(cle)[-6:]):
+        return True
     ctx_brut = get_recent_phone_context_text(phone, cle=cle)
     ctx = normalize_for_match(ctx_brut)
     markers = [
@@ -4162,7 +4232,13 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     profile = mark_first_learning_request(phone, profile)
     user_profiles[phone] = profile
     """Envoie une vraie demande à Akili avec le profil final."""
-    type_examen = infer_type_examen(profile.get("serie", "TOUTES"), text)
+    # Profil verrouille : « BEPC » dans une publicite collee, ou « je suis en 3eme » dans une phrase, ne
+    # change plus le niveau en douce (controle qualite du 7 oct. : un eleve de Terminale D basculait en
+    # BEPC et recevait l'exercice d'une autre conversation).
+    if is_profile_locked(profile) and profile.get("type_examen"):
+        type_examen = profile["type_examen"]
+    else:
+        type_examen = infer_type_examen(profile.get("serie", "TOUTES"), text)
     mode = profile.get("mode") or infer_mode(text)
 
     profile["type_examen"] = type_examen
@@ -5480,6 +5556,9 @@ async def _receive_message_impl(request: Request):
             track_inbound(raison_enseignant, user_profiles.get(phone, profile))
             return {"status": "ok", "reason": raison_enseignant}
 
+        if abandonner_choix_en_attente(phone, profile, text):
+            onboarding_step = ""
+
         if normalize_for_match(text) in COMMANDES_ARRET_REVISION | COMMANDES_REPRISE_REVISION:
             arret = normalize_for_match(text) in COMMANDES_ARRET_REVISION
             profile["revisions_off"] = arret
@@ -5613,6 +5692,13 @@ async def _receive_message_impl(request: Request):
                 reposer_question_onboarding(phone, profile)
                 track_inbound("welcome_onboarding_resumed", profile)
                 return {"status": "ok", "reason": "onboarding_resumed"}
+            # Eleve deja inscrit : on garde son profil. Controle qualite du 7 oct. : le message prerempli des
+            # publicites (« Bonjour Akili META-STUDENT ») relancait toute l'inscription en pleine seance, et
+            # l'eleve tapait b, b, d sans lire (Terminale D -> A2, Mathematiques -> Francais).
+            if is_profile_ready(profile) and profile.get("user_type") != "ENSEIGNANT":
+                send_whatsapp(phone, message_bon_retour(profile), allow_audio=False)
+                track_inbound("welcome_back", profile)
+                return {"status": "ok", "reason": "welcome_back"}
             profile["onboarding_step"] = "exam"
             user_profiles[phone] = profile
             ask_exam(phone)
@@ -5684,17 +5770,23 @@ async def _receive_message_impl(request: Request):
 
         profile = user_profiles[phone] or {"serie": "TOUTES", "matiere": "MATHS"}
 
-        if is_teacher_request(text):
-            profile = update_profile_from_text(profile, text)
+        # Le profil se lit dans le message de l'eleve, jamais dans `text` quand il contient la consigne de
+        # reponse courte : celle-ci recopie les derniers messages d'Akili. Controle qualite du 7 oct. :
+        # « Je suis Akili, ton professeur d'Espagnol » recopie -> l'eleve passait ENSEIGNANT ; « 4452 État »
+        # -> philosophie ; « BEPC » -> niveau BEPC.
+        texte_eleve = original_text
+
+        if is_teacher_request(texte_eleve):
+            profile = update_profile_from_text(profile, texte_eleve)
             profile["user_type"] = "ENSEIGNANT"
 
-            detected_matiere = detect_matiere_from_text(text)
+            detected_matiere = detect_matiere_from_text(texte_eleve)
             if detected_matiere:
                 profile["matiere"] = detected_matiere
                 profile["matiere_confirmed"] = True
 
-            profile["type_examen"] = infer_type_examen(profile.get("serie", "TOUTES"), text)
-            profile["mode"] = profile.get("mode") or infer_mode(text)
+            profile["type_examen"] = infer_type_examen(profile.get("serie", "TOUTES"), texte_eleve)
+            profile["mode"] = profile.get("mode") or infer_mode(texte_eleve)
             profile["profile_ready"] = True
             profile["profile_locked"] = True
             profile["onboarding_step"] = ""
@@ -5783,10 +5875,19 @@ async def _receive_message_impl(request: Request):
             etape_en_cours = profile.get("onboarding_step")
             if etape_en_cours not in ETAPES_A_REPOSER | {"ville", "nom_ecole"}:
                 profile["onboarding_step"] = etape_en_cours = "exam"
+            # « Philosophie » ou « je veux plus faire de maths » n'est pas une question a garder : Akili la
+            # « reprenait » ensuite et repondait a cote (controle qualite du 7 oct.).
+            pas_une_question = not media_info and (
+                (len(normalize_for_match(original_text).split()) <= 3 and detect_matiere_from_text(original_text))
+                or est_demande_changement_matiere(original_text, profile.get("matiere")))
+            if pas_une_question:
+                for cle_attente in ("pending_question", "pending_question_display"):
+                    profile.pop(cle_attente, None)
             user_profiles[phone] = profile
             garde = "ta photo et ta question" if media_info else f"ta question : {original_text}"
             send_whatsapp(
                 phone,
+                "D'accord. Avant de commencer, réponds à cette question :" if pas_une_question else
                 "Avant de répondre, je dois connaître ton profil pour bien t'aider.\n\n"
                 f"J'ai gardé {garde}. Réponds d'abord à cette question :"
             )
@@ -5794,7 +5895,7 @@ async def _receive_message_impl(request: Request):
             track_inbound("forced_onboarding_pending_question", profile)
             return {"status": "ok"}
 
-        profile = update_profile_from_text(profile, text)
+        profile = update_profile_from_text(profile, texte_eleve)
         normalize_onboarding_state(profile)
         user_profiles[phone] = profile
 
@@ -5806,7 +5907,7 @@ async def _receive_message_impl(request: Request):
             track_inbound("unsupported_exam", profile)
             return {"status": "ok"}
 
-        if needs_onboarding(phone, profile, text):
+        if needs_onboarding(phone, profile, texte_eleve):
             if is_learning_request(text):
                 profile_waiting = user_profiles.get(phone, profile)
                 profile_waiting["pending_question"] = text
@@ -5820,12 +5921,31 @@ async def _receive_message_impl(request: Request):
                 track_inbound("needs_onboarding", user_profiles.get(phone, profile))
             return {"status": "ok"}
 
-        if is_profile_locked(profile) and not is_explicit_profile_change_request(text):
-            type_examen = profile.get("type_examen") or infer_type_examen(profile.get("serie", "TOUTES"), text)
-        else:
-            type_examen = infer_type_examen(profile.get("serie", "TOUTES"), text)
+        # Profil incomplet : jamais d'appel a Akili. Controle qualite du 7 oct. : « L1 » a l'etape du niveau,
+        # ou « CcBonjour Akili » sans profil, partaient chez Akili qui inventait un exercice de maths ;
+        # le « B » suivant etait ensuite pris pour « BAC Général ».
+        if profile.get("user_type") != "ENSEIGNANT" and media_file is None:
+            if (profile.get("onboarding_step") in ETAPES_A_REPOSER and profile.get("matiere_confirmed")
+                    and profile.get("serie") not in {"TOUTES", "", None}):
+                profile["onboarding_step"] = ""  # profil donne en toutes lettres (« Terminale D maths »)
+            if profile.get("onboarding_step") in ETAPES_A_REPOSER:
+                send_whatsapp(phone, MESSAGE_CHOIX_NON_COMPRIS)
+                reposer_question_onboarding(phone, profile)
+                track_inbound("onboarding_question_reposee", profile)
+                return {"status": "ok", "reason": "onboarding_question_reposee"}
+            if profile.get("serie") in {"TOUTES", "", None}:
+                profile["onboarding_step"] = "exam"
+                user_profiles[phone] = profile
+                ask_exam(phone)
+                track_inbound("onboarding_sans_profil", profile)
+                return {"status": "ok", "reason": "onboarding_sans_profil"}
 
-        mode = profile.get("mode") or infer_mode(text)
+        if is_profile_locked(profile) and not is_explicit_profile_change_request(texte_eleve):
+            type_examen = profile.get("type_examen") or infer_type_examen(profile.get("serie", "TOUTES"), texte_eleve)
+        else:
+            type_examen = infer_type_examen(profile.get("serie", "TOUTES"), texte_eleve)
+
+        mode = profile.get("mode") or infer_mode(texte_eleve)
         profile["type_examen"] = type_examen
         profile["mode"] = mode
         lock_profile_if_ready(profile)

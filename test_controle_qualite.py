@@ -46,6 +46,17 @@ class ControleQualiteTests(unittest.TestCase):
         self.assertEqual(cq.profil_de(liste), "BAC_TECHNIQUE, F1, CMI, etude")
         self.assertEqual(cq.masquer("2250100000001"), "...0001")
 
+    def test_changement_de_profil_visible(self):
+        liste = [msg("2250100000005", "inbound", "explique la digestion", 1),
+                 dict(msg("2250100000005", "outbound", "La digestion...", 2), type_examen="BAC_GENERAL", serie="D", matiere="SVT"),
+                 dict(msg("2250100000005", "inbound", "d", 3), type_examen="BAC_GENERAL", serie="D", matiere="FRANCAIS"),
+                 dict(msg("2250100000005", "outbound", "La dissertation...", 4), type_examen="BAC_GENERAL", serie="D", matiere="FRANCAIS")]
+        lignes = cq.transcription(liste).splitlines()
+        self.assertEqual(lignes[0], "--- profil a partir d'ici : BAC_TECHNIQUE, F1, CMI, etude ---")
+        self.assertEqual(sum(1 for l in lignes if l.startswith("--- profil")), 3)
+        self.assertEqual(lignes[-3], "--- profil a partir d'ici : BAC_GENERAL, D, FRANCAIS, etude ---")
+        self.assertIn("jamais d'apres le profil final", cq.GRILLE)
+
     def test_lecture_json(self):
         self.assertEqual(cq.lire_resultat('```json\n{"note": 4, "resume": "ok"}\n```')["note"], 4)
         self.assertEqual(cq.lire_resultat('Voici : {"note": 2, "problemes": []} fin')["note"], 2)

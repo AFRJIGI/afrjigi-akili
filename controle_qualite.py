@@ -39,7 +39,7 @@ DEBUTS_AUTOMATIQUES = (
 )
 
 GRILLE = """Tu es inspecteur pedagogique. Tu relis une conversation WhatsApp entre un eleve de Cote d'Ivoire
-et Akili, un tuteur IA (BEPC, BAC general, BAC technique). Profil de l'eleve : {profil}.
+et Akili, un tuteur IA (BEPC, BAC general, BAC technique). Profil de l'eleve a la fin : {profil}.
 
 Akili doit : rester dans la matiere choisie ; donner un contenu juste (aucune erreur de calcul, de fait,
 de definition ; ne jamais valider une mauvaise reponse) ; guider une etape a la fois et finir par une
@@ -58,6 +58,10 @@ Signale chaque probleme avec un de ces types :
 
 Important : juge uniquement Akili. Une erreur de l'eleve, corrigee par Akili, n'est pas un probleme.
 "[photo]", "[document]" et "[audio]" signalent un fichier reellement envoye par l'eleve.
+Les lignes « --- profil a partir d'ici : ... --- » donnent le niveau et la matiere choisis A CE MOMENT :
+juge « mauvaise_matiere » d'apres le profil en cours a ce moment-la, jamais d'apres le profil final. Un
+changement de matiere ou de niveau demande par l'eleve (menu, liste, « je veux faire francais ») n'est pas
+une erreur d'Akili. « Bonjour Akili META-STUDENT » est le message prerempli d'une publicite.
 "[liste] ..." est une liste de choix a toucher que l'eleve a bien recue sur WhatsApp.
 "[suite non recopiee pour la relecture]" veut dire que la transcription est raccourcie ici : ce n'est pas
 un message coupe chez l'eleve. Un vrai message coupe se termine par « Je m'arrete ici. Ecris suite... ».
@@ -134,9 +138,20 @@ def echantillon(conversations, n, graine):
     return phones[:n]
 
 
+def profil_du_message(m):
+    return ", ".join(str(m.get(k) or "") for k in ("type_examen", "serie", "matiere", "mode") if m.get(k))
+
+
 def transcription(liste):
-    lignes = []
+    """Transcription lisible. Une ligne « --- profil --- » a chaque changement de matiere ou de niveau :
+    sans elle, une seance de SVT suivie d'un passage aux maths etait jugee « mauvaise matiere » d'apres le
+    profil final (controle qualite du 7 oct.)."""
+    lignes, profil_affiche = [], None
     for m in liste[-MAX_MESSAGES:]:
+        profil = profil_du_message(m)
+        if profil and profil != profil_affiche:
+            lignes.append(f"--- profil a partir d'ici : {profil} ---")
+            profil_affiche = profil
         qui = "ELEVE" if m.get("direction") == "inbound" else "AKILI"
         texte = re.sub(r"\s+", " ", str(m.get("text") or ""))
         if len(texte) > LONGUEUR_LUE:
@@ -209,7 +224,9 @@ def main():
     messages = lire_messages(db, debut)
     conversations = regrouper(messages)
     jour = maintenant.strftime("%Y-%m-%d")
-    choisis = echantillon(conversations, args.n, graine=jour)
+    # Heure dans le nom : deux controles le meme jour (UTC) ne s'ecrasent plus (7 oct.).
+    etiquette = maintenant.strftime("%Y-%m-%d_%Hh%M")
+    choisis = echantillon(conversations, args.n, graine=etiquette)
     print(f"{len(messages)} messages, {len(conversations)} conversations de travail, {len(choisis)} relues.")
 
     vertexai.init(project=PROJECT_ID, location=LOCATION)
@@ -232,7 +249,7 @@ def main():
         resultats.append(resultat)
         print(f"  {masquer(phone)} : {resultat.get('note')}/5, {len(resultat['problemes'])} probleme(s)")
         try:
-            ident = hashlib.sha256(f"{jour}:{phone}".encode()).hexdigest()[:24]
+            ident = hashlib.sha256(f"{etiquette}:{phone}".encode()).hexdigest()[:24]
             db.collection("controle_qualite").document(ident).set(dict(resultat, phone=phone, cree_le=maintenant.isoformat()))
         except Exception as exc:
             print(f"  (resultat non sauvegarde : {exc!r})")
@@ -240,9 +257,10 @@ def main():
     texte = rapport(resultats, jour)
     dossier = Path.home() / "controle_qualite"
     dossier.mkdir(exist_ok=True)
-    (dossier / f"{jour}.md").write_text(texte, encoding="utf-8")
+    fichier = dossier / f"{etiquette}.md"
+    fichier.write_text(texte, encoding="utf-8")
     print("\n" + texte)
-    print(f"\nRapport ecrit dans {dossier / (jour + '.md')}")
+    print(f"\nRapport ecrit dans {fichier}")
 
 
 if __name__ == "__main__":
