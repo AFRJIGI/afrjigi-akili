@@ -866,8 +866,8 @@ def download_whatsapp_media(media_id, filename="whatsapp_media", fallback_mime="
         return None
 
 
-def detect_matiere_from_text(message, mots_cles_programme=True):
-    """Matiere citee dans le message. Les mots-cles du programme de philosophie (ETAT, SOCIETE,
+def detect_matiere_from_text(message, mots_cles_programme=True, tous=False):
+    """Matiere citee dans le message (la premiere, voir matieres_citees). Les mots-cles du programme de philosophie (ETAT, SOCIETE,
     TRAVAIL, DROIT, TECHNIQUE...) ne servent que si l'eleve n'a pas encore choisi de matiere :
     sinon « Debit 4452 Etat » ou « la societe a un capital » faisait passer un eleve de
     comptabilite en philosophie (test du 6 oct.)."""
@@ -887,10 +887,13 @@ def detect_matiere_from_text(message, mots_cles_programme=True):
         ("DROIT", ["DROIT"]),
         ("ETUDE-CAS", ["ETUDE DE CAS", "ETUDE CAS"]),
     ]
-    for value, patterns in matiere_patterns:
-        if any(has_expr(msg, pat) for pat in patterns):
-            return value
-    return None
+    citees = [value for value, patterns in matiere_patterns if any(has_expr(msg, pat) for pat in patterns)]
+    return citees if tous else (citees[0] if citees else None)
+
+
+def matieres_citees(message, mots_cles_programme=False):
+    """Toutes les matieres citees dans le message, dans l'ordre de la liste."""
+    return detect_matiere_from_text(message, mots_cles_programme=mots_cles_programme, tous=True)
 
 
 def is_other_or_concours(message):
@@ -1525,6 +1528,57 @@ def ouvrir_choix_matiere(phone, profile):
         ask_matiere(phone, profile.get("serie", "TOUTES"))
 
 
+REFUS_DE_MATIERE = r"(?<![A-Z0-9])(?:VEUX PLUS|VEUT PLUS|NE VEUX|PAS DE|PAS LA|PAS LES|MARRE|ASSEZ DE|SAUF)(?![A-Z0-9])"
+
+
+def matiere_demandee(profile, text):
+    """Matiere a prendre tout de suite quand l'eleve la nomme (« je veux un sujet en philo… ») : une seule
+    matiere citee, autre que la sienne, proposee a son niveau, et pas un refus (« je veux plus de svt »).
+    Sinon None et la liste des matieres s'ouvre (diagnostic …9171, 8 oct. : la liste ouverte avait ete
+    refermee par un « ?? » et l'eleve etait reste en maths)."""
+    if profile.get("type_examen") == "BAC_TECHNIQUE":
+        return None  # les codes des matieres techniques ne correspondent pas aux noms cites
+    citees = matieres_citees(text)
+    if len(citees) != 1 or re.search(REFUS_DE_MATIERE, normalize_for_match(text)):
+        return None
+    citee, actuelle = citees[0], (profile.get("matiere") or "").upper()
+    if actuelle == citee or actuelle.startswith(citee + "_") or not matiere_proposee(profile, citee):
+        return None
+    return citee
+
+
+DEMANDES_DANS_LE_MESSAGE = ["SUJET", "EXPLIQUE", "EXPLIQUER", "CORRIGE", "CORRIGER", "AIDE", "AIDER", "DONNE",
+                            "PROPOSE", "COMMENT", "POURQUOI", "QU EST CE", "INTRODUCTION", "DISSERTATION",
+                            "COMMENTAIRE", "RESUME", "DEFINITION", "REVISER", "APPRENDRE", "COMPRENDRE"]
+
+
+def contient_une_demande(text):
+    """« Je veux un sujet en philo pour mon devoir » contient une demande ; « je vais traiter mon exercice
+    d'histoire » annonce seulement l'exercice, qu'Akili doit attendre."""
+    msg = normalize_for_match(text)
+    if not is_learning_request(text):
+        return False
+    return "?" in (text or "") or len(msg.split()) >= 14 or any(has_expr(msg, m) for m in DEMANDES_DANS_LE_MESSAGE)
+
+
+def passer_a_la_matiere(phone, profile, matiere, text):
+    """Change de matiere sans passer par la liste. Si le message contient deja la demande
+    (« un sujet de philo pour mon devoir »), Akili y repond tout de suite."""
+    profile["matiere"] = matiere
+    profile["matiere_confirmed"] = True
+    profile.pop("pending_question", None)
+    question = contient_une_demande(text)
+    profile = terminer_inscription(phone, profile, deja_inscrit=True, silencieux=question)
+    profile.pop("premier_exercice_a_proposer", None)
+    if question:
+        send_whatsapp(phone, f"D'accord, on passe en {libelle_matiere(matiere)}.", allow_audio=False)
+        profile = mark_profile_ready_if_complete(profile)
+        user_profiles[phone] = profile
+        answer_learning_request(phone, profile, text)
+    print(f"MATIERE_CHANGEE_DIRECTEMENT {matiere} question={question}", flush=True)
+    return profile
+
+
 def ask_mode(phone):
     envoyer_choix(phone, "Tu veux travailler comment ?", [
         ("a", "Mode Étude", "Akili t'explique pas à pas"),
@@ -1629,7 +1683,7 @@ def repartir_a_zero_apres_menu(phone, profile):
         print(f"Erreur effacer contexte apres menu: {repr(e)}", flush=True)
 
 
-def terminer_inscription(phone, profile, deja_inscrit=False):
+def terminer_inscription(phone, profile, deja_inscrit=False, silencieux=False):
     """Fin de l'inscription des la matiere choisie : mode etude par defaut, la ville et
     l'ecole sont demandees plus tard (apres la premiere seance), sans bloquer l'eleve."""
     profile["mode"] = profile.get("mode") or "etude"
@@ -1642,6 +1696,8 @@ def terminer_inscription(phone, profile, deja_inscrit=False):
         profile["premier_exercice_a_proposer"] = True  # envoye par le webhook, juste apres ce message
     user_profiles[phone] = profile
     sauver_etat_whatsapp(phone, profile)
+    if silencieux:
+        return profile
     if deja_inscrit:
         send_whatsapp(phone, f"C'est noté : {resume_profil(profile)}.\n\n"
                              "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler.")
@@ -2009,7 +2065,13 @@ def profil_deja_complet(profile):
     )
 
 
-def abandonner_choix_en_attente(phone, profile, text):
+# « Laisse ça » quand la liste est ouverte : l'eleve garde sa matiere (diagnostic …9171, 8 oct.).
+ANNULATIONS_LISTE = {"LAISSE", "LAISSE CA", "LAISSE CELA", "ANNULER", "ANNULE", "ANNULE CA", "NON", "NON MERCI",
+                     "RETOUR", "CONTINUE", "CONTINUER", "ON CONTINUE", "CONTINUONS", "PAS DE CHANGEMENT",
+                     "JE RESTE", "ON RESTE", "RESTE"}
+
+
+def abandonner_choix_en_attente(phone, profile, text, avec_media=False):
     """Eleve deja inscrit qui a ouvert le menu (ou la liste des matieres) puis continue son exercice sans
     rien choisir : on referme la liste et il garde son profil. Vrai si la liste a ete refermee.
     Controle qualite du 7 oct. : la liste restait ouverte ; « je veux plus faire de maths » relancait toute
@@ -2017,9 +2079,14 @@ def abandonner_choix_en_attente(phone, profile, text):
     step = profile.get("onboarding_step")
     if step not in ETAPES_DU_MENU or not profil_deja_complet(profile) or is_multiple_choice_answer(text):
         return False
-    court = len(normalize_for_match(text).split()) <= 6
-    if choice_key(text) or (court and mot_cle_vers_lettre(step, text, profile)):
+    nb_mots = len(normalize_for_match(text).split())
+    if choice_key(text) or (nb_mots <= 6 and mot_cle_vers_lettre(step, text, profile)):
         return False  # c'est bien un choix de la liste
+    annulation = normalize_for_match(text) in ANNULATIONS_LISTE
+    # « ?? » ou « ok » envoye pendant que le bot tarde (diagnostic …9171, 8 oct.) : ce n'est pas un exercice.
+    # La liste reste ouverte et elle est reposee ; avant, l'eleve repartait dans son ancienne matiere.
+    if not (annulation or avec_media or nb_mots > 3 or is_learning_request(text)):
+        return False
     profile["onboarding_step"] = ""
     profile["profile_ready"] = True
     profile["profile_locked"] = True
@@ -2027,7 +2094,7 @@ def abandonner_choix_en_attente(phone, profile, text):
     user_profiles[phone] = profile
     sauver_etat_whatsapp(phone, profile)
     print(f"LISTE_REFERMEE etape={step}", flush=True)
-    return True
+    return "annulee" if annulation else True
 
 
 def message_bon_retour(profile):
@@ -5694,8 +5761,14 @@ async def _receive_message_impl(request: Request):
             track_inbound(raison_enseignant, user_profiles.get(phone, profile))
             return {"status": "ok", "reason": raison_enseignant}
 
-        if abandonner_choix_en_attente(phone, profile, text):
+        liste_refermee = abandonner_choix_en_attente(phone, profile, text, avec_media=media_file is not None)
+        if liste_refermee:
             onboarding_step = ""
+        if liste_refermee == "annulee":
+            send_whatsapp(phone, f"D'accord, on ne change rien : {resume_profil(profile)}.\n\n"
+                                 "Continue ton exercice ou envoie une nouvelle question.", allow_audio=False)
+            track_inbound("choix_annule", profile)
+            return {"status": "ok", "reason": "choix_annule"}
 
         if normalize_for_match(text) in COMMANDES_ARRET_REVISION | COMMANDES_REPRISE_REVISION:
             arret = normalize_for_match(text) in COMMANDES_ARRET_REVISION
@@ -5769,6 +5842,11 @@ async def _receive_message_impl(request: Request):
         if (not onboarding_step and is_profile_ready(profile) and media_file is None
                 and not espace_enseignant_actif(profile)
                 and est_demande_changement_matiere(text, profile.get("matiere"))):
+            nouvelle = matiere_demandee(profile, original_text)
+            if nouvelle:
+                passer_a_la_matiere(phone, profile, nouvelle, original_text)
+                track_inbound("matiere_changee_directement", user_profiles.get(phone, profile))
+                return {"status": "ok", "reason": "changement_matiere_direct"}
             send_whatsapp(phone, "D'accord, on change de matière.", allow_audio=False)
             ouvrir_choix_matiere(phone, profile)
             track_inbound("matiere_change_requested_free_text", profile)
