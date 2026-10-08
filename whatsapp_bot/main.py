@@ -19,8 +19,10 @@ from template_replies import retention_template_text
 import pedagogical_consent as pedagogical
 import espace_enseignant as prof
 import notation
+import mini_test
 from marketing_consent import (
     OPTED_IN,
+    consent_document_id,
     claim_marketing_consent_prompt,
     detect_marketing_consent_command,
     mark_marketing_consent_prompt_delivery,
@@ -33,6 +35,7 @@ WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID")
 VERIFY_TOKEN = "afrjigi2026"
 AKILI_API_URL = "https://akili-api-598190730734.us-central1.run.app/question"
+AKILI_MINI_TEST_URL = os.environ.get("AKILI_MINI_TEST_URL", AKILI_API_URL.rsplit("/", 1)[0] + "/mini-test")
 TRANSCRIBE_URL = "https://akili-api-598190730734.us-central1.run.app/transcribe"
 
 conversations = defaultdict(list)
@@ -3368,6 +3371,129 @@ def send_whatsapp_boutons(to, corps, boutons):
         return False
 
 
+# ─── Mini-test de progression (voir mini_test.py) ───
+
+def mini_test_eligible(profile):
+    profile = profile or {}
+    return (is_profile_ready(profile) and profile.get("user_type") != "ENSEIGNANT"
+            and not est_enseignant_verifie(profile) and not espace_enseignant_actif(profile))
+
+
+def mini_test_apres_reponse(phone, profile, session):
+    """Apres une reponse d'Akili : compte les jours d'activite et propose le test au bon moment."""
+    try:
+        if not mini_test_eligible(profile):
+            return
+        change = mini_test.noter_jour_actif(profile, profile.get("matiere"))
+        phase = mini_test.phase_a_proposer(profile, int((session or {}).get("nb_echanges", 0)))
+        if phase:
+            texte = mini_test.proposer(profile, phase)
+            if send_whatsapp_boutons(phone, texte, mini_test.BOUTONS_PROPOSITION):
+                save_whatsapp_event(phone, "outbound", "[mini_test] " + texte, profile,
+                                    extra={"processing_stage": f"mini_test_propose_{phase}"})
+                print(f"MINI_TEST propose phase={phase} matiere={profile.get('matiere')}", flush=True)
+            else:
+                profile.pop("mini_test", None)
+            change = True
+        if change:
+            user_profiles[phone] = profile
+            sauver_etat_whatsapp(phone, profile)
+    except Exception as e:
+        print(f"Erreur mini_test_apres_reponse: {repr(e)}", flush=True)
+
+
+def generer_mini_test(phone, profile, test):
+    """Demande les 3 questions a l'API ; None si la reponse n'est pas exploitable."""
+    cycle = (profile.get("mini_tests") or {}).get(test["matiere"]) or {}
+    fin = test["phase"] == "fin"
+    historique = historique_en_cours(cle_conversation_profil(phone, profile)) or []
+    try:
+        res = requests.post(AKILI_MINI_TEST_URL, data={
+            "historique": json.dumps(list(historique)[-12:], ensure_ascii=False),
+            "matiere": libelle_matiere(test["matiere"]),
+            "serie": profile.get("serie") or "",
+            "type_examen": profile.get("type_examen") or "",
+            "classe": profile.get("classe") or "",
+            "phase": test["phase"],
+            "chapitre": cycle.get("chapitre", "") if fin else "",
+            "questions_precedentes": json.dumps(cycle.get("questions_debut", []) if fin else [], ensure_ascii=False),
+        }, timeout=60)
+        return mini_test.questions_valides(res.json())
+    except Exception as e:
+        print(f"MINI_TEST generation echec: {repr(e)}", flush=True)
+        return None
+
+
+def envoyer_question_mini_test(phone, profile):
+    texte = clean_whatsapp_response(mini_test.texte_question(profile["mini_test"]))
+    if not send_whatsapp_boutons(phone, texte, mini_test.BOUTONS_REPONSE):
+        send_whatsapp(phone, texte + "\n\nRéponds par a, b ou c.", allow_audio=False)
+    save_whatsapp_event(phone, "outbound", "[mini_test] " + texte, profile,
+                        extra={"processing_stage": "mini_test_question"})
+
+
+def enregistrer_resultat_mini_test(phone, profile, resultat):
+    """Resultat sous un identifiant pseudonyme (le meme hachage que les consentements), jamais le numero."""
+    resultat.update({"eleve": consent_document_id(phone), "type_examen": profile.get("type_examen"),
+                     "serie": profile.get("serie"), "classe": profile.get("classe") or "",
+                     "mode": profile.get("mode") or "etude"})
+    try:
+        feedback_db.collection(mini_test.COLLECTION).add(resultat)
+    except Exception as e:
+        print(f"Erreur enregistrer_resultat_mini_test: {repr(e)}", flush=True)
+
+
+def traiter_mini_test(phone, profile, entree):
+    """Bouton du mini-test ou lettre tapee pendant le test. Vrai si le message a ete traite."""
+    test = profile.get("mini_test")
+
+    def sauver():
+        user_profiles[phone] = profile
+        sauver_etat_whatsapp(phone, profile)
+
+    if entree == mini_test.PLUS_TARD:
+        profile.pop("mini_test", None)
+        sauver()
+        send_whatsapp(phone, mini_test.PLUS_TARD_OK, allow_audio=False)
+        return True
+    if entree == mini_test.OUI:
+        if not test or test.get("etat") != "propose":
+            send_whatsapp(phone, mini_test.INDISPONIBLE, allow_audio=False)
+            return True
+        send_whatsapp(phone, mini_test.PREPARATION, allow_audio=False)
+        donnees = generer_mini_test(phone, profile, test)
+        if not donnees:
+            profile.pop("mini_test", None)
+            sauver()
+            send_whatsapp(phone, mini_test.ECHEC, allow_audio=False)
+            return True
+        mini_test.demarrer(profile, donnees)
+        sauver()
+        envoyer_question_mini_test(phone, profile)
+        print(f"MINI_TEST demarre phase={test['phase']} chapitre={donnees['chapitre']!r}", flush=True)
+        return True
+    lettre = mini_test.lettre_de(entree)
+    if not test or test.get("etat") != "en_cours" or not lettre:
+        if str(entree).startswith("minitest_"):
+            send_whatsapp(phone, mini_test.INDISPONIBLE, allow_audio=False)
+            return True
+        return False
+    if not mini_test.enregistrer_reponse(test, lettre):
+        sauver()
+        envoyer_question_mini_test(phone, profile)
+        return True
+    message, resultat = mini_test.terminer(profile)
+    sauver()
+    send_whatsapp(phone, message, allow_audio=False)
+    enregistrer_resultat_mini_test(phone, profile, resultat)
+    print(f"MINI_TEST termine phase={resultat['phase']} score={resultat['score']}/{resultat['total']}", flush=True)
+    return True
+
+
+REPONSES_OUI_MINI_TEST = {"OUI", "OK", "OKAY", "D ACCORD", "DACCORD", "ON Y VA", "OUI ON Y VA", "VAS Y", "GO", "OUI OUI"}
+REPONSES_NON_MINI_TEST = {"NON", "PLUS TARD", "PAS MAINTENANT", "NON MERCI", "APRES", "TOUT A L HEURE"}
+
+
 def demander_avis_seance(phone):
     if not send_whatsapp_boutons(phone, QUESTION_AVIS, BOUTONS_AVIS):
         # Sans boutons (echec d'envoi), on garde l'ancienne ligne pour ne pas perdre l'avis.
@@ -4681,10 +4807,12 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         sauver_etat_whatsapp(phone, profile)
         print(f"ENONCE retenu (exercice propose par Akili, {len(exercice_akili)} car.)", flush=True)
     sauver_historique_conv(conversation_key, conversations[conversation_key])
-    journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve, recu)
+    session = journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve, recu)
 
     send_whatsapp(phone, reponse, limit=send_limit, add_continuation=continuation)
     send_vector_formula_if_needed(phone, text + "\n" + reponse)
+    if compter_activation:
+        mini_test_apres_reponse(phone, profile, session)
 
     print(f"WHATSAPP_AUDIO_REPLY reply_audio={reply_audio}", flush=True)
 
@@ -5706,6 +5834,10 @@ async def _receive_message_impl(request: Request):
             return {"status": "ok", "reason": "pedagogical_" + decision}
 
         if bouton_id:
+            if str(bouton_id).startswith("minitest_"):
+                profil_test = charger_etat_whatsapp(phone) or user_profiles.get(phone) or {}
+                traiter_mini_test(phone, profil_test, bouton_id)
+                return {"status": "ok", "reason": "mini_test"}
             if traiter_bouton_avis(phone, bouton_id):
                 return {"status": "ok", "reason": "avis_seance"}
             if traiter_bouton_mode(phone, bouton_id):
@@ -5834,6 +5966,26 @@ async def _receive_message_impl(request: Request):
         original_text = text
         command = text.strip().lower()
         onboarding_step = profile.get("onboarding_step")
+
+        test_en_cours = profile.get("mini_test")
+        if test_en_cours:
+            reponse_test = None
+            if media_file is None and test_en_cours.get("etat") == "en_cours" and mini_test.lettre_de(text):
+                reponse_test = text
+            elif media_file is None and test_en_cours.get("etat") == "propose":
+                if normalize_for_match(text) in REPONSES_OUI_MINI_TEST:
+                    reponse_test = mini_test.OUI
+                elif normalize_for_match(text) in REPONSES_NON_MINI_TEST:
+                    reponse_test = mini_test.PLUS_TARD
+            if reponse_test and traiter_mini_test(phone, profile, reponse_test):
+                track_inbound("mini_test", user_profiles.get(phone, profile))
+                return {"status": "ok", "reason": "mini_test"}
+            # L'eleve passe a autre chose : le test (ou la proposition) est abandonne.
+            profile.pop("mini_test", None)
+            user_profiles[phone] = profile
+            sauver_etat_whatsapp(phone, profile)
+            if test_en_cours.get("etat") == "en_cours":
+                send_whatsapp(phone, mini_test.INTERROMPU, allow_audio=False)
         print(f"SHORT_DEBUG text={text} is_short={is_short_exercise_answer(text)} is_contextual={is_contextual_exercise_answer(text)} onboarding={onboarding_step}", flush=True)
         raison_enseignant = traiter_espace_enseignant(phone, profile, text) if media_file is None else None
         if raison_enseignant:

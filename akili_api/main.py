@@ -1794,6 +1794,82 @@ async def revision_lendemain(
         return {"error": f"Erreur lors de la revision : {str(e)}"}
 
 
+MINI_TEST_CONSIGNES = """Prepare un mini-test de progression : exactement 3 questions a choix multiple (a, b, c), une seule
+bonne reponse chacune. Il sert a mesurer ce que l'eleve sait sur UN chapitre du programme officiel ivoirien.
+
+REGLES :
+- Niveau : celui de l'eleve, ni plus facile ni plus difficile que les exercices habituels de ce chapitre.
+- Questions courtes (moins de 200 caracteres), choix courts (moins de 80 caracteres), sans indice.
+- Ne reprends pas l'exercice deja traite dans l'historique : des questions nouvelles sur le meme chapitre.
+- Repartis les bonnes reponses entre a, b et c. Verifie chaque bonne reponse avant de la donner.
+- "explication" : une phrase courte qui justifie la bonne reponse (moins de 150 caracteres).
+- Aucune syntaxe LaTeX : formules en texte simple (x^2, 1/2, racine carree de x). Tutoiement.
+- Reponds UNIQUEMENT par un objet JSON, sans texte autour, de la forme :
+{"chapitre": "nom court du chapitre", "questions": [{"question": "...", "a": "...", "b": "...", "c": "...", "bonne": "b", "explication": "..."}]}"""
+
+
+def lire_json_modele(texte):
+    """Objet JSON renvoye par le modele, avec ou sans bloc ```json ; None si illisible."""
+    texte = (texte or "").strip()
+    if texte.startswith("```"):
+        texte = texte.strip("`")
+        texte = texte[4:] if texte.lower().startswith("json") else texte
+    debut, fin = texte.find("{"), texte.rfind("}")
+    if debut < 0 or fin <= debut:
+        return None
+    try:
+        return json.loads(texte[debut:fin + 1])
+    except ValueError:
+        return None
+
+
+@app.post("/mini-test")
+async def mini_test(
+    historique: str = Form("[]"),
+    matiere: Optional[str] = Form(None),
+    serie: Optional[str] = Form(None),
+    type_examen: Optional[str] = Form(None),
+    classe: Optional[str] = Form(None),
+    phase: Optional[str] = Form("debut"),
+    chapitre: Optional[str] = Form(""),
+    questions_precedentes: Optional[str] = Form("[]"),
+):
+    """Mini-test de 3 questions : au debut d'un chapitre (d'apres la seance en cours) ou quelques jours
+    plus tard sur le meme chapitre, au meme niveau, pour mesurer la progression."""
+    try:
+        try:
+            messages = json.loads(historique or "[]")
+            precedentes = json.loads(questions_precedentes or "[]")
+        except ValueError:
+            messages, precedentes = [], []
+        lignes = [
+            f"{'Eleve' if m.get('role') == 'user' else 'Akili'}: {str(m.get('content', ''))[:800]}"
+            for m in messages[-12:] if isinstance(m, dict) and m.get("content")
+        ]
+        niveau = " ".join(x for x in [type_examen or "", serie or "", classe or ""] if x)
+        if phase == "fin" and chapitre:
+            objet = (f"CHAPITRE IMPOSE : {chapitre}. C'est le test de fin : meme chapitre et meme difficulte que "
+                     "le test de debut ci-dessous, mais des questions differentes.\nQUESTIONS DU TEST DE DEBUT :\n"
+                     + "\n".join(f"- {q}" for q in precedentes[:3]))
+        elif lignes:
+            objet = ("Le chapitre est celui que l'eleve travaille dans la seance ci-dessous.\nSEANCE EN COURS :\n"
+                     + "\n".join(lignes))
+        else:
+            return {"error": "Historique vide"}
+        prompt = (f"Tu es Akili, tuteur de l'eleve (matiere : {matiere or 'non precisee'}, niveau : {niveau}).\n\n"
+                  f"{MINI_TEST_CONSIGNES}\n\n{objet}")
+        donnees = lire_json_modele(generer_texte_gemini(prompt, "Mini-test"))
+        if not isinstance(donnees, dict) or len(donnees.get("questions") or []) != 3:
+            return {"error": "Mini-test illisible"}
+        if phase == "fin" and chapitre:
+            donnees["chapitre"] = chapitre
+        print(f"MINI_TEST matiere={matiere} phase={phase} chapitre={donnees.get('chapitre')!r}", flush=True)
+        return donnees
+    except Exception as e:
+        print(f"❌ Erreur mini-test ({type(e).__module__}.{type(e).__name__}) : {e}", flush=True)
+        return {"error": f"Erreur lors du mini-test : {str(e)}"}
+
+
 @app.get("/sante")
 def sante():
     """Verifie que Gemini repond (quota, facturation Google Cloud). Appele toutes les heures."""
