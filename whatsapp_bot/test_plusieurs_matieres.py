@@ -56,16 +56,12 @@ class WebhookTests(unittest.TestCase):
     def envoyer(self, texte, message_id):
         return asyncio.run(main.receive_message(FakeRequest(texte, message_id)))
 
-    def test_plusieurs_lettres_puis_une_seule(self):
-        resultat = self.envoyer("a,b,c,d,e,i", "wamid.multi1")
-        self.assertEqual(resultat.get("reason"), "multiple_subjects_requested")
-        self.assertIn("une matière à la fois", self.envoyes[-1])
-        self.assertIn("changer matière", self.envoyes[-1])
-        self.assertEqual(main.user_profiles[self.phone].get("onboarding_step"), "matiere")
-
-        self.envoyer("b", "wamid.multi1b")
+    def test_plusieurs_lettres_on_commence_par_la_premiere(self):
+        # Rapport des expressions du 8 oct. : « A et b », « A.b »… bloquaient l'eleve. On prend la premiere.
+        self.envoyer("a,b,c,d,e,i", "wamid.multi1")
+        self.assertEqual(self.envoyes[0], main.MESSAGE_PREMIERE_MATIERE)
         profil = main.user_profiles[self.phone]
-        self.assertEqual(profil.get("matiere"), "PC")
+        self.assertEqual(profil.get("matiere"), "MATHS")
         self.assertNotEqual(profil.get("onboarding_step"), "matiere")
 
     def test_je_veux_tout(self):

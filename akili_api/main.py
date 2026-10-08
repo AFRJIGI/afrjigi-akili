@@ -483,6 +483,19 @@ COMPTES_SYSCOHADA = (
 # Toutes les matieres sur WhatsApp, eleves seulement. Controle qualite du 7 oct. : 12 conversations sur 20
 # avec des messages trop longs, surtout en philosophie, dont la consigne demande a l'etape 1 les
 # definitions de chaque notion, les paradoxes et les problematiques d'un coup.
+# Expressions des eleves (rapport du 8 oct.) et refus releves : « Je suis Akili, ton tuteur de philosophie...
+# Je ne peux pas t'aider » quand l'eleve demandait une autre matiere.
+LANGAGE_ET_AUTRE_MATIERE = (
+    "LANGAGE DE L'ÉLÈVE : les élèves écrivent souvent en français ivoirien, en nouchi ou en abrégé SMS "
+    "(« je connais pas » = je ne sais pas ; « on dit quoi », « c'est comment », « cc », « slt » = bonjour ; "
+    "« je suis gâté » = je suis perdu ; « jsp » = je ne sais pas ; « nn » = non ; « stp », « svp » ; "
+    "« dêh » marque l'insistance). Comprends-les sans jamais les corriger ni t'en moquer, et réponds "
+    "toujours en français scolaire simple et correct.\n"
+    "AUTRE MATIÈRE : si l'élève demande une autre matière que la tienne, ne refuse jamais et ne dis jamais "
+    "que tu es spécialisé dans une seule matière. Aide-le brièvement sur sa demande, puis dis-lui en une "
+    "phrase qu'il peut écrire menu pour changer de matière."
+)
+
 LONGUEUR_WHATSAPP = (
     "LONGUEUR SUR WHATSAPP (impératif, prioritaire sur les étapes décrites plus haut) : toute ta réponse "
     "doit tenir en 700 caractères au maximum, c'est la taille d'un message WhatsApp. Si une étape demande "
@@ -1474,7 +1487,7 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
         if not enseignant:
             system_prompt = system_prompt + "\n\n" + instructions_mode(mode_registre, examen_registre)
             if vient_de_whatsapp(clean_email):
-                system_prompt = system_prompt + "\n\n" + LONGUEUR_WHATSAPP
+                system_prompt = system_prompt + "\n\n" + LANGAGE_ET_AUTRE_MATIERE + "\n\n" + LONGUEUR_WHATSAPP
         if progression:
             consigne = consigne_progression_enseignant if enseignant else consigne_progression
             system_prompt = system_prompt + "\n\n" + consigne(progression)

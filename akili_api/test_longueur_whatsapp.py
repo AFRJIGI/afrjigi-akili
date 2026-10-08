@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 SOURCE = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
-NOMS = {"LONGUEUR_WHATSAPP", "vient_de_whatsapp"}
+NOMS = {"LONGUEUR_WHATSAPP", "LANGAGE_ET_AUTRE_MATIERE", "vient_de_whatsapp"}
 ns = {"re": re}
 noeuds = [n for n in ast.parse(SOURCE).body
           if (isinstance(n, ast.FunctionDef) and n.name in NOMS)
@@ -25,6 +25,13 @@ class LongueurWhatsappTests(unittest.TestCase):
         # ajoutee pour les eleves seulement, apres les instructions de mode
         debut = SOURCE.index("if not enseignant:\n            system_prompt = system_prompt + \"\\n\\n\" + instructions_mode")
         self.assertIn("if vient_de_whatsapp(clean_email):", SOURCE[debut:debut + 400])
+
+    def test_langage_et_autre_matiere(self):
+        texte = ns["LANGAGE_ET_AUTRE_MATIERE"]
+        self.assertIn("nouchi", texte)
+        self.assertIn("français scolaire simple", texte)
+        self.assertIn("ne refuse jamais", texte)
+        self.assertIn("LANGAGE_ET_AUTRE_MATIERE + \"\\n\\n\" + LONGUEUR_WHATSAPP", SOURCE)
 
 
 if __name__ == "__main__":

@@ -1371,8 +1371,10 @@ OPTIONS_EXAM = [
 ]
 
 
-def ask_exam(phone):
-    envoyer_choix(phone, "Bienvenue sur Akili.\n\nQuel niveau prépares-tu ?", OPTIONS_EXAM)
+def ask_exam(phone, deja_inscrit=False):
+    # Un eleve deja inscrit qui change de niveau (menu, choix b) n'est pas « bienvenu » une seconde fois.
+    intro = "D'accord, changeons ton niveau." if deja_inscrit else "Bienvenue sur Akili."
+    envoyer_choix(phone, f"{intro}\n\nQuel niveau prépares-tu ?", OPTIONS_EXAM)
 
 
 def ask_serie_general(phone):
@@ -1865,7 +1867,7 @@ def handle_onboarding_choice(phone, profile, text):
             profile.pop("matiere_confirmed", None)
             user_profiles[phone] = profile
             sauver_etat_whatsapp(phone, profile)
-            ask_exam(phone)
+            ask_exam(phone, deja_inscrit=True)
             return True
         if key == "c":
             profile["onboarding_step"] = "mode"
@@ -1999,12 +2001,33 @@ ETAPES_A_REPOSER = {"exam", "serie_general", "serie_technique", "classe_techniqu
 MESSAGE_CHOIX_NON_COMPRIS = "Je n'ai pas compris ton choix. Touche ton choix dans la liste, ou réponds avec sa lettre."
 
 
+def precision_choix(profile, text):
+    """Reponse comprise mais incomplete (rapport des expressions du 8 oct.) : « Comptabilité » quand la serie
+    en a plusieurs, « Bac général » tape a la question de la serie. Message a envoyer avant la liste, ou None."""
+    step, msg = profile.get("onboarding_step"), normalize_for_match(text)
+    if (step == "matiere" and profile.get("type_examen") == "BAC_TECHNIQUE" and len(msg.split()) <= 4
+            and any(has_expr(msg, m) for m in ("COMPTA", "COMPTABILITE"))):
+        comptas = [lib for code, lib in matieres_technique(profile.get("serie")) if code.startswith("COMPTA")]
+        if len(comptas) > 1:
+            return f"Il y a {len(comptas)} comptabilités dans ta série. Choisis laquelle dans la liste :"
+    if step == "serie_general" and msg in {"BAC GENERAL", "BAC", "GENERAL", "LE BAC GENERAL"}:
+        return "C'est noté : BAC Général. Choisis maintenant ta série :"
+    if step in {"serie_technique", "classe_technique"} and msg in {"BAC TECHNIQUE", "TECHNIQUE", "LE BAC TECHNIQUE"}:
+        return "C'est noté : BAC Technique. Réponds maintenant à cette question :"
+    return None
+
+
 def reposer_si_choix_attendu(phone, profile, text):
     """Reponse qui ne correspond a aucun choix ("anglais" a la question du mode) :
     on repose la question au lieu de l'envoyer a Akili avec un profil incomplet.
     Une vraie question (longue) continue son chemin habituel."""
     if profile.get("onboarding_step") not in ETAPES_A_REPOSER:
         return False
+    precision = precision_choix(profile, text)
+    if precision:
+        send_whatsapp(phone, precision)
+        reposer_question_onboarding(phone, profile)
+        return True
     if is_other_or_concours(text) and not is_profile_ready(profile):
         return False  # « j'suis en licence 1 » : message hors champ, pas « je n'ai pas compris ton choix »
     nb_mots = len(normalize_for_match(text).split())
@@ -2021,7 +2044,7 @@ def reposer_question_onboarding(phone, profile):
     """Renvoie la question de l'etape en cours. Faux si l'etape n'a pas de question a reposer."""
     step = profile.get("onboarding_step")
     if step == "exam":
-        ask_exam(phone)
+        ask_exam(phone, deja_inscrit=bool(profile.get("onboarding_completed_at")))
     elif step == "ville":
         ask_ville(phone)
     elif step == "nom_ecole":
@@ -2095,6 +2118,23 @@ def abandonner_choix_en_attente(phone, profile, text, avec_media=False):
     sauver_etat_whatsapp(phone, profile)
     print(f"LISTE_REFERMEE etape={step}", flush=True)
     return "annulee" if annulation else True
+
+
+# Salutations des eleves (rapport des expressions du 8 oct.) : « Cc » recevait « Je n'ai pas compris ton choix ».
+SALUTATIONS = {"BONJOUR", "BONSOIR", "SALUT", "HELLO", "HI", "COUCOU", "CC", "SLT", "BJR", "BSR", "YO"}
+SALUTATIONS_EN_PHRASE = ["ON DIT QUOI", "C EST COMMENT", "CEST COMMENT", "COMMENT CA VA", "COMMENT TU VAS"]
+MOTS_D_ADRESSE = {"AKILI", "PROF", "MAITRE", "MONSIEUR", "MADAME", "MON", "AMI", "TOI", "TOUT", "LE", "MONDE"}
+
+
+def est_salutation(text):
+    """« Cc », « slt akili », « On dit quoi », « C'est comment mon ami » : une salutation, rien d'autre."""
+    msg = normalize_for_match(text)
+    if not msg or len(msg.split()) > 6:
+        return False
+    for phrase in SALUTATIONS_EN_PHRASE:
+        msg = re.sub(r"(?<![A-Z0-9])" + phrase + r"(?![A-Z0-9])", " BONJOUR ", msg)
+    mots = msg.split()
+    return any(m in SALUTATIONS for m in mots) and all(m in SALUTATIONS | MOTS_D_ADRESSE for m in mots)
 
 
 def message_bon_retour(profile):
@@ -2283,6 +2323,45 @@ def veut_plusieurs_matieres(text):
     lettres = {t for t in tokens if re.fullmatch(choix, t)}
     autres = [t for t in tokens if not re.fullmatch(choix, t) and t not in {"ET", "OU"}]
     return len(lettres) > 1 and not autres
+
+
+MESSAGE_PREMIERE_MATIERE = ("Je t'accompagne sur une matière à la fois : on commence par la première que tu as "
+                            "choisie. Pour passer à une autre ensuite, écris menu.")
+# Mots autour d'une lettre de choix : « D'accord a », « Non a d'abord », « a,b pour l'instant », « Ok je choisis a été b ».
+EXPRESSIONS_AUTOUR_DU_CHOIX = ["D ACCORD", "DACCORD", "POUR L INSTANT", "POUR LE MOMENT", "D ABORD", "JE CHOISIS",
+                               "JE CHOISI", "J AI CHOISI", "JE PRENDS", "JE PREND", "JE VEUX", "C EST", "LE CHOIX",
+                               "MON CHOIX", "L OPTION"]
+MOTS_AUTOUR_DU_CHOIX = {"OK", "OKAY", "OUI", "NON", "BON", "ALORS", "MOI", "ET", "OU", "PUIS", "ETE", "SECOND",
+                        "ENSUITE", "APRES", "MERCI", "AKILI", "LE", "LA", "LES", "STP", "SVP"}
+
+
+def extraire_choix(text):
+    """Lettres de choix ecrites dans une courte phrase, dans l'ordre (« D'accord a » -> ['a'],
+    « A.b » -> ['a', 'b']). None si la phrase contient autre chose qu'un choix."""
+    msg = normalize_for_match(text)
+    if not msg or len(msg.split()) > 8:
+        return None
+    for expr in EXPRESSIONS_AUTOUR_DU_CHOIX:
+        msg = re.sub(r"(?<![A-Z0-9])" + expr + r"(?![A-Z0-9])", " ", msg)
+    lettres = []
+    for mot in msg.split():
+        if mot in MOTS_AUTOUR_DU_CHOIX:
+            continue
+        lettre = choice_key(mot)
+        if not lettre:
+            return None
+        if lettre not in lettres:
+            lettres.append(lettre)
+    return lettres or None
+
+
+def lettres_matieres(profile):
+    """Lettres de la liste des matieres du niveau de l'eleve."""
+    if profile.get("type_examen") == "BAC_TECHNIQUE":
+        n = len(matieres_technique(profile.get("serie")))
+    else:
+        n = len(CODES_MATIERES_BEPC if est_college(profile.get("serie")) else CODES_MATIERES_GENERAL)
+    return set(LETTRES_CHOIX[:n])
 
 
 def is_multiple_choice_answer(text):
@@ -5901,7 +5980,8 @@ async def _receive_message_impl(request: Request):
             return {"status": "ok"}
 
         welcome_commands = {"bonjour", "bonsoir", "salut", "hello", "hi", "aide", "start"}
-        if command in welcome_commands or command in {f"{c} akili" for c in welcome_commands}:
+        if (command in welcome_commands or command in {f"{c} akili" for c in welcome_commands}
+                or (media_file is None and est_salutation(text))):
             profile = user_profiles[phone] or {"serie": "TOUTES", "matiere": "MATHS"}
             # Au milieu de l'inscription, "bonjour" ne fait pas tout recommencer :
             # on repose la question en cours ("reset" reste la commande pour repartir de zero).
@@ -6030,6 +6110,19 @@ async def _receive_message_impl(request: Request):
             track_inbound("orphan_choice_restarted_onboarding", profile)
             return {"status": "ok"}
 
+        etape_liste = profile.get("onboarding_step")
+        choix_ecrits = (extraire_choix(text) if etape_liste in ETAPES_A_REPOSER and media_file is None
+                        and not choice_key(text) else None)
+        if choix_ecrits and etape_liste == "matiere":
+            valides = [c for c in choix_ecrits if c in lettres_matieres(profile)]
+            if len(valides) > 1:
+                send_whatsapp(phone, MESSAGE_PREMIERE_MATIERE, allow_audio=False)
+            choix_ecrits = valides[:1] or choix_ecrits
+        if choix_ecrits and len(choix_ecrits) == 1:
+            print(f"CHOIX_EXTRAIT {text!r} -> {choix_ecrits[0]}", flush=True)
+            text = choix_ecrits[0]
+            command = text
+
         if profile.get("onboarding_step") == "matiere" and veut_plusieurs_matieres(text):
             send_whatsapp(phone, MESSAGE_UNE_MATIERE_A_LA_FOIS)
             track_inbound("multiple_subjects_requested", profile)
@@ -6037,6 +6130,7 @@ async def _receive_message_impl(request: Request):
 
         if profile.get("onboarding_step") and is_multiple_choice_answer(text):
             send_whatsapp(phone, "Choisis une seule option pour continuer. Exemple : a")
+            reposer_question_onboarding(phone, profile)  # avant, la liste n'etait pas renvoyee
             track_inbound("multiple_choice_rejected", profile)
             return {"status": "ok"}
 
