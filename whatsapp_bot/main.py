@@ -1532,6 +1532,24 @@ def ask_mode(phone):
     ])
 
 
+# Activation (oct. 2026) : environ 870 eleves s'etaient inscrits sans jamais poser de question. A la fin
+# d'une premiere inscription, Akili propose tout de suite un exercice court : l'eleve n'a plus qu'a repondre.
+DEMANDE_PREMIER_EXERCICE = (
+    "Propose-moi un premier exercice court pour commencer, sur la leçon du programme en cours ce mois-ci, "
+    "à mon niveau. Pose une seule question, de préférence à choix (a, b, c), pour que je puisse répondre "
+    "tout de suite. Ne fais pas de présentation."
+)
+
+
+def message_profil_pret_avec_exercice(profile):
+    return (
+        f"Profil prêt : {resume_profil(profile)}.\n\n"
+        "Tu es en mode étude : Akili t'explique pas à pas. Pour commencer, voici un premier exercice. "
+        "Tu peux aussi m'envoyer ton propre exercice ou une photo à tout moment.\n\n"
+        "Écris menu pour changer de matière, de niveau ou de mode."
+    )
+
+
 def message_profil_pret(profile):
     return (
         f"Profil prêt : {resume_profil(profile)}.\n\n"
@@ -1571,13 +1589,20 @@ def terminer_inscription(phone, profile, deja_inscrit=False):
     """Fin de l'inscription des la matiere choisie : mode etude par defaut, la ville et
     l'ecole sont demandees plus tard (apres la premiere seance), sans bloquer l'eleve."""
     profile["mode"] = profile.get("mode") or "etude"
+    premiere_fois = not profile.get("onboarding_completed_at") and not profile.get("first_learning_request_at")
     repartir_a_zero_apres_menu(phone, profile)
     profile = mark_onboarding_completed(phone, profile)
+    avec_exercice = (premiere_fois and not deja_inscrit and not profile.get("pending_question")
+                     and not profile.get("pending_media") and profile.get("user_type") != "ENSEIGNANT")
+    if avec_exercice:
+        profile["premier_exercice_a_proposer"] = True  # envoye par le webhook, juste apres ce message
     user_profiles[phone] = profile
     sauver_etat_whatsapp(phone, profile)
     if deja_inscrit:
         send_whatsapp(phone, f"C'est noté : {resume_profil(profile)}.\n\n"
                              "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler.")
+    elif avec_exercice:
+        send_whatsapp(phone, message_profil_pret_avec_exercice(profile))
     else:
         send_whatsapp(phone, message_profil_pret(profile))
     return profile
@@ -4264,8 +4289,11 @@ def enonce_en_cours(profile, conversation_key):
 
 
 def answer_learning_request(phone, profile, text, media_file=None, message_id=None, reply_audio=False,
-                            document_context=None):
-    profile = mark_first_learning_request(phone, profile)
+                            document_context=None, compter_activation=True):
+    # Le premier exercice propose par Akili ne compte pas comme une question de l'eleve : son activation
+    # n'est comptee que lorsqu'il repond (mesure honnete des inscrits sans question).
+    if compter_activation:
+        profile = mark_first_learning_request(phone, profile)
     user_profiles[phone] = profile
     """Envoie une vraie demande à Akili avec le profil final."""
     # Profil verrouille : « BEPC » dans une publicite collee, ou « je suis en 3eme » dans une phrase, ne
@@ -5889,6 +5917,7 @@ async def _receive_message_impl(request: Request):
             track_inbound("onboarding_choice", profile_after_choice)
 
             profile_after_choice = mark_profile_ready_if_complete(profile_after_choice)
+            premier_exercice = profile_after_choice.pop("premier_exercice_a_proposer", False)
 
             if not profile_after_choice.get("onboarding_step") and profile_after_choice.get("pending_question"):
                 pending_question = profile_after_choice.pop("pending_question")
@@ -5904,6 +5933,13 @@ async def _receive_message_impl(request: Request):
                 answer_learning_request(phone, profile_after_choice, pending_question,
                                         media_file=media_reprise, document_context=contexte_reprise)
                 track_inbound("pending_question_answered", profile_after_choice)
+            elif premier_exercice and is_profile_ready(profile_after_choice):
+                user_profiles[phone] = profile_after_choice
+                sauver_etat_whatsapp(phone, profile_after_choice)
+                answer_learning_request(phone, profile_after_choice, DEMANDE_PREMIER_EXERCICE,
+                                        compter_activation=False)
+                # Pas de second track_inbound : le message de l'eleve est deja compte (onboarding_choice).
+                print("PREMIER_EXERCICE propose apres l'inscription", flush=True)
 
             return {"status": "ok"}
 
