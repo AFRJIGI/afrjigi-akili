@@ -23,6 +23,17 @@ BLOB_NAME   = "data/jigi_global_database.json"
 vertexai.init(project=PROJECT_ID, location=LOCATION)
 model = GenerativeModel("gemini-2.5-flash")
 
+
+# Controle qualite du 8 oct. : 15 erreurs de contenu en maths, physique-chimie et comptabilite (numerotation
+# d'une chaine carbonee, factorisation, fonction changee en cours d'exercice). Une temperature basse rend
+# les calculs et les validations plus stables ; les matieres de redaction gardent plus de souplesse.
+PREFIXES_MATIERES_PRECISES = ("MATHS", "PC", "SVT", "PHYS", "CHIM", "COMPTA", "MECA", "ELEC", "CMI", "TQG", "ESTI")
+
+
+def config_generation(matiere):
+    code = (matiere or "").upper()
+    return {"temperature": 0.3 if code.startswith(PREFIXES_MATIERES_PRECISES) else 0.7}
+
 # Initialisation de Firestore (Sécurisée via IAM - pas besoin de clé JSON)
 db = firestore.Client()
 
@@ -1527,7 +1538,7 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
         last_error = None
         for tentative in range(3):
             try:
-                response = model.generate_content(contents)
+                response = model.generate_content(contents, generation_config=config_generation(matiere))
                 break
             except Exception as e:
                 # Un 429 peut arriver en TooManyRequests (classe parente) ou en

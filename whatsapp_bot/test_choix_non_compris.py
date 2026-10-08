@@ -39,9 +39,12 @@ class ChoixNonComprisTests(unittest.TestCase):
         self.assertNotIn("matiere", profil)
 
     def test_profil_en_toutes_lettres_a_la_premiere_question(self):
+        # Depuis le controle qualite du 8 oct. : le niveau complet est enregistre, on passe a la matiere.
         profil = {"onboarding_step": "exam"}
-        self.assertFalse(main.handle_onboarding_choice(PHONE, profil, "Terminale D"))
-        self.assertEqual(self.envoyes, [])
+        with mock.patch.object(main, "ask_matiere") as liste:
+            self.assertTrue(main.handle_onboarding_choice(PHONE, profil, "Terminale D"))
+        self.assertEqual((profil["serie"], profil["onboarding_step"]), ("D", "matiere"))
+        liste.assert_called_once()
 
     def test_vraie_question_pendant_l_inscription_non_bloquee(self):
         profil = {"type_examen": "BAC_TECHNIQUE", "serie": "F1", "onboarding_step": "mode"}

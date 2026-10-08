@@ -1541,6 +1541,50 @@ DEMANDE_PREMIER_EXERCICE = (
 )
 
 
+def proposer_premier_exercice_si_prevu(phone, profile):
+    """Envoie le premier exercice annonce par « Profil pret » (fin d'une premiere inscription)."""
+    if not profile.pop("premier_exercice_a_proposer", False):
+        return False
+    profile = mark_profile_ready_if_complete(profile)
+    if not is_profile_ready(profile):
+        return False
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    answer_learning_request(phone, profile, DEMANDE_PREMIER_EXERCICE, compter_activation=False)
+    print("PREMIER_EXERCICE propose apres l'inscription", flush=True)
+    return True
+
+
+def inscrire_niveau_donne(phone, profile, texte):
+    """Pendant l'inscription, l'eleve ecrit son niveau en toutes lettres (« Terminale D », « Tle C maths ») :
+    on l'enregistre et on passe a la matiere. Avant, « Terminale D » etait gardee comme une question et
+    l'inscription repartait du debut (controle qualite du 8 oct.). Vrai si le message a ete traite."""
+    niveau = niveau_declare(texte)
+    if not niveau or len(normalize_for_match(texte).split()) > 8:
+        return False
+    profile["type_examen"], profile["serie"] = niveau["type_examen"], niveau["serie"]
+    if niveau["classe"]:
+        profile["classe"] = niveau["classe"]
+    else:
+        profile.pop("classe", None)
+    for cle in ("pending_question", "pending_question_display"):
+        profile.pop(cle, None)
+    matiere = detect_matiere_from_text(texte, mots_cles_programme=False)
+    if matiere and matiere_proposee(profile, matiere):
+        profile["matiere"], profile["matiere_confirmed"] = matiere, True
+        profile = terminer_inscription(phone, profile)
+        proposer_premier_exercice_si_prevu(phone, profile)
+        return True
+    profile["onboarding_step"] = "matiere"
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    if profile["type_examen"] == "BAC_TECHNIQUE":
+        ask_matiere_technique(phone, profile["serie"])
+    else:
+        ask_matiere(phone, profile["serie"])
+    return True
+
+
 def message_profil_pret_avec_exercice(profile):
     return (
         f"Profil prêt : {resume_profil(profile)}.\n\n"
@@ -1708,6 +1752,11 @@ def handle_onboarding_choice(phone, profile, text):
     step = profile.get("onboarding_step")
     if not step:
         return False
+
+    # « Terminale D » tapee a une question de niveau ou de serie : niveau complet, on passe a la matiere.
+    if (step in {"exam", "serie_general", "serie_technique", "classe_technique", "seconde", "classe_intermediaire"}
+            and not choice_key(text) and inscrire_niveau_donne(phone, profile, text)):
+        return True
 
     if step == "ville":
         ville = (text or "").strip()
@@ -4372,6 +4421,12 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         )
         return
 
+    if media_file is not None and profile.pop("enonce_en_cours", None):
+        # Nouvelle photo ou nouveau document = nouvel enonce. Avant, l'ancien enonce retenu revenait au
+        # message suivant et Akili changeait de fonction en plein exercice (controle qualite du 8 oct.).
+        sauver_etat_whatsapp(phone, profile)
+        print("ENONCE oublie : nouvelle photo ou nouveau document", flush=True)
+
     if media_file is None and doit_retenir_enonce(texte_eleve, not conversations.get(conversation_key),
                                                   enonce_en_cours(profile, conversation_key)):
         profile["enonce_en_cours"] = {"cle": conversation_key, "texte": texte_eleve[:ENONCE_MAX_CARACTERES]}
@@ -5933,13 +5988,10 @@ async def _receive_message_impl(request: Request):
                 answer_learning_request(phone, profile_after_choice, pending_question,
                                         media_file=media_reprise, document_context=contexte_reprise)
                 track_inbound("pending_question_answered", profile_after_choice)
-            elif premier_exercice and is_profile_ready(profile_after_choice):
-                user_profiles[phone] = profile_after_choice
-                sauver_etat_whatsapp(phone, profile_after_choice)
-                answer_learning_request(phone, profile_after_choice, DEMANDE_PREMIER_EXERCICE,
-                                        compter_activation=False)
+            elif premier_exercice:
                 # Pas de second track_inbound : le message de l'eleve est deja compte (onboarding_choice).
-                print("PREMIER_EXERCICE propose apres l'inscription", flush=True)
+                profile_after_choice["premier_exercice_a_proposer"] = True
+                proposer_premier_exercice_si_prevu(phone, profile_after_choice)
 
             return {"status": "ok"}
 
@@ -5955,6 +6007,11 @@ async def _receive_message_impl(request: Request):
             ask_exam(phone)
             track_inbound("hors_champ_bts_universite", profile)
             return {"status": "ok"}
+
+        if (is_learning_request(text) and not is_profile_ready(profile) and not is_teacher_request(text)
+                and not media_info and inscrire_niveau_donne(phone, profile, original_text)):
+            track_inbound("niveau_donne_a_l_inscription", user_profiles.get(phone, profile))
+            return {"status": "ok", "reason": "niveau_donne_a_l_inscription"}
 
         if is_learning_request(text) and not is_profile_ready(profile) and not is_teacher_request(text):
             if profile.get("type_examen") == "AUTRE" or profile.get("serie") == "AUTRE":
