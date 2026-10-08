@@ -7,6 +7,7 @@ sont dans main.py. L'etat du test en cours est garde dans le profil WhatsApp (cl
 calendrier par matiere dans profile["mini_tests"], les resultats dans la collection mini_tests
 (identifiant pseudonyme, jamais le numero).
 """
+import re
 from datetime import date, datetime, timedelta, timezone
 
 COLLECTION = "mini_tests"
@@ -79,7 +80,15 @@ def phase_a_proposer(profile, nb_echanges, now=None):
     return "debut"
 
 
-def proposer(profile, phase, now=None):
+def derniere_question(texte):
+    """Derniere question posee par Akili (« Peux-tu me dire la derivee de f(x) = x² + 3x + 5 ? »), a reposer
+    apres le test : sans elle, l'eleve ne savait plus ou il en etait (test du 8 oct.)."""
+    morceaux = [m.strip() for m in re.split(r"(?<=[.!?:])\s+|\n+", str(texte or "")) if m.strip()]
+    questions = [m for m in morceaux if m.endswith("?")]
+    return questions[-1][:300] if questions else ""
+
+
+def proposer(profile, phase, now=None, reprise=""):
     """Enregistre la proposition dans le profil et renvoie le texte a envoyer avec les boutons."""
     matiere = profile["matiere"]
     cycles = profile.setdefault("mini_tests", {})
@@ -89,7 +98,7 @@ def proposer(profile, phase, now=None):
     cycle["propose_le"] = aujourd_hui(now)
     if phase == "debut":
         cycle["propositions_debut"] = int(cycle.get("propositions_debut", 0)) + 1
-    profile["mini_test"] = {"etat": "propose", "phase": phase, "matiere": matiere,
+    profile["mini_test"] = {"etat": "propose", "phase": phase, "matiere": matiere, "reprise": reprise,
                             "cree_le": (now or datetime.now(timezone.utc)).isoformat()}
     if phase == "fin":
         return PROPOSITION_FIN.format(chapitre=cycle.get("chapitre") or "ce chapitre")
@@ -160,7 +169,7 @@ def terminer(profile, now=None):
         cycle.update({"debut_le": aujourd_hui(now), "chapitre": test["chapitre"], "score_debut": note, "jours": [],
                       "questions_debut": [q["question"] for q in test["questions"]]})
         cycle.pop("fin_le", None)
-        suite = "Je te reposerai 3 questions dans quelques jours pour voir tes progrès. On reprend ton travail !"
+        suite = "Je te reposerai 3 questions dans quelques jours pour voir tes progrès."
         bilan = f"Merci ! Tu as {note}/{NB_QUESTIONS}."
     else:
         debut = int(cycle.get("score_debut", 0))
@@ -175,7 +184,7 @@ def terminer(profile, now=None):
         else:
             avis = "Ce chapitre mérite d'être revu : demande-moi un exercice dessus."
         bilan = f"Tu as {note}/{NB_QUESTIONS} (au début : {debut}/{NB_QUESTIONS}). {avis}"
-        suite = "On reprend ton travail !"
+        suite = ""
     corrections = []
     for i, (q, r) in enumerate(zip(test["questions"], test["reponses"]), 1):
         if q["bonne"] != r:
@@ -183,7 +192,9 @@ def terminer(profile, now=None):
             if q.get("explication"):
                 ligne += f" {q['explication']}"
             corrections.append(ligne)
-    message = "\n\n".join([bilan] + corrections + [suite])
+    reprise = test.get("reprise")
+    retour = f"On reprend ton travail. {reprise}" if reprise else "On reprend ton travail !"
+    message = "\n\n".join([bilan] + corrections + [x for x in (suite, retour) if x])
     resultat = {"phase": test["phase"], "matiere": test["matiere"], "chapitre": test["chapitre"],
                 "score": note, "total": NB_QUESTIONS, "reponses": test["reponses"],
                 "bonnes": [q["bonne"] for q in test["questions"]],

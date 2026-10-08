@@ -1727,7 +1727,7 @@ REGLES :
 - Appuie-toi UNIQUEMENT sur l'historique et le bilan ci-dessous ; n'invente pas de notion qui n'y figure pas.
 - Tutoie l'eleve. Aucune salutation, aucun compliment.
 - Maximum 500 caracteres.
-- Aucune syntaxe LaTeX : ecris les formules en texte simple (x^2, 1/2, racine carree de x).
+- Aucune syntaxe LaTeX : ecris les formules en texte simple, avec les accents (x², 1/2, √x ou « racine carrée de x »). Pour multiplier, ecris × ou rien, jamais * (sur WhatsApp, * met en gras).
 - Pour le gras, un seul asterisque de chaque cote (*mot*), jamais deux."""
 
 
@@ -1803,7 +1803,9 @@ REGLES :
 - Ne reprends pas l'exercice deja traite dans l'historique : des questions nouvelles sur le meme chapitre.
 - Repartis les bonnes reponses entre a, b et c. Verifie chaque bonne reponse avant de la donner.
 - "explication" : une phrase courte qui justifie la bonne reponse (moins de 150 caracteres).
-- Aucune syntaxe LaTeX : formules en texte simple (x^2, 1/2, racine carree de x). Tutoiement.
+- Aucune syntaxe LaTeX. Écris les formules en texte simple, avec les accents du français : x², 1/x, √x
+  (« racine carrée de x »), ln(x). Pour multiplier, écris × ou rien (2√x), jamais * : sur WhatsApp, * met en gras.
+- Tutoiement.
 - Reponds UNIQUEMENT par un objet JSON, sans texte autour, de la forme :
 {"chapitre": "nom court du chapitre", "questions": [{"question": "...", "a": "...", "b": "...", "c": "...", "bonne": "b", "explication": "..."}]}"""
 

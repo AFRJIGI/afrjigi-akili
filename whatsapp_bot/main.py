@@ -3387,7 +3387,9 @@ def mini_test_apres_reponse(phone, profile, session):
         change = mini_test.noter_jour_actif(profile, profile.get("matiere"))
         phase = mini_test.phase_a_proposer(profile, int((session or {}).get("nb_echanges", 0)))
         if phase:
-            texte = mini_test.proposer(profile, phase)
+            dernier = next((m.get("content") for m in reversed((session or {}).get("messages") or [])
+                            if m.get("role") == "assistant"), "")
+            texte = mini_test.proposer(profile, phase, reprise=mini_test.derniere_question(dernier))
             if send_whatsapp_boutons(phone, texte, mini_test.BOUTONS_PROPOSITION):
                 save_whatsapp_event(phone, "outbound", "[mini_test] " + texte, profile,
                                     extra={"processing_stage": f"mini_test_propose_{phase}"})

@@ -61,6 +61,21 @@ class LogiqueTests(unittest.TestCase):
         self.assertEqual((resultat["phase"], resultat["score_debut"]), ("fin", 2))
         self.assertIsNone(mini_test.phase_a_proposer(profil, 4, MAINTENANT + timedelta(days=10)))  # 14 jours
 
+    def test_question_d_akili_reposee_apres_le_test(self):
+        texte = ("Oui, c'est exact ! La dérivée de f(x) = 3x est 3.\n\n"
+                 "Maintenant, peux-tu me dire quelle est la dérivée de f(x) = x² + 3x + 5 ?")
+        reprise = mini_test.derniere_question(texte)
+        self.assertEqual(reprise, "Maintenant, peux-tu me dire quelle est la dérivée de f(x) = x² + 3x + 5 ?")
+        self.assertEqual(mini_test.derniere_question("Bravo, tu as fini."), "")
+        profil = dict(INSCRIT)
+        mini_test.proposer(profil, "debut", MAINTENANT, reprise=reprise)
+        mini_test.demarrer(profil, mini_test.questions_valides(QUESTIONS))
+        for lettre in ("a", "b", "c"):
+            mini_test.enregistrer_reponse(profil["mini_test"], lettre)
+        message, _ = mini_test.terminer(profil, MAINTENANT)
+        self.assertTrue(message.endswith("On reprend ton travail. " + reprise))
+        self.assertIn("Je te reposerai 3 questions dans quelques jours", message)
+
     def test_reponse_de_l_api_controlee(self):
         self.assertIsNotNone(mini_test.questions_valides(QUESTIONS))
         mauvaise = {"chapitre": "X", "questions": QUESTIONS["questions"][:2]}
