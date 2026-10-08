@@ -90,6 +90,22 @@ class ChangementDeMatiereTests(unittest.TestCase):
     def test_philo_pas_proposee_au_college(self):
         profil = dict(INSCRIT, type_examen="BEPC", serie="BEPC")
         self.assertIsNone(main.matiere_demandee(profil, "allons en philo"))
+        self.envoyer("Je veux un sujet en philo pour mon devoir", profil)
+        self.assertEqual(self.envoyes[0], "La philosophie se travaille en Terminale. Choisis une matière de ton niveau :")
+        self.assertEqual(len(self.listes), 1)
+        self.assertEqual(self.akili, [])
+
+    def test_bac_technique_philo(self):
+        profil = dict(INSCRIT, type_examen="BAC_TECHNIQUE", serie="G2", matiere="COMPTA_FIN")
+        self.envoyer("Je veux un sujet en philo pour mon devoir", profil)
+        self.assertEqual(main.user_profiles[PHONE]["matiere"], "PHILO")
+        self.assertEqual(self.listes, [])
+        self.assertEqual(self.envoyes, ["D'accord, on passe en Philosophie."])
+        self.assertEqual(len(self.akili), 1)
+
+    def test_bac_technique_compta_ouvre_la_liste(self):
+        profil = dict(INSCRIT, type_examen="BAC_TECHNIQUE", serie="G2", matiere="MATHS")
+        self.assertIsNone(main.matiere_demandee(profil, "allons en compta"))
 
     def test_deux_matieres_ouvrent_la_liste(self):
         self.assertIsNone(main.matiere_demandee(INSCRIT, "passons de la svt à la philo"))

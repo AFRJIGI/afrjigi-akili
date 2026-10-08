@@ -1536,8 +1536,8 @@ def matiere_demandee(profile, text):
     matiere citee, autre que la sienne, proposee a son niveau, et pas un refus (« je veux plus de svt »).
     Sinon None et la liste des matieres s'ouvre (diagnostic …9171, 8 oct. : la liste ouverte avait ete
     refermee par un « ?? » et l'eleve etait reste en maths)."""
-    if profile.get("type_examen") == "BAC_TECHNIQUE":
-        return None  # les codes des matieres techniques ne correspondent pas aux noms cites
+    # BAC technique : PHILO, FRANCAIS, ANGLAIS, HG, MATHS, ECO, DROIT ont le meme code que la matiere citee ;
+    # « compta » (COMPTA_FIN, COMPTA_SOCIETES…) n'est pas un code de la liste et ouvre donc la liste.
     citees = matieres_citees(text)
     if len(citees) != 1 or re.search(REFUS_DE_MATIERE, normalize_for_match(text)):
         return None
@@ -5847,7 +5847,9 @@ async def _receive_message_impl(request: Request):
                 passer_a_la_matiere(phone, profile, nouvelle, original_text)
                 track_inbound("matiere_changee_directement", user_profiles.get(phone, profile))
                 return {"status": "ok", "reason": "changement_matiere_direct"}
-            send_whatsapp(phone, "D'accord, on change de matière.", allow_audio=False)
+            philo_au_college = (est_college(profile.get("serie")) and matieres_citees(original_text) == ["PHILO"])
+            send_whatsapp(phone, "La philosophie se travaille en Terminale. Choisis une matière de ton niveau :"
+                          if philo_au_college else "D'accord, on change de matière.", allow_audio=False)
             ouvrir_choix_matiere(phone, profile)
             track_inbound("matiere_change_requested_free_text", profile)
             return {"status": "ok", "reason": "changement_matiere"}
