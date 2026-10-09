@@ -909,6 +909,8 @@ def is_other_or_concours(message):
         "L1", "L2", "L3", "MASTER", "FAC", "FACULTE",
         # Controle qualite du 9 oct. : « je suis au professionnel »
         "LYCEE PROFESSIONNEL", "AU PROFESSIONNEL", "FORMATION PROFESSIONNELLE", "ENSEIGNEMENT PROFESSIONNEL",
+        # « 3eme annee BT electronique » : le Brevet de Technicien arrivera avec le BTS (decision du 9 oct.).
+        "BT", "BREVET DE TECHNICIEN",
     ])
 
 
@@ -1177,7 +1179,7 @@ def choice_key(text):
 
 MESSAGE_HORS_CHAMP = (
     "Akili accompagne pour l'instant les élèves de la 6e à la Terminale : BEPC, BAC Général et BAC Technique. "
-    "Le BTS, l'enseignement professionnel et l'université ne sont pas encore disponibles, ils arriveront plus tard. "
+    "Le BT, le BTS, l'enseignement professionnel et l'université ne sont pas encore disponibles, ils arriveront plus tard. "
     "Si tu es dans l'une de ces classes, choisis ton niveau :"
 )
 

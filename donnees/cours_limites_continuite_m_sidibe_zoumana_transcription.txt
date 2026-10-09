@@ -1,0 +1,976 @@
+FICHE DE LEÇON — MATHÉMATIQUES Tᵉ D
+LEÇON 1 : LIMITES ET CONTINUITÉ
+Source : fiche de leçon transmise par M. Sidibé Zoumana, enseignant (République de Côte d'Ivoire — Ministère de l'Éducation nationale et de l'Alphabétisation).
+Transcription en texte simple pour le tuteur Akili.
+
+Note générale de transcription : dans plusieurs pages du document, l'écriture « lim » et le point vers lequel tend x (x→+∞, x→−∞, x→a) ont disparu de la mise en page (par exemple « xⁿ = +∞ » au lieu de « lim (x→+∞) xⁿ = +∞ »). Le texte est recopié tel quel ; lorsque c'est nécessaire, une ligne [Note de transcription : …] ou [Vérification : …] précise la limite visée.
+
+=== PRESENTATION DE LA LECON ===
+
+Discipline / Classe : Mathématiques — Terminale D
+Compétence 1 : Traiter une situation relative aux calculs algébriques et aux fonctions
+Thème 2 : FONCTIONS
+Leçon 1 : LIMITES ET CONTINUITÉ
+Volume horaire : 15 heures (progression annuelle 2025-2026) — 15 séances de 55 min
+Période : 1er trimestre — septembre (semaines 1 à 3)
+Supports didactiques : Manuel au programme, cahier d'habiletés, calculatrice scientifique, instruments de géométrie, fiche de travaux dirigés
+Pré-requis : Limites et opérations sur les limites (1re D) ; asymptotes ; nombre dérivé et dérivation ; sens de variation d'une fonction ; fonctions de référence ; trigonométrie ; résolution d'équations et d'inéquations
+
+A. SITUATION D'APPRENTISSAGE
+
+Dans leur groupe de travail, des élèves d'une classe de Terminale D tracent, à l'aide d'une calculatrice graphique, la courbe représentative de la fonction q : x ↦ (sin x)/x. Le graphique obtenu donne la partie de la courbe sur l'intervalle [−5 ; 5].
+Ils constatent que sur ce graphique, le nombre 0, qui n'appartient pourtant pas à l'ensemble de définition de la fonction q, semble avoir pour image 1.
+Pour comprendre ce fait, ils décident d'approfondir leurs connaissances sur les limites et la continuité des fonctions.
+
+B. TABLEAU DES HABILETÉS ET CONTENUS
+
+- Identifier : les notions de branches paraboliques de direction celle de (OI) ou celle de (OJ) dans un repère (O, I, J) ; une racine n-ième d'un nombre positif ; une puissance d'exposant rationnel.
+- Connaître : la propriété relative à la limite d'une fonction composée ; la propriété relative à la limite d'une fonction monotone sur un intervalle ouvert ; les propriétés relatives aux opérations sur les fonctions continues sur un intervalle ; la propriété relative à la composée de deux fonctions continues ; les propriétés relatives à l'image d'un intervalle par une fonction continue ; le théorème des valeurs intermédiaires ; les propriétés relatives aux fonctions continues et strictement monotones sur un intervalle ; les méthodes de dichotomie et de balayage ; les propriétés relatives aux puissances d'exposants rationnels.
+- Noter : une racine n-ième d'un nombre positif (ⁿ√x ou x^(1/n)) ; une puissance d'exposant rationnel (x^(p/q)).
+- Déterminer : la limite d'une fonction en utilisant les limites de référence, une expression conjuguée, la définition d'un nombre dérivé, les propriétés de comparaison (minoration, majoration, encadrement) ou une égalité remarquable ; la limite d'une fonction composée ; l'image d'un intervalle par une fonction continue ; un encadrement d'une solution d'équation par balayage ou dichotomie.
+- Démontrer : qu'une fonction est continue en un point ; qu'une fonction est continue sur un intervalle ; qu'une équation admet une solution unique dans un intervalle.
+- Étudier : la continuité d'une fonction en un point ; le prolongement par continuité d'une fonction en un point ; les branches infinies de la courbe représentative d'une fonction.
+- Traiter une situation : faisant appel aux limites et à la continuité.
+
+C. PLAN DE LA LEÇON
+
+I. LIMITES — 1. Limites de référence et opérations 2. Formes indéterminées et levée d'indétermination (factorisation, expression conjuguée) 3. Limite et nombre dérivé 4. Limite d'une fonction composée 5. Théorèmes de comparaison 6. Limite d'une fonction monotone sur un intervalle ouvert 7. Branches infinies
+II. CONTINUITÉ — 1. Continuité en un point 2. Prolongement par continuité 3. Continuité sur un intervalle (opérations, composée) 4. Image d'un intervalle par une fonction continue 5. Théorème des valeurs intermédiaires et corollaire 6. Encadrement d'une solution : balayage et dichotomie
+III. RACINES n-IÈMES ET PUISSANCES D'EXPOSANT RATIONNEL — 1. Racine n-ième d'un nombre positif 2. Puissance d'exposant rationnel et propriétés
+
+D. RÉPARTITION DES SÉANCES
+
+Séance 1/15 : Limites de référence et opérations sur les limites — formes indéterminées
+Séance 2/15 : Levée d'indétermination par factorisation (polynômes, fonctions rationnelles)
+Séance 3/15 : Levée d'indétermination par l'expression conjuguée
+Séance 4/15 : Limite et nombre dérivé — limites trigonométriques de référence
+Séance 5/15 : Limite d'une fonction composée
+Séance 6/15 : Théorèmes de comparaison (minoration, majoration, encadrement)
+Séance 7/15 : Limite d'une fonction monotone sur un intervalle ouvert
+Séance 8/15 : Branches infinies : asymptotes et branches paraboliques
+Séance 9/15 : Continuité en un point
+Séance 10/15 : Prolongement par continuité — traitement de la situation d'apprentissage
+Séance 11/15 : Continuité sur un intervalle : opérations et composée
+Séance 12/15 : Image d'un intervalle par une fonction continue
+Séance 13/15 : Théorème des valeurs intermédiaires et son corollaire
+Séance 14/15 : Encadrement d'une solution : méthodes de balayage et de dichotomie
+Séance 15/15 : Racines n-ièmes et puissances d'exposant rationnel — situation d'évaluation
+
+Remarque pédagogique : conformément au guide d'exécution, les propriétés déjà rencontrées en Première et les techniques de levée d'indétermination ne doivent pas faire l'objet d'un traitement théorique. Elles sont mises en œuvre rapidement dans des exercices dont le niveau de technicité reste raisonnable, car elles seront réinvesties tout au long de l'année dans les études de fonctions. Une heure de régulation est prévue à l'issue de la leçon.
+
+=== SEANCE 1/15 : Limites de référence et opérations sur les limites — formes indéterminées ===
+
+Plan de la séance : I. LIMITES — 1. Limites de référence et opérations — 2. a) Formes indéterminées
+Pré-requis : Limites en un point et en l'infini (1re D) ; fonctions polynômes et rationnelles ; opérations sur les limites
+Habiletés : Connaître les limites de référence ; les opérations sur les limites. Identifier les quatre formes indéterminées. Déterminer la limite d'une fonction polynôme ou rationnelle en l'infini.
+
+Activité 0 (pré-requis)
+1) Donne x² ; 1/x ; 1/x.
+2) Calcule (5x + 1)/(2x − 3).
+Corrigé :
+1) +∞ ; 0 ; +∞.
+2) lim = 5/2 (quotient des termes de plus haut degré).
+[Note de transcription : les points limites sont absents du document. Les réponses correspondent à lim (x→+∞) x² = +∞ ; lim (x→+∞) 1/x = 0 ; lim (x→0, x>0) 1/x = +∞ ; et lim (x→+∞) (5x + 1)/(2x − 3) = 5/2.]
+
+Questions de compréhension sur la situation d'apprentissage
+1) Où et comment les élèves travaillent-ils ?
+2) Qu'ont-ils tracé ?
+3) Quel fait les surprend ?
+4) Que décident-ils ?
+Corrigé :
+1) Dans leur groupe de travail, à l'aide d'une calculatrice graphique.
+2) La courbe de q : x ↦ (sin x)/x sur [−5 ; 5].
+3) Que 0 n'est pas dans l'ensemble de définition mais semble avoir pour image 1.
+4) Approfondir leurs connaissances sur les limites et la continuité.
+
+TRACE ÉCRITE
+LEÇON 1 : LIMITES ET CONTINUITÉ
+I. LIMITES
+1. Limites de référence et opérations
+
+Activité 1
+Complète le tableau des limites en +∞ et en −∞ pour : xⁿ ; 1/xⁿ ; √x.
+Corrigé :
+xⁿ = +∞ ; xⁿ = +∞ si n est pair, −∞ si n est impair ;
+1/xⁿ = 0 ; 1/xⁿ = +∞ ; √x = +∞.
+(Le professeur rappelle aussi les limites trigonométriques vues au collège et en 1re.)
+
+a) Limites de référence
+Pour tout entier n ≥ 1 :
+• xⁿ = +∞ ;
+• xⁿ = +∞ (n pair) ; = −∞ (n impair) ;
+• 1/xⁿ = 0 ;
+• 1/xⁿ = +∞ ;
+• √x = +∞.
+[Note de transcription : les « lim » et les points limites ont disparu dans le document. Lecture attendue : lim (x→+∞) xⁿ = +∞ ; lim (x→−∞) xⁿ = +∞ si n pair, −∞ si n impair ; lim (x→+∞) 1/xⁿ = 0 (et aussi en −∞) ; lim (x→0, x>0) 1/xⁿ = +∞ ; lim (x→+∞) √x = +∞.]
+
+Propriété
+En +∞ ou en −∞, une fonction polynôme a la même limite que son terme de plus haut degré ; une fonction rationnelle a la même limite que le quotient des termes de plus haut degré.
+
+Activité 2
+On donne f(x) = x² − x et g(x) = (2x² + 1)/(x² + 3).
+1) Que donne le calcul direct de f(x) en séparant x² et −x ?
+2) Même question pour g(x).
+3) Factorise par le terme de plus haut degré et conclus.
+Corrigé :
+1) lim (x→+∞) x² = +∞ et lim (x→+∞) (−x) = −∞ : on ne peut pas conclure directement (forme ∞ − ∞).
+2) Numérateur et dénominateur tendent vers +∞ : forme ∞/∞.
+3) f(x) = x²(1 − 1/x) → +∞ ; g(x) = (2 + 1/x²)/(1 + 3/x²) → 2.
+
+b) Formes indéterminées
+Les quatre formes indéterminées sont :
+∞ − ∞ ; 0 × ∞ ; ∞/∞ ; 0/0.
+
+Remarque
+Une forme indéterminée n'est pas une absence de limite : elle signale qu'il faut transformer l'écriture de la fonction.
+
+Méthode
+En l'infini, on factorise par le terme de plus haut degré, puis on simplifie.
+
+Exercice de fixation
+Calcule :
+a) (−4x³ + x² − 7)
+b) (3x² − x)/(5x² + 2)
+c) (x + 1)/(x² − 3)
+Corrigé :
+a) +∞ (limite de −4x³) ;
+b) 3/5 ;
+c) [réponse absente dans le document]
+[Vérification : le point limite n'est pas indiqué dans l'énoncé. La réponse a) +∞ n'est juste qu'en −∞ : lim (x→−∞) (−4x³ + x² − 7) = lim (x→−∞) (−4x³) = +∞, alors qu'en +∞ la limite est −∞. Pour c), en +∞ ou en −∞ : (x + 1)/(x² − 3) a la même limite que x/x² = 1/x, donc la limite est 0. b) vaut 3/5 en +∞ comme en −∞.]
+
+Exercice de maison
+Calcule (2x³ + 5x)/(x² − 1) et (x² + 1)/(x³ + x).
+(Corrigé en début de 2e séance, voir séance 2.)
+
+=== SEANCE 2/15 : Levée d'indétermination par factorisation ===
+
+Plan de la séance : I. LIMITES — 2. b) Levée d'indétermination par factorisation
+Pré-requis : Factorisation d'un polynôme ; racine d'un polynôme ; identités remarquables ; formes indéterminées
+Habiletés : Déterminer la limite d'une fonction rationnelle en un point où numérateur et dénominateur s'annulent ; la limite d'une fonction en utilisant une égalité remarquable.
+
+Correction de l'exercice de maison de la séance 1
+(2x³ + 5x)/(x² − 1) → 2x → −∞ ;
+(x² + 1)/(x³ + x) → 1/x → 0.
+[Vérification : le point limite n'est pas précisé. (2x³ + 5x)/(x² − 1) a la même limite que 2x³/x² = 2x : la limite vaut −∞ en −∞, mais +∞ en +∞. (x² + 1)/(x³ + x) → 0 en +∞ comme en −∞.]
+
+Activité 1
+Soit f(x) = (x² − 4)/(x² − 3x + 2).
+1) Quelle forme obtient-on en x = 2 ?
+2) Factorise le numérateur et le dénominateur par (x − 2).
+3) Simplifie et conclus.
+Corrigé :
+1) Numérateur et dénominateur tendent vers 0 : forme 0/0.
+2) x² − 4 = (x − 2)(x + 2) ; x² − 3x + 2 = (x − 2)(x − 1).
+3) Pour x ≠ 2 : f(x) = (x + 2)/(x − 1), donc f(x) = 4/1 = 4.
+[Note de transcription : lire lim (x→2) f(x) = 4/1 = 4.]
+
+TRACE ÉCRITE
+b) Levée d'indétermination par factorisation
+
+Méthode
+Lorsque le calcul direct donne la forme 0/0 en un réel a, on factorise le numérateur et le dénominateur par (x − a), on simplifie, puis on calcule la limite de l'expression simplifiée.
+
+Exemple
+(x² − 4)/(x² − 3x + 2) = (x + 2)/(x − 1) = 4.
+[Note de transcription : lire lim (x→2) (x² − 4)/(x² − 3x + 2) = lim (x→2) (x + 2)/(x − 1) = 4.]
+
+Activité 2
+1) Rappelle la factorisation de a³ − b³.
+2) Calcule (x³ − 1)/(x² − 1).
+3) Calcule (x² − 9)/(x − 3).
+Corrigé :
+1) aⁿ − bⁿ = (a − b)(aⁿ⁻¹ + aⁿ⁻²b + … + bⁿ⁻¹) ; en particulier a³ − b³ = (a − b)(a² + ab + b²).
+2) (x³ − 1)/(x² − 1) = (x² + x + 1)/(x + 1) → 3/2.
+3) (x − 3)(x + 3)/(x − 3) = x + 3 → 6.
+[Note de transcription : les limites sont prises en x → 1 pour 2) et en x → 3 pour 3).]
+
+Rappel utile
+aⁿ − bⁿ = (a − b)(aⁿ⁻¹ + aⁿ⁻²b + … + bⁿ⁻¹).
+
+Exemple
+(x³ − 1)/(x² − 1) = 3/2.
+[Note de transcription : lire lim (x→1) (x³ − 1)/(x² − 1) = 3/2.]
+
+Exercice de fixation
+Calcule :
+a) (x² − x − 2)/(x − 2)
+b) (x³ − 8)/(x² − 4)
+Corrigé :
+a) lim = (x + 1) → 3 ;
+b) lim = (x² + 2x + 4)/(x + 2) → 12/4 = 3.
+[Note de transcription : les limites sont prises en x → 2 (x² − x − 2 = (x − 2)(x + 1) et x³ − 8 = (x − 2)(x² + 2x + 4), x² − 4 = (x − 2)(x + 2)).]
+
+Exercice de maison
+Calcule lim (x→−1) (x² − 1)/(x² + 3x + 2).
+(Corrigé en début de 3e séance, voir séance 3.)
+
+=== SEANCE 3/15 : Levée d'indétermination par l'expression conjuguée ===
+
+Plan de la séance : I. LIMITES — 2. c) Levée d'indétermination par l'expression conjuguée
+Pré-requis : Identité remarquable (a − b)(a + b) = a² − b² ; racine carrée ; formes indéterminées
+Habiletés : Déterminer la limite d'une fonction en utilisant une expression conjuguée.
+
+Correction de l'exercice de maison de la séance 2
+(x² − 1)/(x² + 3x + 2) = (x − 1)(x + 1)/((x + 1)(x + 2)) = (x − 1)/(x + 2) → −2.
+
+Activité 1
+Soit f(x) = (√(1 + x) − 1)/x, x ≠ 0.
+1) Quelle forme obtient-on en 0 ?
+2) Multiplie numérateur et dénominateur par l'expression conjuguée du numérateur.
+3) Simplifie et conclus.
+Corrigé :
+1) Forme 0/0.
+2) L'expression conjuguée de √(1 + x) − 1 est √(1 + x) + 1.
+3) f(x) = ((1 + x) − 1)/(x(√(1 + x) + 1)) = 1/(√(1 + x) + 1) → 1/2.
+
+TRACE ÉCRITE
+c) Expression conjuguée
+
+Méthode
+En présence d'une différence du type √A − √B, on multiplie le numérateur et le dénominateur par l'expression conjuguée √A + √B, en utilisant (√A − √B)(√A + √B) = A − B.
+[Note de transcription : dans le document, la formule est suivie de caractères parasites « √A√A√B√B » (défaut de mise en page) ; la formule voulue est (√A − √B)(√A + √B) = A − B.]
+
+Exemple 1
+lim (x→0) (√(1 + x) − 1)/x = 1/2.
+
+Activité 2
+Calcule lim (x→+∞) (√(x² + x) − x).
+Indication : multiplie par l'expression conjuguée, puis factorise par x sous le radical.
+Corrigé :
+Forme ∞ − ∞ ;
+√(x² + x) − x = x/(√(x² + x) + x) ; pour x > 0, √(x² + x) = x√(1 + 1/x) ;
+d'où la limite 1/2.
+
+Exemple 2
+√(x² + x) − x = x/(√(x² + x) + x) = 1/(√(1 + 1/x) + 1) → 1/2 quand x → +∞.
+
+Remarque
+Pour x > 0, √(x²) = x ; pour x < 0, √(x²) = −x.
+
+Exercice de fixation
+Calcule :
+a) lim (x→4) (√x − 2)/(x − 4)
+b) lim (x→+∞) (√(x + 1) − √x)
+Corrigé :
+a) 1/(√x + 2) → 1/4 ;
+b) 1/(√(x + 1) + √x) → 0.
+
+Exercice de maison
+Calcule lim (x→+∞) (√(x² + 3x) − x).
+(Corrigé en début de 4e séance, voir séance 4.)
+
+=== SEANCE 4/15 : Limite et nombre dérivé — limites trigonométriques de référence ===
+
+Plan de la séance : I. LIMITES — 3. Limite et nombre dérivé
+Pré-requis : Nombre dérivé et taux d'accroissement ; dérivées des fonctions de référence ; fonctions sinus et cosinus
+Habiletés : Connaître les limites trigonométriques de référence. Déterminer la limite d'une fonction en utilisant la définition du nombre dérivé.
+
+Correction de l'exercice de maison de la séance 3
+√(x² + 3x) − x = 3/(√(1 + 3/x) + 1) → 3/2.
+
+Activité 1
+1) Rappelle la définition du nombre dérivé de f en a.
+2) Calcule lim (x→1) (x⁵ − 1)/(x − 1) en reconnaissant un nombre dérivé.
+Corrigé :
+1) f'(a) = lim (x→a) (f(x) − f(a))/(x − a).
+2) En posant f(x) = x⁵ : la limite vaut f'(1) = 5.
+
+TRACE ÉCRITE
+3. Limite et nombre dérivé
+
+Propriété
+Si f est dérivable en a, alors lim (x→a) (f(x) − f(a))/(x − a) = f'(a).
+
+Exemple
+lim (x→1) (x⁵ − 1)/(x − 1) : avec f(x) = x⁵, on trouve f'(1) = 5.
+
+Activité 2
+1) En posant f(x) = sin x et en utilisant le nombre dérivé en 0, détermine lim (x→0) (sin x)/x.
+2) Déduis-en lim (x→0) (sin 3x)/x.
+3) Généralise à lim (x→0) (sin kx)/x, k réel non nul.
+Corrigé :
+1) f(0) = 0 et f'(0) = cos 0 = 1, d'où lim (x→0) (sin x)/x = 1.
+2) (sin 3x)/x = 3 × (sin 3x)/(3x) → 3.
+3) On pose X = kx : quand x → 0, X → 0 et (sin kx)/x = k × (sin kx)/(kx) → k.
+
+Limites trigonométriques de référence
+lim (x→0) (sin x)/x = 1 ;
+lim (x→0) (tan x)/x = 1 ;
+lim (x→0) (1 − cos x)/x² = 1/2.
+
+Généralisation
+Pour k ≠ 0 : lim (x→0) (sin kx)/x = k.
+
+Exercice de fixation
+Calcule :
+a) lim (x→1) (x⁷ − 1)/(x − 1)
+b) lim (x→0) (sin 5x)/(2x)
+c) lim (x→π/2) (cos x)/(x − π/2)
+Corrigé :
+a) f(x) = x⁷ : f'(1) = 7 ;
+b) 5/2 ;
+c) f(x) = cos x en π/2 : −1.
+
+Exercice de maison
+Calcule lim (x→0) (sin 2x)/(sin 3x).
+(Corrigé en début de 5e séance, voir séance 5.)
+
+=== SEANCE 5/15 : Limite d'une fonction composée ===
+
+Plan de la séance : I. LIMITES — 4. Limite d'une fonction composée
+Pré-requis : Composée de deux fonctions ; limites de référence ; limites en l'infini
+Habiletés : Connaître la propriété relative à la limite d'une fonction composée. Déterminer la limite d'une fonction composée.
+
+Correction de l'exercice de maison de la séance 4
+(sin 2x)/(sin 3x) = (2/3) × [(sin 2x)/(2x)] × [(3x)/(sin 3x)] → 2/3.
+
+Activité 1
+On pose h(x) = √((3x² + 1)/(x² − 2)).
+1) Écris h comme composée de deux fonctions.
+2) Calcule lim (x→+∞) u(x).
+3) Conclus sur lim (x→+∞) h(x).
+Corrigé :
+1) h = v ∘ u avec u(x) = (3x² + 1)/(x² − 2) et v(X) = √X.
+2) lim (x→+∞) u(x) = 3.
+3) lim (X→3) √X = √3, donc lim (x→+∞) h(x) = √3.
+
+TRACE ÉCRITE
+4. Limite d'une fonction composée
+
+Propriété (admise)
+a, b et c désignant des réels ou ±∞ :
+si lim (x→a) u(x) = b et lim (X→b) v(X) = c, alors lim (x→a) (v ∘ u)(x) = c.
+
+Méthode
+On identifie u et v, on calcule la limite de u, puis celle de v en cette valeur.
+
+Activité 2
+Calcule :
+1) lim (x→+∞) cos(1/x)
+2) lim (x→+∞) √(x² + x + 1)
+3) lim (x→0) sin(x²)
+Corrigé :
+1) u(x) = 1/x → 0 et cos X → 1 : la limite vaut 1.
+2) u(x) → +∞ et √X → +∞ : la limite vaut +∞.
+3) u(x) = x² → 0 et sin X → 0 : la limite vaut 0.
+
+Exemples
+• lim (x→+∞) cos(1/x) = 1
+• lim (x→+∞) √(x² + x + 1) = +∞
+• lim (x→0) sin(x²) = 0
+
+Exercice de fixation
+Calcule :
+a) lim (x→+∞) √((4x² + 1)/(x² + 3))
+b) lim (x→+∞) √(1/(x + 2))
+Corrigé :
+a) u(x) → 4 donc la limite vaut 2 ;
+b) u(x) → 0⁺ donc la limite vaut 0.
+
+Exercice de maison
+Calcule lim (x→+∞) √((x² + 2x)/(2x² + 1)).
+(Corrigé en début de 6e séance, voir séance 6.)
+
+=== SEANCE 6/15 : Théorèmes de comparaison (minoration, majoration, encadrement) ===
+
+Plan de la séance : I. LIMITES — 5. Théorèmes de comparaison
+Pré-requis : Inégalités et encadrements ; encadrement de sin x et cos x ; valeur absolue ; limites de référence
+Habiletés : Connaître les théorèmes de comparaison et le théorème des gendarmes. Déterminer la limite d'une fonction en utilisant les propriétés de comparaison (minoration, majoration, encadrement).
+
+Correction de l'exercice de maison de la séance 5
+u(x) = (x² + 2x)/(2x² + 1) → 1/2 ; donc la limite vaut √(1/2) = √2/2.
+
+Activité 1
+Soit f(x) = x + sin x.
+1) Encadre f(x) à l'aide de x.
+2) Que vaut lim (x→+∞) (x − 1) ?
+3) Peut-on en déduire lim (x→+∞) f(x) ?
+Corrigé :
+1) −1 ≤ sin x ≤ 1, donc x − 1 ≤ f(x) ≤ x + 1.
+2) lim (x→+∞) (x − 1) = +∞.
+3) f(x) ≥ x − 1 et x − 1 → +∞, donc f(x) → +∞.
+
+TRACE ÉCRITE
+5. Théorèmes de comparaison
+
+Propriétés (admises)
+f, g et h étant définies sur un intervalle ]A ; +∞[ :
+1) si f(x) ≥ g(x) et g(x) → +∞, alors f(x) → +∞ ;
+2) si f(x) ≤ g(x) et g(x) → −∞, alors f(x) → −∞.
+
+Activité 2
+Soit g(x) = (sin x)/x pour x > 0.
+1) Encadre g(x) à l'aide de −1/x et 1/x.
+2) Que valent lim (x→+∞) (−1/x) et lim (x→+∞) (1/x) ?
+3) Conclus.
+Corrigé :
+1) −1/x ≤ g(x) ≤ 1/x.
+2) Les deux tendent vers 0.
+3) D'après le théorème des gendarmes, lim (x→+∞) (sin x)/x = 0.
+
+Théorème des gendarmes
+Si g(x) ≤ f(x) ≤ h(x) au voisinage de +∞ et si g et h ont la même limite finie ℓ en +∞, alors f(x) → ℓ.
+
+Conséquence
+Si |f(x) − ℓ| ≤ g(x) et g(x) → 0, alors f(x) → ℓ.
+
+Ces propriétés restent valables en −∞ et en un réel a.
+
+Exercice de fixation
+1) Démontre que lim (x→+∞) (2x + cos x)/(x + 1) = 2.
+2) Démontre que lim (x→0) x² sin(1/x) = 0.
+Corrigé :
+1) (2x − 1)/(x + 1) ≤ f(x) ≤ (2x + 1)/(x + 1) ; les deux bornes tendent vers 2.
+2) |x² sin(1/x)| ≤ x² et x² → 0.
+
+Exercice de maison
+Démontre que lim (x→+∞) (x + cos x) = +∞.
+(Corrigé en début de 7e séance, voir séance 7.)
+
+=== SEANCE 7/15 : Limite d'une fonction monotone sur un intervalle ouvert ===
+
+Plan de la séance : I. LIMITES — 6. Limite d'une fonction monotone sur un intervalle ouvert
+Pré-requis : Sens de variation d'une fonction ; majorant et minorant d'un ensemble ; tableau de variation
+Habiletés : Connaître la propriété relative à la limite d'une fonction monotone sur un intervalle ouvert. Déterminer la limite d'une fonction monotone aux bornes d'un intervalle ouvert.
+
+Correction de l'exercice de maison de la séance 6
+cos x ≥ −1 donc x + cos x ≥ x − 1 → +∞ ; par comparaison, la limite est +∞.
+
+Activité 1
+Soit f(x) = 2 − 1/x sur ]0 ; +∞[.
+1) Étudie le sens de variation de f.
+2) f est-elle majorée sur ]0 ; +∞[ ?
+3) Que vaut lim (x→+∞) f(x) ?
+Corrigé :
+1) f'(x) = 1/x² > 0 : f est croissante.
+2) f(x) < 2 pour tout x > 0 : f est majorée par 2.
+3) lim (x→+∞) f(x) = 2.
+
+TRACE ÉCRITE
+6. Limite d'une fonction monotone sur un intervalle ouvert
+
+Propriété (admise)
+f étant monotone sur un intervalle ouvert ]a ; b[ (a, b réels ou infinis) :
+• si f est croissante et majorée, f admet une limite finie en b ;
+• si f est croissante et non majorée, f(x) → +∞ quand x → b⁻ ;
+• si f est décroissante et minorée, f admet une limite finie en b ;
+• si f est décroissante et non minorée, f(x) → −∞ quand x → b⁻.
+[Note de transcription : dans le document, la précision « (a, b réels ou infinis) : » est imprimée par erreur de mise en page dans la colonne des réponses des apprenants ; elle appartient à l'énoncé de la propriété.]
+
+Activité 2
+Soit g(x) = (2x + 1)/(x − 1) sur ]1 ; +∞[.
+1) Étudie le sens de variation de g.
+2) Calcule les limites de g aux bornes de l'intervalle.
+3) Vérifie la cohérence avec la propriété.
+Corrigé :
+1) g'(x) = −3/(x − 1)² < 0 : g est strictement décroissante.
+2) lim (x→1⁺) g(x) = +∞ ; lim (x→+∞) g(x) = 2.
+3) g est décroissante et minorée par 2 : cohérent avec la propriété.
+
+Application
+Sur ]1 ; +∞[ : g est strictement décroissante et minorée par 2 : elle admet 2 comme limite en +∞.
+Son tableau de variation permet de lire ces limites directement.
+[Note de transcription : les mots « comme limite en +∞ » sont imprimés dans le document dans la colonne voisine (défaut de mise en page) ; ils complètent cette phrase de la trace écrite.]
+[Tableau de variation de g sur ]1 ; +∞[ : g décroît de +∞ (quand x → 1⁺) à 2 (quand x → +∞).]
+
+Exercice de fixation
+Soit h(x) = 3 + 1/(x − 2) sur ]2 ; +∞[.
+Étudie le sens de variation de h, puis détermine ses limites aux bornes.
+Corrigé :
+h'(x) = −1/(x − 2)² < 0 : h est décroissante ; h(x) > 3 : elle est minorée par 3 ;
+lim (x→2⁺) h = +∞ et lim (x→+∞) h = 3.
+
+Exercice de maison
+Étudie les variations et les limites aux bornes de k(x) = (x + 3)/(x + 1) sur ]−1 ; +∞[.
+(Corrigé en début de 8e séance, voir séance 8.)
+
+=== SEANCE 8/15 : Branches infinies : asymptotes et branches paraboliques ===
+
+Plan de la séance : I. LIMITES — 7. Branches infinies
+Pré-requis : Asymptotes verticale et horizontale (1re D) ; division euclidienne de polynômes ; repère du plan
+Habiletés : Identifier les branches paraboliques de direction (OI) ou (OJ) dans un repère (O, I, J). Déterminer les asymptotes verticale, horizontale et oblique à une courbe ; la nature d'une branche infinie.
+
+Correction de l'exercice de maison de la séance 7
+k'(x) = −2/(x + 1)² < 0 ; lim (x→−1⁺) k = +∞ ; lim (x→+∞) k = 1.
+
+Activité 1
+Soit f(x) = (x² + 2x − 1)/(x − 1).
+1) Étudie la limite de f en 1. Que peut-on en déduire ?
+2) Effectue la division euclidienne et écris f(x) sous la forme ax + b + c/(x − 1).
+3) Calcule lim (x→±∞) [f(x) − (x + 3)] et conclus.
+Corrigé :
+1) Le dénominateur s'annule en 1 : la droite x = 1 est asymptote verticale.
+2) x² + 2x − 1 = (x − 1)(x + 3) + 2, donc f(x) = x + 3 + 2/(x − 1).
+3) f(x) − (x + 3) = 2/(x − 1) → 0 : la droite y = x + 3 est asymptote oblique.
+
+TRACE ÉCRITE
+7. Branches infinies
+
+a) Asymptotes
+• Si lim (x→a) f(x) = ±∞, la droite x = a est asymptote verticale.
+• Si lim (x→±∞) f(x) = b, la droite y = b est asymptote horizontale.
+• Si lim (x→±∞) [f(x) − (ax + b)] = 0, la droite y = ax + b est asymptote oblique.
+
+Activité 2
+On suppose lim (x→+∞) f(x) = +∞. On étudie le quotient f(x)/x.
+Pour chacun des cas suivants, dis vers quoi tend la courbe :
+f(x)/x → 0 ; f(x)/x → ±∞ ; f(x)/x → a (a ≠ 0).
+Exemples : g(x) = √x ; h(x) = x² ; k(x) = x + √x.
+Corrigé :
+• si f(x)/x → 0 : la courbe « s'aplatit » vers l'axe (OI) ;
+• si f(x)/x → ±∞ : la courbe « monte » vers l'axe (OJ) ;
+• si f(x)/x → a ≠ 0, on étudie ensuite f(x) − ax : limite finie b → asymptote oblique ; limite infinie → branche parabolique de direction y = ax.
+g : direction (OI) ; h : direction (OJ) ; k : branche parabolique de direction y = x.
+
+b) Branches paraboliques
+Lorsque lim f(x) = ±∞ :
+• f(x)/x → 0 : branche parabolique de direction (OI) ;
+• f(x)/x → ±∞ : branche parabolique de direction (OJ) ;
+• f(x)/x → a (a ≠ 0) et f(x) − ax → b : asymptote oblique y = ax + b ;
+• f(x)/x → a (a ≠ 0) et f(x) − ax → ±∞ : branche parabolique de direction la droite y = ax.
+[Note de transcription : il s'agit de la limite de f en +∞ ou en −∞ (lim (x→±∞) f(x) = ±∞).]
+
+Exercice de fixation
+Étudie les branches infinies en +∞ de k(x) = √(x² + x + 1).
+Corrigé :
+k(x)/x → 1 et k(x) − x = (x + 1)/(√(x² + x + 1) + x) → 1/2 : asymptote oblique y = x + 1/2.
+
+Exercice de maison
+Étudie les branches infinies de g(x) = x + √(x² + 1) en +∞ et en −∞.
+(Corrigé en début de 9e séance, voir séance 9.)
+
+=== SEANCE 9/15 : Continuité en un point ===
+
+Plan de la séance : II. CONTINUITÉ — 1. Continuité en un point
+Pré-requis : Limite à gauche et à droite ; ensemble de définition ; valeur absolue ; fonctions définies par intervalles
+Habiletés : Connaître la définition de la continuité d'une fonction en un point. Démontrer qu'une fonction est continue (ou non) en un point.
+
+Correction de l'exercice de maison de la séance 8
+En +∞ : g(x)/x → 2 et g(x) − 2x → 0 : asymptote y = 2x.
+En −∞ : g(x) → 0 : asymptote y = 0.
+
+Activité 1
+Soit f définie sur ℝ par f(x) = x² + 1 si x ≤ 1 et f(x) = 3x − 1 si x > 1.
+1) Calcule f(1).
+2) Calcule les limites de f à gauche et à droite de 1.
+3) Compare-les à f(1). Que peux-tu dire de la courbe en ce point ?
+Corrigé :
+1) f(1) = 2.
+2) lim (x→1⁻) f(x) = 2 ; lim (x→1⁺) f(x) = 2.
+3) Les trois nombres sont égaux : la courbe se trace « sans lever le crayon » en 1.
+
+TRACE ÉCRITE
+II. CONTINUITÉ
+1. Continuité en un point
+
+Définition
+f étant définie sur un intervalle K et a ∈ K : f est continue en a lorsque f admet une limite en a et que lim (x→a) f(x) = f(a).
+
+Conséquence pratique
+f est continue en a si et seulement si lim (x→a⁻) f(x) = lim (x→a⁺) f(x) = f(a).
+
+Activité 2
+Soit k définie par k(x) = |x − 2|/(x − 2) si x ≠ 2 et k(2) = 1.
+1) Calcule k(2).
+2) Calcule les limites à gauche et à droite de 2.
+3) Conclus.
+Corrigé :
+1) k(2) = 1.
+2) Pour x > 2 : k(x) = 1, donc lim (x→2⁺) k = 1 ; pour x < 2 : k(x) = −1, donc lim (x→2⁻) k = −1.
+3) Les limites sont différentes : k n'est pas continue en 2.
+
+Exemple
+La fonction k définie par k(x) = |x − 2|/(x − 2) si x ≠ 2 et k(2) = 1 n'est pas continue en 2 : ses limites à gauche (−1) et à droite (1) sont différentes.
+
+Remarque
+Toute fonction dérivable en a est continue en a ; la réciproque est fausse (x ↦ |x| en 0).
+
+Exercice de fixation
+Étudie la continuité en 1 de f définie par f(x) = (x² − 3x + 2)/(x − 1) si x ≠ 1 et f(1) = −1.
+Corrigé :
+Pour x ≠ 1 : f(x) = x − 2, donc lim (x→1) f(x) = −1 = f(1) : f est continue en 1.
+
+Exercice de maison
+Détermine le réel m pour que g soit continue en 0, avec g(x) = (√(x + 4) − 2)/x si x ≠ 0 et g(0) = m.
+(Corrigé en début de 10e séance, voir séance 10.)
+
+=== SEANCE 10/15 : Prolongement par continuité — traitement de la situation d'apprentissage ===
+
+Plan de la séance : II. CONTINUITÉ — 2. Prolongement par continuité
+Pré-requis : Continuité en un point ; levée d'indétermination ; limites trigonométriques de référence
+Habiletés : Connaître la définition du prolongement par continuité d'une fonction en un point. Étudier la possibilité de prolonger une fonction par continuité en un point ; définir ce prolongement lorsqu'il existe.
+
+Correction de l'exercice de maison de la séance 9
+(√(x + 4) − 2)/x = 1/(√(x + 4) + 2) → 1/4 ; donc m = 1/4.
+
+Activité 1
+Soit f(x) = (x² − 9)/(x − 3), définie pour x ≠ 3.
+1) Donne D_f. Le nombre 3 y appartient-il ?
+2) Calcule lim (x→3) f(x).
+3) Peut-on définir une fonction g égale à f et continue en 3 ?
+Corrigé :
+1) D_f = ℝ \ {3} ; 3 ∉ D_f.
+2) f(x) = x + 3 pour x ≠ 3, donc lim (x→3) f(x) = 6.
+3) g(x) = f(x) si x ≠ 3 et g(3) = 6 : g est continue en 3.
+
+TRACE ÉCRITE
+2. Prolongement par continuité
+
+Définition
+f étant définie sur un intervalle K privé d'un réel a (a ∈ K) : si f admet une limite finie ℓ en a, alors la fonction g définie par g(x) = f(x) si x ≠ a et g(a) = ℓ est continue en a.
+g est appelée le prolongement par continuité de f en a.
+
+Activité 2 — retour à la situation d'apprentissage
+On reprend la fonction q : x ↦ (sin x)/x.
+1) Détermine D_q.
+2) Calcule lim (x→0) q(x).
+3) q est-elle prolongeable par continuité en 0 ?
+4) Explique alors ce qu'ont observé les élèves sur leur calculatrice.
+Corrigé (réponses attendues) :
+1) D_q = ℝ, donc 0 ∉ D_q.
+2) lim (x→0) (sin x)/x = 1 (limite de référence).
+3) Oui, car la limite est finie : q̃(x) = (sin x)/x si x ≠ 0 et q̃(0) = 1.
+[Vérification : le document écrit « D_q = ℝ », ce qui contredit « donc 0 ∉ D_q ». Il faut lire D_q = ℝ* = ℝ \ {0} (sin x / x n'est pas défini en x = 0).]
+
+Traitement de la situation (trace écrite)
+q : x ↦ (sin x)/x est définie sur ℝ*, donc 0 n'a pas d'image.
+Or lim (x→0) (sin x)/x = 1 : cette limite est finie.
+Donc q est prolongeable par continuité en 0 et son prolongement q̃ est défini par : q̃(x) = (sin x)/x si x ≠ 0 et q̃(0) = 1.
+En réalité, [la courbe affichée est] la courbe du prolongement, qui passe par le point de coordonnées (0 ; 1).
+C'est ce qui explique que la calculatrice affiche une courbe passant par (0 ; 1).
+[Note de transcription : dans le document, cette partie (page 33) est imprimée avec deux colonnes fusionnées et des caractères parasites « | » et « ** » ; le texte ci-dessus remet les morceaux dans l'ordre logique sans rien ajouter. Le document y écrit « définie sur | ℝ » : il faut lire ℝ* (voir la vérification ci-dessus).]
+
+Exercice de fixation
+Étudie la possibilité de prolonger par continuité en a :
+a) f(x) = (x³ − 8)/(x − 2), a = 2 ;
+b) f(x) = (1 − cos x)/x², a = 0 ;
+c) f(x) = (x² − 1)/|x − 1|, a = 1.
+Corrigé :
+a) x² + 2x + 4 → 12 : prolongeable, f̃(2) = 12 ;
+b) limite 1/2 : prolongeable, f̃(0) = 1/2 ;
+c) limites à gauche (−2) et à droite (2) différentes : non prolongeable.
+[Note de transcription : l'énoncé c) est mal imprimé dans le document (« (x² − 1)/|x −1| ») ; la lecture (x² − 1)/|x − 1| est cohérente avec le corrigé : pour x > 1, f(x) = x + 1 → 2 ; pour x < 1, f(x) = −(x + 1) → −2.]
+
+Exercice de maison
+Étudie le prolongement par continuité en 0 de f(x) = (sin 2x)/(sin 3x).
+(Corrigé en début de 11e séance, voir séance 11.)
+
+=== SEANCE 11/15 : Continuité sur un intervalle : opérations et composée ===
+
+Plan de la séance : II. CONTINUITÉ — 3. Continuité sur un intervalle (opérations, composée)
+Pré-requis : Continuité en un point ; fonctions polynômes et rationnelles ; composée de deux fonctions ; dérivabilité
+Habiletés : Connaître les propriétés relatives aux opérations sur les fonctions continues sur un intervalle ; la propriété relative à la composée de deux fonctions continues. Démontrer qu'une fonction est continue sur un intervalle.
+
+Correction de l'exercice de maison de la séance 10
+(sin 2x)/(sin 3x) → 2/3 : f est prolongeable par continuité en 0 avec f̃(0) = 2/3.
+
+Activité 1
+Dis, en justifiant, sur quels intervalles chacune des fonctions suivantes est continue :
+f(x) = x³ − 2x + 5 ; g(x) = (2x + 1)/(x − 2) ; h(x) = √x ; k(x) = sin x.
+Corrigé :
+• polynôme : continue sur ℝ ;
+• rationnelle : continue sur ]−∞ ; 2[ et ]2 ; +∞[ ;
+• racine : continue sur [0 ; +∞[ ;
+• sin : continue sur ℝ.
+
+TRACE ÉCRITE
+3. Continuité sur un intervalle
+
+Définition
+f est continue sur un intervalle K lorsqu'elle est continue en tout point de K.
+
+Propriétés (admises)
+1) Toute fonction polynôme est continue sur ℝ.
+2) Toute fonction rationnelle est continue sur chaque intervalle contenu dans son ensemble de définition.
+3) x ↦ sin x et x ↦ cos x sont continues sur ℝ ; x ↦ √x est continue sur [0 ; +∞[.
+4) Toute fonction dérivable sur K est continue sur K.
+
+Activité 2
+f et g étant continues sur un intervalle K :
+1) Que dire de f + g, fg, λf et |f| ?
+2) Et de f/g ? À quelle condition ?
+3) Et de √f ?
+Applique à x ↦ √(x² + 1).
+Corrigé :
+1) Oui pour f + g, fg, λf et |f| ;
+2) f/g est continue là où g ne s'annule pas ;
+3) √f est continue si f ≥ 0 sur K.
+Exemple : x ↦ √(x² + 1) est continue sur ℝ comme composée de x ↦ x² + 1 (continue et positive) et de X ↦ √X.
+
+Opérations
+Si f et g sont continues sur K :
+• f + g, fg, λf (λ réel) et |f| sont continues sur K ;
+• f/g est continue sur K si g ne s'annule pas sur K ;
+• si f ≥ 0 sur K, √f est continue sur K.
+
+Composée
+Si u est continue sur K et v continue sur un intervalle contenant u(K), alors v ∘ u est continue sur K.
+
+Exercice de fixation
+Justifie que f(x) = √(x² − 4x + 5) est continue sur ℝ.
+Corrigé :
+x ↦ x² − 4x + 5 est un polynôme continu sur ℝ, et x² − 4x + 5 = (x − 2)² + 1 > 0 : donc f est continue sur ℝ.
+
+Exercice de maison
+Détermine les intervalles sur lesquels g(x) = (x + 1)/√(x − 3) est continue.
+(Corrigé en début de 12e séance, voir séance 12.)
+
+=== SEANCE 12/15 : Image d'un intervalle par une fonction continue ===
+
+Plan de la séance : II. CONTINUITÉ — 4. Image d'un intervalle par une fonction continue
+Pré-requis : Tableau de variation ; extremums d'une fonction ; continuité sur un intervalle ; limites aux bornes
+Habiletés : Connaître les propriétés relatives à l'image d'un intervalle par une fonction continue (par le tableau de variation, par une méthode algébrique). Déterminer l'image d'un intervalle par une fonction continue.
+
+Correction de l'exercice de maison de la séance 11
+Il faut x − 3 > 0 : g est continue sur ]3 ; +∞[.
+
+Activité 1
+Soit f(x) = x² − 2x + 2 sur [0 ; 3].
+1) Étudie les variations de f.
+2) Calcule f(0), f(1) et f(3).
+3) Déduis-en f([0 ; 3]).
+Corrigé :
+1) f'(x) = 2x − 2, négative sur [0 ; 1], positive sur [1 ; 3].
+2) f(0) = 2 ; f(1) = 1 ; f(3) = 5.
+3) Minimum 1, maximum 5, donc f([0 ; 3]) = [1 ; 5].
+[Tableau de variation de f sur [0 ; 3] : f décroît de 2 (en 0) à 1 (en 1), puis croît de 1 à 5 (en 3).]
+
+TRACE ÉCRITE
+4. Image d'un intervalle
+
+Propriété 1
+L'image d'un intervalle par une fonction continue est un intervalle.
+
+Propriété 2
+L'image d'un intervalle une fonction continue est l'intervalle fermé borné [m ; M], où m est le minimum et M le maximum de f sur [a ; b].
+[Note de transcription : la phrase est incomplète dans le document (passage à la page suivante). D'après la fin de la phrase, il faut lire : « L'image d'un intervalle fermé borné [a ; b] par une fonction continue est l'intervalle fermé borné [m ; M], où m est le minimum et M le maximum de f sur [a ; b]. »]
+
+Méthode pratique
+On dresse le tableau de variation et on lit l'image sur la ligne des variations.
+
+Activité 2
+Soit g(x) = (2x + 1)/(x − 1) sur ]1 ; +∞[.
+1) Étudie le sens de variation de g.
+2) Calcule les limites aux bornes.
+3) Déduis-en g(]1 ; +∞[).
+4) Quelle différence fais-tu avec l'activité 1 quant aux bornes ?
+Corrigé :
+1) g'(x) = −3/(x − 1)² < 0 : g est strictement décroissante.
+2) lim (x→1⁺) g = +∞ ; lim (x→+∞) g = 2.
+3) g(]1 ; +∞[) = ]2 ; +∞[.
+4) Les bornes ouvertes correspondent aux limites et non à des valeurs atteintes.
+
+Propriété 3 — fonction strictement [monotone]
+f continue et strictement croissante : f([a ; b]) = [f(a) ; f(b)]
+f continue et strictement décroissante : f([a ; b]) = [f(b) ; f(a)]
+Pour un intervalle ouvert ou semi-ouvert, on remplace les valeurs aux bornes par les limites correspondantes, en gardant les crochets ouverts.
+[Note de transcription : le titre est tronqué dans le document (« Propriété 3 — fonction strictement ») ; le mot « monotone » a été ajouté entre crochets d'après le contenu.]
+
+Exercice de fixation
+Soit f(x) = x³ − 3x sur [−2 ; 3]. Détermine f([−2 ; 3]).
+Corrigé :
+f'(x) = 3(x − 1)(x + 1) ; f(−2) = −2 ; f(−1) = 2 ; f(1) = −2 ; f(3) = 18 ; donc f([−2 ; 3]) = [−2 ; 18].
+
+Exercice de maison
+Détermine l'image de [0 ; 4] par f(x) = x³ − 6x² + 9x + 1.
+(Corrigé en début de 13e séance, voir séance 13.)
+
+=== SEANCE 13/15 : Théorème des valeurs intermédiaires et son corollaire ===
+
+Plan de la séance : II. CONTINUITÉ — 5. Théorème des valeurs intermédiaires et corollaire
+Pré-requis : Continuité sur un intervalle ; image d'un intervalle ; stricte monotonie ; signe d'un produit
+Habiletés : Connaître le théorème des valeurs intermédiaires ; les propriétés relatives aux fonctions continues et strictement monotones sur un intervalle. Démontrer qu'une équation admet une solution unique dans un intervalle.
+
+Correction de l'exercice de maison de la séance 12
+f'(x) = 3(x − 1)(x − 3) ; f(0) = 1 ; f(1) = 5 ; f(3) = 1 ; f(4) = 5 ; f([0 ; 4]) = [1 ; 5].
+
+Activité 1
+Soit f(x) = x³ + x − 1 sur [0 ; 1].
+1) Calcule f(0) et f(1). Que remarques-tu ?
+2) f est-elle continue sur [0 ; 1] ?
+3) Étudie le sens de variation de f.
+4) Combien de solutions l'équation f(x) = 0 admet-elle sur [0 ; 1] ?
+Corrigé :
+1) f(0) = −1 et f(1) = 1 : ils sont de signes contraires.
+2) f est un polynôme : elle est continue sur [0 ; 1].
+3) f'(x) = 3x² + 1 > 0 : f est strictement croissante.
+4) Une seule : la courbe coupe l'axe des abscisses une seule fois.
+
+TRACE ÉCRITE
+5. Théorème des valeurs intermédiaires
+
+Théorème
+f étant continue sur [a ; b], pour tout réel k compris entre f(a) et f(b), il existe au moins un réel c de [a ; b] tel que f(c) = k.
+
+Corollaire (unicité)
+Si de plus f est strictement monotone sur [a ; b], alors pour tout k compris entre f(a) et f(b), il existe un unique réel c de [a ; b] tel que f(c) = k.
+
+Cas particulier
+Si f est continue et strictement monotone sur [a ; b] et si f(a) × f(b) < 0, alors l'équation f(x) = 0 admet une solution unique α dans ]a ; b[.
+
+Activité 2
+Soit g(x) = x³ − 3x + 1.
+1) Dresse le tableau de variation de g sur ℝ.
+2) Combien de solutions l'équation g(x) = 0 admet-elle sur ℝ ?
+3) Justifie la position de chacune.
+Corrigé :
+1) g'(x) = 3(x − 1)(x + 1) ; g croissante sur ]−∞ ; −1], décroissante sur [−1 ; 1], croissante sur [1 ; +∞[ ; g(−1) = 3 ; g(1) = −1.
+2) Trois solutions, une sur chacun des trois intervalles de monotonie.
+3) g(−2) = −1 et g(−1) = 3 : α ∈ ]−2 ; −1[ ; g(0) = 1 et g(1) = −1 : β ∈ ]0 ; 1[ ; g(1) = −1 et g(2) = 3 : γ ∈ ]1 ; 2[.
+[Tableau de variation de g : g croît jusqu'à 3 (en x = −1), décroît jusqu'à −1 (en x = 1), puis croît.]
+
+Méthode de rédaction
+Pour démontrer qu'une équation f(x) = k admet une solution unique dans un intervalle I :
+1) on justifie que f est continue sur I ;
+2) on justifie que f est strictement monotone sur I ;
+3) on calcule f aux bornes et on vérifie que k est compris entre ces deux valeurs ;
+4) on conclut par le corollaire du TVI.
+
+Exercice de fixation
+Démontre que l'équation x³ + x = 3 admet une solution unique dans [1 ; 2].
+Corrigé :
+f(x) = x³ + x − 3 est continue et strictement croissante (f' > 0) ; f(1) = −1 < 0 et f(2) = 7 > 0 : solution unique dans ]1 ; 2[.
+
+Exercice de maison
+Démontre que l'équation x³ − 6x² + 9x + 1 = 4 admet exactement trois solutions dans [0 ; 4].
+(Corrigé en début de 14e séance, voir séance 14.)
+
+=== SEANCE 14/15 : Encadrement d'une solution : méthodes de balayage et de dichotomie ===
+
+Plan de la séance : II. CONTINUITÉ — 6. Encadrement d'une solution : balayage et dichotomie
+Pré-requis : Théorème des valeurs intermédiaires ; signe d'une fonction ; usage de la calculatrice ; encadrement et amplitude
+Habiletés : Connaître les méthodes de dichotomie et de balayage. Déterminer un encadrement d'amplitude donnée d'une solution d'équation.
+
+Correction de l'exercice de maison de la séance 13
+f est continue, monotone sur [0 ; 1], [1 ; 3] et [3 ; 4], et 4 appartient à [1 ; 5] sur chacun : trois solutions.
+
+Activité 1 — balayage
+On reprend f(x) = x³ + x − 1 et sa solution unique α dans ]0 ; 1[.
+1) Calcule f(0,1), f(0,2), …, f(0,9) et repère le changement de signe.
+2) Recommence avec un pas de 0,01 sur l'intervalle obtenu.
+Corrigé :
+f(0,6) = −0,184 < 0 ; f(0,7) = 0,043 > 0, donc 0,6 < α < 0,7.
+Puis f(0,68) ≈ −0,0056 et [illisible : le texte est coupé par un défaut de mise en page], d'où 0,68 < α < 0,69.
+[Vérification : la valeur manquante est f(0,69) ≈ 0,0185 > 0, ce qui donne bien 0,68 < α < 0,69.]
+
+TRACE ÉCRITE
+6. Encadrement d'une solution
+
+a) Méthode de balayage
+On calcule les images des réels de l'intervalle en avançant d'un pas de 0,1 ; 0,01 ; … et on repère le changement de signe de f(x).
+Chaque nouveau pas divise l'amplitude par 10.
+[Note de transcription : dans le document, les mots « réels de l'intervalle en » sont imprimés dans la colonne voisine (défaut de mise en page) ; ils appartiennent à cette phrase.]
+
+Activité 2 — dichotomie
+Sur [0 ; 1], partage l'intervalle en deux, calcule l'image du milieu et conserve la moitié où f change de signe.
+Réalise quatre étapes et conclus.
+Corrigé :
+m = 0,5 : f(0,5) = −0,375 < 0 → [0,5 ; 1] ;
+m = 0,75 : f ≈ 0,17 > 0 → [0,5 ; 0,75] ;
+m = 0,625 : f ≈ −0,131 < 0 → [0,625 ; 0,75] ;
+m = 0,6875 : f ≈ 0,012 > 0 → [0,625 ; 0,6875].
+D'où α ≈ 0,68.
+
+b) Méthode de dichotomie
+On partage l'intervalle en deux parties égales et on conserve celle où f change de signe.
+Après n étapes, l'amplitude de l'intervalle obtenu est (b − a)/2ⁿ.
+Ici α ≈ 0,68 à 10⁻² près.
+[Vérification : après les quatre étapes de dichotomie, on a seulement 0,625 < α < 0,6875 (amplitude 1/16 = 0,0625). La précision « α ≈ 0,68 à 10⁻² près » vient de l'encadrement 0,68 < α < 0,69 obtenu par balayage (activité 1), pas des quatre étapes de dichotomie seules. La valeur α ≈ 0,68 est juste (α ≈ 0,682).]
+
+Exercice de fixation
+On sait que g(x) = x³ − 3x + 1 admet une solution β dans ]0 ; 1[. Donne un encadrement de β d'amplitude 0,1.
+Corrigé :
+g(0,4) = −0,136 < 0, donc 0,3 < β < 0,4.
+(On a g(0,3) = 0,127 > 0.)
+
+Exercice de maison
+Par dichotomie, donne un encadrement d'amplitude inférieure à 0,15 de la solution γ de x³ − 3x + 1 = 0 située dans ]1 ; 2[.
+(Corrigé en début de 15e séance, voir séance 15.)
+
+=== SEANCE 15/15 : Racines n-ièmes et puissances d'exposant rationnel — situation d'évaluation ===
+
+Plan de la séance : III. RACINES n-IÈMES ET PUISSANCES D'EXPOSANT RATIONNEL — 1. Racine n-ième d'un nombre positif — 2. Puissance d'exposant rationnel et propriétés
+Pré-requis : Puissances entières et leurs propriétés ; racine carrée ; corollaire du théorème des valeurs intermédiaires
+Habiletés : Identifier une racine n-ième d'un nombre positif ; une puissance d'exposant rationnel. Noter une racine n-ième (ⁿ√x ou x^(1/n)) et une puissance d'exposant rationnel (x^(p/q)). Connaître les propriétés relatives aux puissances d'exposants rationnels. Traiter une situation faisant appel aux limites et à la continuité.
+
+Correction de l'exercice de maison de la séance 14
+[1 ; 2] → [1,5 ; 2] → [1,5 ; 1,75] → [1,5 ; 1,625] : amplitude 0,125.
+
+Activité 1
+Soit n un entier non nul et φ(x) = xⁿ sur [0 ; +∞[.
+1) φ est-elle continue et strictement monotone ?
+2) Détermine φ([0 ; +∞[).
+3) Que peut-on dire de l'équation xⁿ = a, a ≥ 0 ?
+Corrigé :
+1) φ est un polynôme, donc continue ; φ'(x) = nxⁿ⁻¹ > 0 pour x > 0.
+2) φ(0) = 0 et lim (x→+∞) φ(x) = +∞, donc φ([0 ; +∞[) = [0 ; +∞[.
+3) D'après le corollaire du TVI, elle admet une [solution unique dans] [0 ; +∞[.
+[Note de transcription : la phrase 3) est coupée dans le document (« elle admet une … [0 ; +∞[ ») ; les mots entre crochets reconstituent le sens, conforme à la définition qui suit.]
+
+TRACE ÉCRITE
+III. RACINES n-IÈMES ET PUISSANCES
+
+1. Racine n-ième
+Définition
+a étant un réel positif et n un entier naturel non nul, on appelle racine n-ième de a l'unique réel positif b tel que bⁿ = a.
+On note b = ⁿ√a ou b = a^(1/n).
+Exemples : ³√8 = 2 ; ⁴√81 = 3 ; ⁵√32 = 2.
+
+Activité 2
+1) Calcule 8^(2/3) et 16^(−3/4).
+2) Énonce les règles de calcul sur les puissances d'exposant rationnel.
+Corrigé :
+1) 8^(2/3) = (2³)^(2/3) = 2² = 4 ; 16^(−3/4) = (2⁴)^(−3/4) = 2^(−3) = 1/8.
+2) Ce sont les mêmes que pour les puissances entières.
+
+2. Puissance d'exposant rationnel
+Définition
+Pour a > 0, p ∈ ℤ et q ∈ ℕ* : a^(p/q) = (a^p)^(1/q) = (a^(1/q))^p.
+
+Propriétés
+Pour a > 0, b > 0, r et s rationnels :
+a^r × a^s = a^(r+s) ; a^r / a^s = a^(r−s) ; (a^r)^s = a^(rs) ; (ab)^r = a^r × b^r ; (a/b)^r = a^r / b^r ; a^(−r) = 1/a^r.
+
+Situation d'évaluation (énoncé complet dans le bloc « EXERCICES DE FIN DE LECON »)
+Le coût de fabrication d'une boîte de rayon x cm est C(x) = 2x² + 1000/x + 50 (en F CFA), x > 0.
+1) Limites de C en 0⁺ et en +∞.
+2) Variations de C.
+3) Image de [2 ; 10].
+4) Nombre de solutions de C(x) = 320 sur [2 ; 10] et encadrements.
+Corrigé :
+1) lim (x→0⁺) C(x) = +∞ (asymptote verticale x = 0) ; lim (x→+∞) C(x) = +∞.
+2) C'(x) = (4x³ − 1000)/x², qui s'annule pour x = ³√250 ≈ 6,30 ; minimum ≈ 288,11.
+3) C([2 ; 10]) ≈ [288,11 ; 558].
+4) Deux solutions : 4,2 < α_1 < 4,3 et 8,8 < α_2 < 8,9.
+
+Renforcement : préparation du TD n° 1 et de l'heure de régulation (le TD est traité lors des séances de régulation ; son énoncé ne figure pas dans la fiche).
+
+=== EXERCICES DE FIN DE LECON ===
+
+E. SITUATION D'ÉVALUATION (énoncé complet)
+
+Un fabricant de boîtes de conserve cylindriques souhaite produire des boîtes de volume 500 cm³. Le coût de fabrication, en francs CFA, d'une boîte dont le rayon de base mesure x centimètres est modélisé par la fonction C définie sur ]0 ; +∞[ par :
+C(x) = 2x² + 1000/x + 50.
+Le fabricant veut savoir s'il existe un rayon pour lequel le coût de production est exactement égal à 320 francs CFA, et connaître l'ensemble des coûts possibles lorsque le rayon varie entre 2 cm et 10 cm.
+
+Consignes
+1) Calcule lim (x→0⁺) C(x) et lim (x→+∞) C(x). Interprète graphiquement le premier résultat.
+2) Étudie les variations de C sur ]0 ; +∞[ et dresse son tableau de variation.
+3) Détermine l'image de l'intervalle [2 ; 10] par C.
+4) Démontre que l'équation C(x) = 320 admet exactement deux solutions dans [2 ; 10], puis donne un encadrement d'amplitude 0,1 de chacune d'elles.
+
+Corrigé (réponses attendues données à la séance 15) :
+1) lim (x→0⁺) C(x) = +∞ (asymptote verticale x = 0) ; lim (x→+∞) C(x) = +∞.
+2) C'(x) = (4x³ − 1000)/x², qui s'annule pour x = ³√250 ≈ 6,30 ; minimum ≈ 288,11.
+[Tableau de variation de C : C décroît sur ]0 ; ³√250] de +∞ à environ 288,11, puis croît sur [³√250 ; +∞[ jusqu'à +∞.]
+3) C([2 ; 10]) ≈ [288,11 ; 558].
+4) Deux solutions : 4,2 < α_1 < 4,3 et 8,8 < α_2 < 8,9.
+[Vérification : valeurs contrôlées. C(2) = 558 ; C(10) = 350 ; C(³√250) ≈ 288,11 ; C(4,2) ≈ 323,4 > 320 et C(4,3) ≈ 319,5 < 320 ; C(8,8) ≈ 318,5 < 320 et C(8,9) ≈ 320,8 > 320. Les encadrements sont justes.]
+
+F. BILAN DE LA LEÇON
+- Ce qui est exigible : Limites de référence ; levée d'indétermination (factorisation, expression conjuguée, nombre dérivé) ; limite d'une composée ; théorèmes de comparaison ; branches infinies ; continuité en un point ; prolongement par continuité ; image d'un intervalle ; TVI et corollaire ; balayage et dichotomie ; racines n-ièmes et puissances d'exposant rationnel.
+- Difficultés attendues : Confusion entre limite et valeur de la fonction ; oubli de la stricte monotonie dans l'application du TVI ; erreurs de signe avec √(x²) = |x| en −∞ ; confusion entre asymptote oblique et branche parabolique.
+- Régulation (1 h) : Reprise des méthodes de levée d'indétermination et de la rédaction type du TVI ; correction du TD n° 1 ; remédiation individualisée.
+- Évaluation : Exercices de fixation en fin de séance ; TD n° 1 ; interrogation écrite n° 1 (1 h) ; réinvestissement dans le devoir de niveau du 1er trimestre.
+
+Fin de la fiche de leçon n° 1

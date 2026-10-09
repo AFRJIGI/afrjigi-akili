@@ -203,6 +203,8 @@ class MatiereEtDocumentTests(unittest.TestCase):
     def test_lycee_professionnel_hors_champ(self):
         self.assertTrue(main.is_other_or_concours("Je suis au professionnel"))
         self.assertTrue(main.is_other_or_concours("je fais le lycée professionnel"))
+        self.assertTrue(main.is_other_or_concours("3eme année BT électronique"))
+        self.assertFalse(main.is_other_or_concours("BAC technique G2"))
 
 
 class SecondControleDu9OctTests(unittest.TestCase):
