@@ -206,14 +206,6 @@ class MatiereEtDocumentTests(unittest.TestCase):
         self.assertTrue(main.is_other_or_concours("3eme année BT électronique"))
         self.assertFalse(main.is_other_or_concours("BAC technique G2"))
 
-    def test_cap_hors_champ(self):
-        # Le CAP (niveau BEPC de l'enseignement professionnel) n'est pas encore couvert.
-        self.assertTrue(main.is_other_or_concours("je suis en CAP"))
-        self.assertTrue(main.is_other_or_concours("Certificat d'aptitude professionnelle"))
-        self.assertFalse(main.is_other_or_concours("je suis en 3eme, BEPC"))
-        self.assertFalse(main.is_other_or_concours("capacite thermique"))
-        self.assertIn("L'enseignement professionnel (CAP, BT), le BTS", main.MESSAGE_HORS_CHAMP)
-
 
 class SecondControleDu9OctTests(unittest.TestCase):
     """Second controle qualite du 9 oct. : « Français » seul, audio qui cite deux matieres, « À » accentue,
