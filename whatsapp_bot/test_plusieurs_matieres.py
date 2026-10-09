@@ -38,6 +38,9 @@ class WebhookTests(unittest.TestCase):
         noop = lambda *a, **k: None
         self.patches = [
             mock.patch.object(main, "send_whatsapp", side_effect=lambda phone, msg, *a, **k: self.envoyes.append(msg)),
+            # Pas de vraie reservation Firestore : sur Cloud Shell, les identifiants de test restaient
+            # reserves dans la base de production et le test suivant voyait un « duplicate ».
+            mock.patch.object(main, "reserver_message_whatsapp", return_value=True),
             mock.patch.object(main, "send_whatsapp_typing_indicator", side_effect=noop),
             mock.patch.object(main, "charger_etat_whatsapp", side_effect=lambda phone: dict(self.profile)),
             mock.patch.object(main, "sauver_etat_whatsapp", side_effect=noop),
