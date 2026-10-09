@@ -1557,6 +1557,19 @@ DEMANDES_DANS_LE_MESSAGE = ["SUJET", "EXPLIQUE", "EXPLIQUER", "CORRIGE", "CORRIG
                             "COMMENTAIRE", "RESUME", "DEFINITION", "REVISER", "APPRENDRE", "COMPRENDRE"]
 
 
+DEMANDES_D_AIDE = DEMANDES_DANS_LE_MESSAGE + [
+    "METS MOI", "MET MOI", "MONTRE", "GUIDE", "VOIE", "EXEMPLE", "CONTINUE", "CONTINUER", "CONTINUONS", "SUITE",
+    "AIDE MOI", "JE COMPRENDS PAS", "JE NE COMPRENDS PAS", "COMMENCE", "CALCULE", "RESOUD", "RESOUDRE", "TRAITE",
+    "PASSONS"]
+
+
+def est_demande_d_aide(text):
+    """Le message demande quelque chose a Akili (question, exercice, « mets-moi sur la voie »)."""
+    msg = normalize_for_match(text)
+    return "?" in (text or "") or any(has_expr(msg, m) for m in DEMANDES_D_AIDE) \
+        or any(mot.startswith("REFORMUL") for mot in msg.split())
+
+
 def contient_une_demande(text):
     """« Je veux un sujet en philo pour mon devoir » contient une demande ; « je vais traiter mon exercice
     d'histoire » annonce seulement l'exercice, qu'Akili doit attendre."""
@@ -2138,6 +2151,15 @@ def est_salutation(text):
         msg = re.sub(r"(?<![A-Z0-9])" + phrase + r"(?![A-Z0-9])", " BONJOUR ", msg)
     mots = msg.split()
     return any(m in SALUTATIONS for m in mots) and all(m in SALUTATIONS | MOTS_D_ADRESSE for m in mots)
+
+
+def est_message_d_accueil(text):
+    """Salutation, ou texte pre-rempli des flyers et des pubs (« Bonjour Akili, je participe au pilote AfrJigi »)."""
+    msg = normalize_for_match(text)
+    if est_salutation(text):
+        return True
+    return bool(re.search(r"(?<![A-Z0-9])(PILOTE|JE PARTICIPE|JE VEUX ESSAYER AKILI|JE DECOUVRE AKILI)(?![A-Z0-9])", msg)) \
+        and not contient_une_demande(text) and len(msg.split()) <= 12
 
 
 def message_bon_retour(profile):
@@ -3379,36 +3401,88 @@ def mini_test_eligible(profile):
             and not est_enseignant_verifie(profile) and not espace_enseignant_actif(profile))
 
 
-def mini_test_apres_reponse(phone, profile, session):
-    """Apres une reponse d'Akili : compte les jours d'activite et propose le test au bon moment."""
+def charger_etat_mini_test(phone, profile=None):
+    """Test en cours et calendrier par matiere (collection a part, identifiant pseudonyme).
+    Au premier passage, reprend ce que l'ancien code gardait dans le profil. None si Firestore ne repond pas."""
     try:
-        if not mini_test_eligible(profile):
-            return
-        change = mini_test.noter_jour_actif(profile, profile.get("matiere"))
-        phase = mini_test.phase_a_proposer(profile, int((session or {}).get("nb_echanges", 0)))
-        if phase:
-            dernier = next((m.get("content") for m in reversed((session or {}).get("messages") or [])
-                            if m.get("role") == "assistant"), "")
-            texte = mini_test.proposer(profile, phase, reprise=mini_test.derniere_question(dernier))
-            if send_whatsapp_boutons(phone, texte, mini_test.BOUTONS_PROPOSITION):
-                save_whatsapp_event(phone, "outbound", "[mini_test] " + texte, profile,
-                                    extra={"processing_stage": f"mini_test_propose_{phase}"})
-                print(f"MINI_TEST propose phase={phase} matiere={profile.get('matiere')}", flush=True)
-            else:
-                profile.pop("mini_test", None)
-            change = True
-        if change:
-            user_profiles[phone] = profile
-            sauver_etat_whatsapp(phone, profile)
+        doc = feedback_db.collection(mini_test.COLLECTION_ETAT).document(consent_document_id(phone)).get()
+        donnees = (doc.to_dict() or {}) if doc.exists else None
     except Exception as e:
-        print(f"Erreur mini_test_apres_reponse: {repr(e)}", flush=True)
+        print(f"Erreur charger_etat_mini_test: {repr(e)}", flush=True)
+        return None
+    if donnees is None:
+        donnees = {"mini_test": (profile or {}).get("mini_test"), "mini_tests": (profile or {}).get("mini_tests")}
+    calendrier = donnees.get("mini_tests")
+    etat = {"mini_tests": dict(calendrier) if isinstance(calendrier, dict) else {}}
+    if isinstance(donnees.get("mini_test"), dict):
+        etat["mini_test"] = donnees["mini_test"]
+    return etat
 
 
-def generer_mini_test(phone, profile, test):
+def sauver_etat_mini_test(phone, etat):
+    try:
+        doc = {"mini_tests": etat.get("mini_tests") or {}, "maj_le": datetime.now(timezone.utc).isoformat()}
+        if etat.get("mini_test"):
+            doc["mini_test"] = etat["mini_test"]
+        feedback_db.collection(mini_test.COLLECTION_ETAT).document(consent_document_id(phone)).set(doc)
+    except Exception as e:
+        print(f"Erreur sauver_etat_mini_test: {repr(e)}", flush=True)
+
+
+_jour_actif_note = {}
+
+
+def mini_test_jour_actif(phone, profile):
+    """Apres une reponse d'Akili : compte les jours d'activite dans la matiere (une lecture par jour au plus)."""
+    try:
+        matiere = (profile or {}).get("matiere")
+        cle = (phone, matiere, mini_test.aujourd_hui())
+        if not matiere or not mini_test_eligible(profile) or _jour_actif_note.get(phone) == cle:
+            return
+        etat = charger_etat_mini_test(phone, profile)
+        if etat is None:
+            return
+        _jour_actif_note[phone] = cle
+        if mini_test.noter_jour_actif(etat, matiere):
+            sauver_etat_mini_test(phone, etat)
+    except Exception as e:
+        print(f"Erreur mini_test_jour_actif: {repr(e)}", flush=True)
+
+
+def proposer_mini_test_fin_de_seance(phone, profile, session):
+    """Apres le bilan d'une seance d'au moins 4 echanges : propose le test (debut ou fin). Vrai si propose.
+    Avant le 9 oct., il etait propose apres la 4e reponse et coupait l'eleve en plein exercice."""
+    try:
+        session = session or {}
+        matiere = session.get("matiere") or (profile or {}).get("matiere")
+        if not matiere or not mini_test_eligible(profile):
+            return False
+        etat = charger_etat_mini_test(phone, profile)
+        if etat is None:
+            return False
+        etat["matiere"] = matiere
+        phase = mini_test.phase_a_proposer(etat, int(session.get("nb_echanges", 0)))
+        if not phase:
+            return False
+        texte = mini_test.proposer(etat, phase)
+        if not send_whatsapp_boutons(phone, texte, mini_test.BOUTONS_PROPOSITION):
+            return False
+        sauver_etat_mini_test(phone, etat)
+        save_whatsapp_event(phone, "outbound", "[mini_test] " + texte, profile,
+                            extra={"processing_stage": f"mini_test_propose_{phase}"})
+        print(f"MINI_TEST propose phase={phase} matiere={matiere}", flush=True)
+        return True
+    except Exception as e:
+        print(f"Erreur proposer_mini_test_fin_de_seance: {repr(e)}", flush=True)
+        return False
+
+
+def generer_mini_test(phone, profile, test, etat=None):
     """Demande les 3 questions a l'API ; None si la reponse n'est pas exploitable."""
-    cycle = (profile.get("mini_tests") or {}).get(test["matiere"]) or {}
+    cycle = ((etat or {}).get("mini_tests") or {}).get(test["matiere"]) or {}
     fin = test["phase"] == "fin"
-    historique = historique_en_cours(cle_conversation_profil(phone, profile)) or []
+    cle = cle_conversation_profil(phone, dict(profile, matiere=test["matiere"]))
+    historique = historique_en_cours(cle) or []
     try:
         res = requests.post(AKILI_MINI_TEST_URL, data={
             "historique": json.dumps(list(historique)[-12:], ensure_ascii=False),
@@ -3426,9 +3500,10 @@ def generer_mini_test(phone, profile, test):
         return None
 
 
-def envoyer_question_mini_test(phone, profile):
-    texte = clean_whatsapp_response(mini_test.texte_question(profile["mini_test"]))
-    if not send_whatsapp_boutons(phone, texte, mini_test.BOUTONS_REPONSE):
+def envoyer_question_mini_test(phone, profile, etat):
+    test = etat["mini_test"]
+    texte = clean_whatsapp_response(mini_test.texte_question(test))
+    if not send_whatsapp_boutons(phone, texte, mini_test.boutons_reponse(test["index"])):
         send_whatsapp(phone, texte + "\n\nRéponds par a, b ou c.", allow_audio=False)
     save_whatsapp_event(phone, "outbound", "[mini_test] " + texte, profile,
                         extra={"processing_stage": "mini_test_question"})
@@ -3445,46 +3520,50 @@ def enregistrer_resultat_mini_test(phone, profile, resultat):
         print(f"Erreur enregistrer_resultat_mini_test: {repr(e)}", flush=True)
 
 
-def traiter_mini_test(phone, profile, entree):
+def traiter_mini_test(phone, profile, entree, etat):
     """Bouton du mini-test ou lettre tapee pendant le test. Vrai si le message a ete traite."""
-    test = profile.get("mini_test")
+    test = etat.get("mini_test")
 
     def sauver():
-        user_profiles[phone] = profile
-        sauver_etat_whatsapp(phone, profile)
+        sauver_etat_mini_test(phone, etat)
 
     if entree == mini_test.PLUS_TARD:
-        profile.pop("mini_test", None)
+        etat.pop("mini_test", None)
         sauver()
         send_whatsapp(phone, mini_test.PLUS_TARD_OK, allow_audio=False)
         return True
     if entree == mini_test.OUI:
         if not test or test.get("etat") != "propose":
-            send_whatsapp(phone, mini_test.INDISPONIBLE, allow_audio=False)
+            if not (test and test.get("etat") == "en_cours"):  # deuxieme « Oui » : le test a deja commence
+                send_whatsapp(phone, mini_test.INDISPONIBLE, allow_audio=False)
             return True
         send_whatsapp(phone, mini_test.PREPARATION, allow_audio=False)
-        donnees = generer_mini_test(phone, profile, test)
+        donnees = generer_mini_test(phone, profile, test, etat)
         if not donnees:
-            profile.pop("mini_test", None)
+            etat.pop("mini_test", None)
             sauver()
             send_whatsapp(phone, mini_test.ECHEC, allow_audio=False)
             return True
-        mini_test.demarrer(profile, donnees)
+        mini_test.demarrer(etat, donnees)
         sauver()
-        envoyer_question_mini_test(phone, profile)
+        envoyer_question_mini_test(phone, profile, etat)
         print(f"MINI_TEST demarre phase={test['phase']} chapitre={donnees['chapitre']!r}", flush=True)
         return True
-    lettre = mini_test.lettre_de(entree)
+    numero, lettre = mini_test.lire_reponse(entree)
     if not test or test.get("etat") != "en_cours" or not lettre:
         if str(entree).startswith("minitest_"):
             send_whatsapp(phone, mini_test.INDISPONIBLE, allow_audio=False)
             return True
         return False
+    if numero is not None and numero != test["index"] + 1:
+        # Bouton d'une question deja repondue (double appui, ou ancien message) : ignore.
+        print(f"MINI_TEST bouton ignore question={numero} attendue={test['index'] + 1}", flush=True)
+        return True
     if not mini_test.enregistrer_reponse(test, lettre):
         sauver()
-        envoyer_question_mini_test(phone, profile)
+        envoyer_question_mini_test(phone, profile, etat)
         return True
-    message, resultat = mini_test.terminer(profile)
+    message, resultat = mini_test.terminer(etat)
     sauver()
     send_whatsapp(phone, message, allow_audio=False)
     enregistrer_resultat_mini_test(phone, profile, resultat)
@@ -3847,7 +3926,8 @@ def envoyer_fin_de_session(phone, source="au_revoir"):
     # premier bilan), sinon la ville et l'ecole, sinon les boutons d'avis. Avant, l'invitation n'arrivait
     # qu'au deuxieme bilan : 216 invitations seulement pour pres de 4 000 eleves, et aucun ancien
     # utilisateur relancable (segmentation du 7 oct.).
-    if not maybe_send_marketing_consent_prompt(phone) and not demander_ville_ecole_si_besoin(phone):
+    if (not maybe_send_marketing_consent_prompt(phone) and not demander_ville_ecole_si_besoin(phone)
+            and not proposer_mini_test_fin_de_seance(phone, profil, session)):
         demander_avis_seance(phone)
     print(f"FIN_SESSION envoyee source={source} echanges={session.get('nb_echanges')}", flush=True)
     return True
@@ -4814,7 +4894,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     send_whatsapp(phone, reponse, limit=send_limit, add_continuation=continuation)
     send_vector_formula_if_needed(phone, text + "\n" + reponse)
     if compter_activation:
-        mini_test_apres_reponse(phone, profile, session)
+        mini_test_jour_actif(phone, profile)
 
     print(f"WHATSAPP_AUDIO_REPLY reply_audio={reply_audio}", flush=True)
 
@@ -5838,7 +5918,14 @@ async def _receive_message_impl(request: Request):
         if bouton_id:
             if str(bouton_id).startswith("minitest_"):
                 profil_test = charger_etat_whatsapp(phone) or user_profiles.get(phone) or {}
-                traiter_mini_test(phone, profil_test, bouton_id)
+                # La reponse de l'eleve est gardee : le controle qualite ne voyait que les questions d'Akili.
+                save_whatsapp_event(phone, "inbound", f"[mini_test] {bouton_id}", profil_test, message_id,
+                                    extra={"processing_stage": "mini_test_bouton"})
+                etat_test = charger_etat_mini_test(phone, profil_test)
+                if etat_test is None:
+                    send_whatsapp(phone, mini_test.ECHEC, allow_audio=False)
+                else:
+                    traiter_mini_test(phone, profil_test, bouton_id, etat_test)
                 return {"status": "ok", "reason": "mini_test"}
             if traiter_bouton_avis(phone, bouton_id):
                 return {"status": "ok", "reason": "avis_seance"}
@@ -5969,7 +6056,11 @@ async def _receive_message_impl(request: Request):
         command = text.strip().lower()
         onboarding_step = profile.get("onboarding_step")
 
-        test_en_cours = profile.get("mini_test")
+        etat_test = charger_etat_mini_test(phone, profile) if is_profile_ready(profile) else None
+        if etat_test is not None:
+            for ancienne_cle in ("mini_test", "mini_tests"):  # gardes a part depuis le 9 oct.
+                profile.pop(ancienne_cle, None)
+        test_en_cours = (etat_test or {}).get("mini_test")
         if test_en_cours:
             reponse_test = None
             if media_file is None and test_en_cours.get("etat") == "en_cours" and mini_test.lettre_de(text):
@@ -5979,13 +6070,12 @@ async def _receive_message_impl(request: Request):
                     reponse_test = mini_test.OUI
                 elif normalize_for_match(text) in REPONSES_NON_MINI_TEST:
                     reponse_test = mini_test.PLUS_TARD
-            if reponse_test and traiter_mini_test(phone, profile, reponse_test):
+            if reponse_test and traiter_mini_test(phone, profile, reponse_test, etat_test):
                 track_inbound("mini_test", user_profiles.get(phone, profile))
                 return {"status": "ok", "reason": "mini_test"}
             # L'eleve passe a autre chose : le test (ou la proposition) est abandonne.
-            profile.pop("mini_test", None)
-            user_profiles[phone] = profile
-            sauver_etat_whatsapp(phone, profile)
+            etat_test.pop("mini_test", None)
+            sauver_etat_mini_test(phone, etat_test)
             if test_en_cours.get("etat") == "en_cours":
                 send_whatsapp(phone, mini_test.INTERROMPU, allow_audio=False)
         print(f"SHORT_DEBUG text={text} is_short={is_short_exercise_answer(text)} is_contextual={is_contextual_exercise_answer(text)} onboarding={onboarding_step}", flush=True)
@@ -6040,6 +6130,14 @@ async def _receive_message_impl(request: Request):
             return {"status": "ok", "reason": "ville_ecole"}
 
         note_en_attente = commentaire_avis_attendu(profile, text)
+        if note_en_attente and (media_file is not None or est_demande_d_aide(text)):
+            # « Mets-moi sur la voie de la reformulation » : l'avis est garde, et la demande part chez
+            # Akili au lieu de « Merci, ton avis est enregistré » (controle qualite du 9 oct.).
+            profile.pop("attente_commentaire_avis", None)
+            user_profiles[phone] = profile
+            enregistrer_avis_seance(phone, note_en_attente, profile, commentaire=text[:1000])
+            print("COMMENTAIRE_AVIS qui est une demande : transmis a Akili", flush=True)
+            note_en_attente = None
         if note_en_attente:
             profile.pop("attente_commentaire_avis", None)
             user_profiles[phone] = profile
@@ -6353,9 +6451,11 @@ async def _receive_message_impl(request: Request):
                 profile["onboarding_step"] = etape_en_cours = "exam"
             # « Philosophie » ou « je veux plus faire de maths » n'est pas une question a garder : Akili la
             # « reprenait » ensuite et repondait a cote (controle qualite du 7 oct.).
+            # « Bonjour Akili, je participe au pilote AfrJigi » (texte des flyers) n'est pas une question non plus.
             pas_une_question = not media_info and (
                 (len(normalize_for_match(original_text).split()) <= 3 and detect_matiere_from_text(original_text))
-                or est_demande_changement_matiere(original_text, profile.get("matiere")))
+                or est_demande_changement_matiere(original_text, profile.get("matiere"))
+                or est_message_d_accueil(original_text))
             if pas_une_question:
                 for cle_attente in ("pending_question", "pending_question_display"):
                     profile.pop(cle_attente, None)

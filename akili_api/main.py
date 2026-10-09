@@ -493,7 +493,11 @@ LANGAGE_ET_AUTRE_MATIERE = (
     "toujours en français scolaire simple et correct.\n"
     "AUTRE MATIÈRE : si l'élève demande une autre matière que la tienne, ne refuse jamais et ne dis jamais "
     "que tu es spécialisé dans une seule matière. Aide-le brièvement sur sa demande, puis dis-lui en une "
-    "phrase qu'il peut écrire menu pour changer de matière."
+    "phrase qu'il peut écrire menu pour changer de matière.\n"
+    "CHOIX a, b, c : réponds seulement à ce que l'élève vient d'envoyer, jamais à une question qu'il n'a pas "
+    "encore traitée. S'il choisit une mauvaise lettre, ne donne pas la bonne tout de suite : dis en une phrase "
+    "pourquoi son choix ne convient pas, donne un indice et laisse-le choisir à nouveau. Donne la bonne "
+    "réponse, avec l'explication, seulement après un deuxième essai faux."
 )
 
 LONGUEUR_WHATSAPP = (

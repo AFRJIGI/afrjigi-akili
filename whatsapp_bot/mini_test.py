@@ -3,15 +3,19 @@ quelques jours plus tard. La difference des scores mesure la progression (oct. 2
 tires des conversations ne pouvaient pas la montrer, la difficulte des exercices changeant en meme temps).
 
 Ce module ne contient que la logique (calendrier, messages, correction) ; l'envoi et l'appel a l'API
-sont dans main.py. L'etat du test en cours est garde dans le profil WhatsApp (cle "mini_test"), le
-calendrier par matiere dans profile["mini_tests"], les resultats dans la collection mini_tests
-(identifiant pseudonyme, jamais le numero).
+sont dans main.py. Les fonctions recoivent un « etat » : {"matiere", "mini_test" (test en cours),
+"mini_tests" (calendrier par matiere)}, garde dans la collection mini_tests_etat et non plus dans le profil.
+Les resultats vont dans la collection mini_tests (identifiant pseudonyme, jamais le numero).
+Depuis le 9 oct., le test est propose a la fin d'une seance (apres le bilan), plus au milieu d'un exercice.
 """
 import re
 from datetime import date, datetime, timedelta, timezone
 
 COLLECTION = "mini_tests"
-ECHANGES_AVANT_PROPOSITION = 4      # proposé apres la 4e reponse d'Akili d'une seance
+# Etat du test en cours et calendrier par matiere, hors du profil (identifiant pseudonyme) : le profil est
+# remplace en entier a chaque message, et un message traite en parallele effacait le test (9 oct.).
+COLLECTION_ETAT = "mini_tests_etat"
+ECHANGES_AVANT_PROPOSITION = 4      # propose a la fin d'une seance d'au moins 4 echanges
 JOURS_ACTIFS_AVANT_FIN = 3          # jours d'activite dans la matiere apres le test de debut
 DELAI_ENTRE_PROPOSITIONS = timedelta(days=2)
 MAX_PROPOSITIONS_DEBUT = 3          # apres 3 « plus tard », on ne propose plus le test de debut
@@ -23,8 +27,8 @@ OUI, PLUS_TARD = "minitest_oui", "minitest_plus_tard"
 BOUTONS_PROPOSITION = [(OUI, "Oui, on y va"), (PLUS_TARD, "Plus tard")]
 BOUTONS_REPONSE = [(f"minitest_{l}", l) for l in LETTRES]
 
-PROPOSITION_DEBUT = ("Petite pause de 1 minute : 3 questions rapides sur ce que tu travailles, pour voir où "
-                     "tu en es. Ce n'est pas noté. On y va ?")
+PROPOSITION_DEBUT = ("Pour finir : 3 questions rapides sur ce que tu viens de travailler, pour voir où tu en es "
+                     "(1 minute, ce n'est pas noté). On y va ?")
 PROPOSITION_FIN = ("Tu as travaillé « {chapitre} » il y a quelques jours. 3 questions rapides pour voir tes "
                    "progrès (1 minute, pas noté). On y va ?")
 PREPARATION = "Je prépare tes 3 questions…"
@@ -60,7 +64,7 @@ def noter_jour_actif(profile, matiere, now=None):
 
 def phase_a_proposer(profile, nb_echanges, now=None):
     """'debut', 'fin' ou None : faut-il proposer un mini-test apres cette reponse d'Akili ?"""
-    if profile.get("mini_test") or nb_echanges != ECHANGES_AVANT_PROPOSITION:
+    if profile.get("mini_test") or nb_echanges < ECHANGES_AVANT_PROPOSITION:
         return None
     matiere = profile.get("matiere")
     if not matiere:
@@ -140,13 +144,27 @@ def texte_question(test):
     return f"{entete} : {q['question']}\n\na. {q['a']}\nb. {q['b']}\nc. {q['c']}"
 
 
-def lettre_de(texte):
-    """« b », « B », « b. » ou le bouton minitest_b -> 'b' ; sinon None."""
+def boutons_reponse(index):
+    """Boutons lies a la question : un ancien bouton touche plus tard ne repond plus a la question suivante."""
+    return [(f"minitest_q{index + 1}_{l}", l) for l in LETTRES]
+
+
+def lire_reponse(texte):
+    """(numero de question ou None, lettre ou None) : « b », « B. », minitest_b, minitest_q2_b -> (2, 'b')."""
     t = str(texte or "").strip().lower()
+    numero = None
+    m = re.fullmatch(r"minitest_q(\d)_([a-z])", t)
+    if m:
+        return int(m.group(1)), (m.group(2) if m.group(2) in LETTRES else None)
     if t.startswith("minitest_"):
         t = t[len("minitest_"):]
     t = t.rstrip(".)")
-    return t if t in LETTRES else None
+    return numero, (t if t in LETTRES else None)
+
+
+def lettre_de(texte):
+    """« b », « B », « b. » ou un bouton de reponse -> 'b' ; sinon None."""
+    return lire_reponse(texte)[1]
 
 
 def enregistrer_reponse(test, lettre):
@@ -193,7 +211,8 @@ def terminer(profile, now=None):
                 ligne += f" {q['explication']}"
             corrections.append(ligne)
     reprise = test.get("reprise")
-    retour = f"On reprend ton travail. {reprise}" if reprise else "On reprend ton travail !"
+    retour = (f"On reprend ton travail. {reprise}" if reprise
+              else "Bon travail ! Envoie ton exercice ou ta question quand tu veux.")
     message = "\n\n".join([bilan] + corrections + [x for x in (suite, retour) if x])
     resultat = {"phase": test["phase"], "matiere": test["matiere"], "chapitre": test["chapitre"],
                 "score": note, "total": NB_QUESTIONS, "reponses": test["reponses"],

@@ -31,6 +31,9 @@ class LongueurWhatsappTests(unittest.TestCase):
         self.assertIn("nouchi", texte)
         self.assertIn("français scolaire simple", texte)
         self.assertIn("ne refuse jamais", texte)
+        # Controle qualite du 9 oct. : mauvaise lettre -> indice et nouvel essai, pas la bonne reponse
+        self.assertIn("ne donne pas la bonne tout de suite", texte)
+        self.assertIn("deuxième essai faux", texte)
         self.assertIn("LANGAGE_ET_AUTRE_MATIERE + \"\\n\\n\" + LONGUEUR_WHATSAPP", SOURCE)
 
 
