@@ -5,7 +5,8 @@ import pathlib
 import unittest
 
 SOURCE = (pathlib.Path(__file__).parent / "main.py").read_text(encoding="utf-8")
-ROUTES_GEMINI = {"/question", "/bilan-session", "/revision-lendemain", "/mini-test", "/sante"}
+ROUTES_GEMINI = {"/question", "/bilan-session", "/revision-lendemain", "/mini-test", "/sante",
+                 "/transcrire-document"}
 
 
 def routes():

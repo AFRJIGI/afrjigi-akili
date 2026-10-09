@@ -38,7 +38,7 @@ class BaliseTests(unittest.TestCase):
         if any(c == "CMI" for c, _ in main.matieres_technique("F1")):
             self.assertEqual(main.code_matiere_pour_eleve(f1, "Construction mécanique industrielle"), "CMI")
 
-    def test_consigne_seulement_avec_une_photo(self):
+    def test_consigne_photo_seulement_avec_une_photo(self):
         envoye = {}
 
         def faux_post(url, files=None, timeout=None, **k):
@@ -47,7 +47,9 @@ class BaliseTests(unittest.TestCase):
 
         with mock.patch.object(main.requests, "post", side_effect=faux_post):
             main.get_akili_response("Exercice 1", "ANGLAIS", "D", [], phone="225", type_examen="BAC_GENERAL", mode="etude")
-        self.assertNotIn("[AUTRE_MATIERE:", envoye["question"])
+        # Sans photo : la consigne pour une question d'une autre matiere (controle qualite du 9 oct.)
+        self.assertNotIn("PHOTO OU DOCUMENT D'UNE AUTRE MATIERE", envoye["question"])
+        self.assertIn("QUESTION D'UNE AUTRE MATIERE", envoye["question"])
 
 
 class ChangementParPhotoTests(unittest.TestCase):

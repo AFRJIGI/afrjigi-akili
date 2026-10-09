@@ -2,6 +2,7 @@ import os
 import time
 import json
 import requests
+import mimetypes
 import re
 import unicodedata
 import uuid
@@ -906,6 +907,8 @@ def is_other_or_concours(message):
         "MEDECINE", "SUPERIEUR", "BTS",
         # Controle qualite du 7 oct. : « L1 » partait chez Akili, qui inventait un exercice.
         "L1", "L2", "L3", "MASTER", "FAC", "FACULTE",
+        # Controle qualite du 9 oct. : « je suis au professionnel »
+        "LYCEE PROFESSIONNEL", "AU PROFESSIONNEL", "FORMATION PROFESSIONNELLE", "ENSEIGNEMENT PROFESSIONNEL",
     ])
 
 
@@ -1174,7 +1177,7 @@ def choice_key(text):
 
 MESSAGE_HORS_CHAMP = (
     "Akili accompagne pour l'instant les élèves de la 6e à la Terminale : BEPC, BAC Général et BAC Technique. "
-    "Le BTS et l'université ne sont pas encore disponibles, ils arriveront plus tard. "
+    "Le BTS, l'enseignement professionnel et l'université ne sont pas encore disponibles, ils arriveront plus tard. "
     "Si tu es dans l'une de ces classes, choisis ton niveau :"
 )
 
@@ -3284,6 +3287,15 @@ CONSIGNE_PHOTO_AUTRE_MATIERE = (
     "l'élève sur cet exercice comme d'habitude. N'écris jamais cette ligne si l'exercice correspond à la matière "
     "choisie.\n"
 )
+# Controle qualite du 9 oct. : inscrit en espagnol, l'eleve posait des questions de philosophie ; Akili
+# repondait en philosophie pendant toute la seance et le bilan parlait d'espagnol.
+CONSIGNE_QUESTION_AUTRE_MATIERE = (
+    "QUESTION D'UNE AUTRE MATIERE : si la nouvelle demande de l'élève relève clairement et entièrement d'une autre "
+    "matière que la matière choisie (par exemple une question de philosophie alors que l'élève a choisi "
+    "l'espagnol), écris en toute première ligne, seule : [AUTRE_MATIERE: nom de la matière], puis aide l'élève "
+    "comme d'habitude. N'écris jamais cette ligne quand l'élève répond à ta question, ni quand sa demande "
+    "concerne aussi la matière choisie.\n"
+)
 BALISE_AUTRE_MATIERE = re.compile(r"\[\s*AUTRE[ _]MATI[EÈ]RE\s*:\s*([^\]\n]{1,60})\]\s*", re.I)
 CODES_MATIERES_GENERAL = ["MATHS", "PC", "SVT", "FRANCAIS", "PHILO", "HG", "ESPAGNOL", "ALLEMAND", "ANGLAIS"]
 CODES_MATIERES_BEPC = ["MATHS", "PC", "SVT", "FRANCAIS", "HG", "EDHC", "ESPAGNOL", "ALLEMAND", "ANGLAIS"]
@@ -4686,6 +4698,78 @@ def exercice_propose_par_akili(reponse):
     return texte[min(positions):].strip()[:ENONCE_MAX_CARACTERES]
 
 
+AKILI_TRANSCRIPTION_URL = os.environ.get("AKILI_TRANSCRIPTION_URL",
+                                         AKILI_API_URL.rsplit("/", 1)[0] + "/transcrire-document")
+PREFIXE_DOCUMENT_ELEVE = "Document envoyé par l'élève (transcription) : "
+TRANSCRIPTION_MAX_CARACTERES = 3000
+# Matieres trop proches pour changer de matiere sur la seule lecture du document (un texte de philosophie
+# etudie en francais, un exercice de physique plein de calculs...).
+PAIRES_PROCHES = [{"FRANCAIS", "PHILO"}, {"MATHS", "PC"}, {"PC", "SVT"}, {"HG", "EDHC"}]
+
+
+def transcrire_document_eleve(media_file):
+    """{"texte", "matiere"} lus par l'API dans la photo ou le PDF de l'eleve ; None en cas d'echec."""
+    chemin = Path(str(media_file or ""))
+    if not chemin.exists():
+        return None
+    mime = mimetypes.guess_type(chemin.name)[0] or "image/jpeg"
+    if not (mime.startswith("image/") or mime == "application/pdf"):
+        return None
+    try:
+        with chemin.open("rb") as fichier:
+            res = requests.post(AKILI_TRANSCRIPTION_URL, files={"file": (chemin.name, fichier, mime)}, timeout=60)
+        donnees = res.json()
+        texte = str(donnees.get("texte") or "").strip()
+        return {"texte": texte, "matiere": str(donnees.get("matiere") or "").strip()} if texte else None
+    except Exception as e:
+        print(f"TRANSCRIPTION echec: {repr(e)}", flush=True)
+        return None
+
+
+def de_matiere(libelle):
+    """« de Mathématiques », « d'Histoire-Géographie »."""
+    return ("d'" if normalize_for_match(libelle)[:1] in tuple("AEIOUYH") else "de ") + libelle
+
+
+def _base_matiere(code):
+    return (code or "").split("_")[0]
+
+
+def retenir_document_comme_enonce(phone, profile, conversation_key, media_file, type_examen, serie, mode):
+    """Apres la reponse a une photo ou un PDF : sa transcription devient l'enonce de l'exercice, renvoye a Akili
+    aux messages suivants. Avant, Akili ne voyait le document qu'une fois, puis disait « je n'ai pas ta
+    conclusion » ou inventait son contenu (controle qualite du 9 oct.). Si le document est clairement d'une
+    autre matiere de l'eleve, la suite de l'exercice passe dans cette matiere."""
+    try:
+        lu = transcrire_document_eleve(media_file)
+        if not lu or len(lu["texte"]) < 15:
+            return False
+        cle = conversation_key
+        matiere = profile.get("matiere")
+        code = code_matiere_pour_eleve(profile, lu["matiere"]) if lu["matiere"] else None
+        if (code and _base_matiere(code) != _base_matiere(matiere)
+                and {_base_matiere(code), _base_matiere(matiere)} not in PAIRES_PROCHES):
+            ancienne = libelle_matiere(matiere)
+            profile["matiere"] = code
+            profile["matiere_confirmed"] = True
+            cle = f"{phone}:{type_examen}:{serie}:{code}:{mode}"
+            echange = list(conversations.get(conversation_key) or [])[-2:]
+            conversations[cle] = (list(charger_historique_conv(cle) or []) + echange)[-10:]
+            sauver_historique_conv(cle, conversations[cle])
+            send_whatsapp(phone, f"Ton document est un exercice {de_matiere(libelle_matiere(code))} : je continue en "
+                                 f"{libelle_matiere(code)}. Écris menu pour revenir en {ancienne}.", allow_audio=False)
+            print(f"MATIERE changee par la transcription : {matiere} -> {code}", flush=True)
+        profile["enonce_en_cours"] = {"cle": cle,
+                                      "texte": PREFIXE_DOCUMENT_ELEVE + lu["texte"][:TRANSCRIPTION_MAX_CARACTERES]}
+        user_profiles[phone] = profile
+        sauver_etat_whatsapp(phone, profile)
+        print(f"ENONCE retenu (transcription du document, {len(lu['texte'])} car.)", flush=True)
+        return True
+    except Exception as e:
+        print(f"Erreur retenir_document_comme_enonce: {repr(e)}", flush=True)
+        return False
+
+
 def enonce_en_cours(profile, conversation_key):
     enonce = (profile or {}).get("enonce_en_cours") or {}
     return enonce.get("texte", "") if enonce.get("cle") == conversation_key else ""
@@ -4829,7 +4913,13 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     # Photo d'une autre matiere (controle qualite du 6 oct. : inscrit en anglais, photo de maths ;
     # Akili aidait en maths mais le profil et le bilan restaient en anglais).
     reponse, autre_matiere = extraire_autre_matiere(reponse)
-    nouvelle_matiere = code_matiere_pour_eleve(profile, autre_matiere) if autre_matiere and media_file else None
+    # Sans document, seulement pour une vraie demande (pas une reponse courte) et pas entre matieres proches.
+    question_autre_matiere = (media_file is None and len(normalize_for_match(texte_eleve).split()) >= 4)
+    nouvelle_matiere = (code_matiere_pour_eleve(profile, autre_matiere)
+                        if autre_matiere and (media_file or question_autre_matiere) else None)
+    if (nouvelle_matiere and media_file is None
+            and {_base_matiere(nouvelle_matiere), _base_matiere(matiere)} in PAIRES_PROCHES):
+        nouvelle_matiere = None
     if nouvelle_matiere and nouvelle_matiere != matiere and not espace_enseignant_actif(profile):
         ancienne = libelle_matiere(matiere)
         profile["matiere"] = matiere = nouvelle_matiere
@@ -4838,7 +4928,8 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         hist_nouvelle = charger_historique_conv(conversation_key)
         conversations[conversation_key] = list(hist_nouvelle or [])
         sauver_etat_whatsapp(phone, profile)
-        reponse = (f"Ta photo est un exercice de {libelle_matiere(matiere)} : je passe en {libelle_matiere(matiere)}. "
+        objet = "Ta photo est un exercice" if media_file else "Ta question relève"
+        reponse = (f"{objet} {de_matiere(libelle_matiere(matiere))} : je passe en {libelle_matiere(matiere)}. "
                    f"Écris menu pour revenir en {ancienne}.\n\n" + reponse)
         print(f"MATIERE changee par la photo : {ancienne} -> {matiere}", flush=True)
 
@@ -4893,6 +4984,8 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
 
     send_whatsapp(phone, reponse, limit=send_limit, add_continuation=continuation)
     send_vector_formula_if_needed(phone, text + "\n" + reponse)
+    if media_file is not None and (mode or "etude") == "etude" and not is_teacher and not espace:
+        retenir_document_comme_enonce(phone, profile, conversation_key, media_file, type_examen, serie, mode)
     if compter_activation:
         mini_test_jour_actif(phone, profile)
 
@@ -5372,8 +5465,9 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             + (f"\nGUIDELINES MATIERE:\n{subject_guidelines}\n" if subject_guidelines else "")
         )
         instructions_whatsapp += consigne_matiere_choisie(matiere, serie, type_examen, classe)
-        if media_file is not None and (user_type or "").upper() != "ENSEIGNANT":
-            instructions_whatsapp += CONSIGNE_PHOTO_AUTRE_MATIERE
+        if (user_type or "").upper() != "ENSEIGNANT" and not espace_enseignant:
+            instructions_whatsapp += (CONSIGNE_PHOTO_AUTRE_MATIERE if media_file is not None
+                                      else CONSIGNE_QUESTION_AUTRE_MATIERE)
 
         format_guard = ""
         if (user_type or "").upper() == "ENSEIGNANT" and (matiere or "").upper() == "ESPAGNOL":

@@ -86,3 +86,120 @@ class TexteDesFlyersTests(unittest.TestCase):
         profil = main.user_profiles[avis.PHONE]
         self.assertNotIn("pending_question", profil)
         self.assertFalse(any("ta question" in m for m in self.envoyes), self.envoyes)
+
+
+class _Reponse:
+    def __init__(self, donnees):
+        self._donnees = donnees
+
+    def json(self):
+        return self._donnees
+
+
+class MatiereEtDocumentTests(unittest.TestCase):
+    """Questions d'une autre matiere et transcription des photos (controle qualite du 9 oct.)."""
+    PHONE = "22500000091"
+
+    def setUp(self):
+        import tempfile
+        self.envoyes = []
+        self.photo = tempfile.NamedTemporaryFile(suffix="_whatsapp_image.jpg", delete=False)
+        self.photo.write(b"\xff\xd8\xff fausse image")
+        self.photo.close()
+        self.patches = [
+            mock.patch.object(main, "send_whatsapp", side_effect=lambda p, m, *a, **k: self.envoyes.append(m) or True),
+            mock.patch.object(main, "send_whatsapp_typing_indicator"),
+            mock.patch.object(main, "sauver_etat_whatsapp"), mock.patch.object(main, "sauver_historique_conv"),
+            mock.patch.object(main, "charger_historique_conv", return_value=[]),
+            mock.patch.object(main, "journal_session_ajouter"),
+            mock.patch.object(main, "send_vector_formula_if_needed"),
+            mock.patch.object(main, "mini_test_jour_actif"),
+            mock.patch.object(main, "mark_first_learning_request", side_effect=lambda p, prof: prof),
+            mock.patch.object(main, "p0_enabled", return_value=False),
+        ]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self):
+        import os
+        for p in self.patches:
+            p.stop()
+        os.unlink(self.photo.name)
+        main.user_profiles.pop(self.PHONE, None)
+        for k in [k for k in main.conversations if k.startswith(self.PHONE)]:
+            main.conversations.pop(k, None)
+
+    def profil(self, matiere, serie="D"):
+        return {"type_examen": "BAC_GENERAL", "serie": serie, "matiere": matiere, "mode": "etude",
+                "profile_locked": True, "profile_ready": True, "onboarding_completed_at": "2026-10-01"}
+
+    def repondre(self, profil, texte, reponse_akili, media=None, transcription=None):
+        appels = []
+
+        def faux_post(url, files=None, timeout=None, **k):
+            appels.append(url)
+            return _Reponse(transcription or {"error": "x"})
+
+        with mock.patch.object(main, "get_akili_response", return_value=reponse_akili), \
+                mock.patch.object(main.requests, "post", side_effect=faux_post):
+            main.answer_learning_request(self.PHONE, profil, texte, media_file=media)
+        return appels
+
+    def test_question_de_philo_en_espagnol(self):
+        profil = self.profil("ESPAGNOL", "A2")
+        self.repondre(profil, "Quelle est la différence entre la conscience de l'homme et celle de l'animal",
+                      "[AUTRE_MATIERE: Philosophie]\nBonne question. Qu'est-ce que la conscience selon toi ?")
+        self.assertEqual(profil["matiere"], "PHILO")
+        self.assertTrue(self.envoyes[-1].startswith("Ta question relève de Philosophie : je passe en Philosophie."))
+        self.assertIn("revenir en Espagnol", self.envoyes[-1])
+
+    def test_reponse_courte_ou_matiere_proche_sans_changement(self):
+        profil = self.profil("ESPAGNOL", "A2")
+        self.repondre(profil, "b", "[AUTRE_MATIERE: Philosophie]\nOui, c'est juste.")
+        self.assertEqual(profil["matiere"], "ESPAGNOL")
+        self.assertNotIn("[AUTRE_MATIERE", self.envoyes[-1])
+        profil = self.profil("FRANCAIS", "A2")
+        self.repondre(profil, "Comment faire une bonne dissertation sur la liberté",
+                      "[AUTRE_MATIERE: Philosophie]\nCommence par définir les termes.")
+        self.assertEqual(profil["matiere"], "FRANCAIS")
+
+    def test_la_photo_est_retenue_comme_enonce(self):
+        profil = self.profil("MATHS")
+        texte = "Exercice 2\n1. Montre que f est dérivable sur R.\n2. Calcule f'(x)."
+        appels = self.repondre(profil, "voici mon exercice", "Commence par la question 1. Que sais-tu de f ?",
+                               media=self.photo.name, transcription={"texte": texte, "matiere": "Mathematiques"})
+        self.assertTrue(appels[-1].endswith("/transcrire-document"))
+        cle = f"{self.PHONE}:BAC_GENERAL:D:MATHS:etude"
+        self.assertEqual(main.enonce_en_cours(profil, cle), main.PREFIXE_DOCUMENT_ELEVE + texte)
+        self.assertEqual(profil["matiere"], "MATHS")
+        self.assertEqual(len(self.envoyes), 1)  # pas de message de changement de matiere
+
+    def test_photo_d_histoire_en_maths(self):
+        profil = self.profil("MATHS")
+        self.repondre(profil, "aide moi", "Complète la première phrase : les premiers Européens sont les... ?",
+                      media=self.photo.name,
+                      transcription={"texte": "Complète : Les premiers européens qui s'installent...",
+                                     "matiere": "Histoire-Geographie"})
+        self.assertEqual(profil["matiere"], "HG")
+        self.assertTrue(self.envoyes[-1].startswith("Ton document est un exercice d'Histoire-Géographie"))
+        cle = f"{self.PHONE}:BAC_GENERAL:D:HG:etude"
+        self.assertTrue(main.enonce_en_cours(profil, cle).startswith(main.PREFIXE_DOCUMENT_ELEVE))
+        self.assertEqual(len(main.conversations[cle]), 2)  # le premier echange suit l'eleve
+
+    def test_photo_de_maths_en_physique_reste_en_physique(self):
+        profil = self.profil("PC")
+        self.repondre(profil, "aide moi", "Quelle est la formule de la vitesse ?", media=self.photo.name,
+                      transcription={"texte": "Un mobile parcourt 100 m en 20 s. Calcule sa vitesse.",
+                                     "matiere": "Mathematiques"})
+        self.assertEqual(profil["matiere"], "PC")
+        self.assertTrue(main.enonce_en_cours(profil, f"{self.PHONE}:BAC_GENERAL:D:PC:etude"))
+
+    def test_pas_de_transcription_en_mode_examen(self):
+        profil = dict(self.profil("MATHS"), mode="examen")
+        appels = self.repondre(profil, "voici ma copie", "Réponse enregistrée.", media=self.photo.name,
+                               transcription={"texte": "Ma copie : x = 2", "matiere": "Mathematiques"})
+        self.assertFalse(any(u.endswith("/transcrire-document") for u in appels))
+
+    def test_lycee_professionnel_hors_champ(self):
+        self.assertTrue(main.is_other_or_concours("Je suis au professionnel"))
+        self.assertTrue(main.is_other_or_concours("je fais le lycée professionnel"))

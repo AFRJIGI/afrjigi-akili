@@ -1738,12 +1738,13 @@ REGLES :
 - Pour le gras, un seul asterisque de chaque cote (*mot*), jamais deux."""
 
 
-def generer_texte_gemini(prompt, nom="texte"):
-    """Appel Gemini avec 3 essais en cas de quota ; texte vide si rien n'est produit."""
+def generer_texte_gemini(prompt, nom="texte", parties=None):
+    """Appel Gemini avec 3 essais en cas de quota ; texte vide si rien n'est produit.
+    `parties` : contenus joints (photo ou PDF de l'eleve, en Part)."""
     response = None
     for tentative in range(3):
         try:
-            response = model.generate_content([prompt])
+            response = model.generate_content([prompt] + list(parties or []))
             break
         except Exception as e:
             if not (isinstance(e, TooManyRequests) or "429" in str(e) or "resource exhausted" in str(e).lower()):
@@ -1877,6 +1878,51 @@ def mini_test(
     except Exception as e:
         print(f"❌ Erreur mini-test ({type(e).__module__}.{type(e).__name__}) : {e}", flush=True)
         return {"error": f"Erreur lors du mini-test : {str(e)}"}
+
+
+TRANSCRIPTION_CONSIGNES = (
+    "Tu lis un document (photo ou PDF) envoye par un eleve ivoirien a son tuteur.\n"
+    "Premiere ligne, seule : MATIERE: suivi de la matiere scolaire du document en un ou deux mots "
+    "(Mathematiques, Physique-Chimie, SVT, Francais, Philosophie, Histoire-Geographie, Anglais, Espagnol, "
+    "Allemand, EDHC, Economie, Comptabilite...), ou MATIERE: ? si tu ne sais pas.\n"
+    "Ensuite : recopie fidelement tout le texte utile du document (enonce, donnees, questions, texte a etudier, "
+    "ou la copie de l'eleve), dans l'ordre, avec la numerotation. N'ajoute rien, ne resous rien, ne commente pas. "
+    "Pas de LaTeX : ecris les formules en texte simple (x², √x, 1/2). Ecris [illisible] pour un passage illisible. "
+    "Au plus 3500 caracteres : si le document est plus long, arrete-toi a la fin d'une question."
+)
+
+
+def lire_transcription(reponse):
+    """(matiere, texte) depuis « MATIERE: SVT\n<texte> » ; matiere vide si absente ou « ? »."""
+    lignes = (reponse or "").strip().split("\n", 1)
+    premiere = lignes[0].strip().strip("*_ ")
+    if premiere.upper().startswith(("MATIERE", "MATIÈRE")):
+        matiere = premiere.split(":", 1)[1].strip(" *_?") if ":" in premiere else ""
+        texte = lignes[1] if len(lignes) > 1 else ""
+    else:
+        matiere, texte = "", reponse or ""
+    return matiere[:40], texte.strip()[:4000]
+
+
+@app.post("/transcrire-document")
+def transcrire_document(file: UploadFile = File(...)):
+    """Transcription d'une photo ou d'un PDF d'eleve. Le bot la garde comme enonce de l'exercice : Akili ne
+    voyait la photo qu'au message ou elle arrivait, puis repondait « je n'ai pas le texte » ou inventait son
+    contenu (controle qualite du 9 oct.)."""
+    try:
+        donnees = file.file.read()
+        if not donnees:
+            return {"error": "Fichier vide"}
+        mime = (file.content_type or "image/jpeg").split(";")[0]
+        matiere, texte = lire_transcription(generer_texte_gemini(
+            TRANSCRIPTION_CONSIGNES, "Transcription", [Part.from_data(data=donnees, mime_type=mime)]))
+        if not texte:
+            return {"error": "Transcription vide"}
+        print(f"TRANSCRIPTION {len(texte)} caracteres, matiere={matiere!r}", flush=True)
+        return {"texte": texte, "matiere": matiere}
+    except Exception as e:
+        print(f"❌ Erreur transcription ({type(e).__name__}) : {e}", flush=True)
+        return {"error": f"Erreur lors de la transcription : {str(e)[:200]}"}
 
 
 @app.get("/sante")
