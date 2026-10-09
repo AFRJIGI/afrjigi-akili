@@ -45,8 +45,31 @@ def extraire_code(texte):
     return f"PROF-{trouve.group(1)}-{trouve.group(2)}" if trouve else None
 
 
+OPTIONS_BT = [("BT_ELN", {"ELN", "ELECTRONIQUE"}),
+              ("BT_TER", {"TER", "TERTIAIRE", "COMPTABILITE", "GESTION", "SECRETARIAT", "COMMERCE"}),
+              ("BT_IND", {"IND", "INDUSTRIEL", "ELECTROTECHNIQUE", "ELT", "MECANIQUE", "FROID"})]
+ANNEES_BT = {"1": "SECONDE", "2": "PREMIERE", "3": "TERMINALE"}
+
+
+def classe_bt_vers_profil(texte):
+    """'1A BT ELN', '3BT ELN', '2 BT tertiaire' -> profil BAC Technique (BT), sinon None.
+    Les 3 annees du BT sont rangees comme Seconde, Premiere et Terminale."""
+    colle = re.sub(r"(?<![A-Z0-9])([123])\s*(?:A|E|ER|ERE|EME|IERE)?\s*(?:ANNEE\s*)?(?:DE\s*)?BT(?![A-Z0-9])", r"\1 BT", texte)
+    annee = re.search(r"(?<![A-Z0-9])([123]) BT(?![A-Z0-9])", colle) or re.search(r"(?<![A-Z0-9])BT ?([123])(?![A-Z0-9])", colle)
+    if not annee:
+        return None
+    mots = set(colle.split())
+    serie = next((code for code, cles in OPTIONS_BT if mots & cles), None)
+    if not serie:
+        return None
+    return {"type_examen": "BAC_TECHNIQUE", "serie": serie, "classe": ANNEES_BT[annee.group(1)]}
+
+
 def classe_vers_profil(libelle):
     """'2nde F2' -> champs du profil WhatsApp. ValueError si la classe n'est pas reconnue."""
+    bt = classe_bt_vers_profil(simple(libelle))
+    if bt:
+        return bt
     mots = re.sub(r"(\d)(?:EME|IEME|E|ER|ERE)\b", r"\1E", simple(libelle)).split()
     if not mots:
         raise ValueError(f"Classe vide : {libelle!r}")
@@ -67,7 +90,7 @@ def classe_vers_profil(libelle):
             return {"type_examen": "CLASSE_INTERMEDIAIRE", "serie": f"SECONDE_{lettre}", "classe": ""}
         if niveau == "PREMIERE" and lettre in {"A", "C", "D"}:
             return {"type_examen": "CLASSE_INTERMEDIAIRE", "serie": f"PREMIERE_{lettre}", "classe": ""}
-    raise ValueError(f"Classe non reconnue : {libelle!r} (exemples : 2nde F2, 1ère D, Tle C, 3e, 6e)")
+    raise ValueError(f"Classe non reconnue : {libelle!r} (exemples : 2nde F2, 1ère D, Tle C, 3e, 6e, 1A BT ELN)")
 
 
 def options_menu(nom):

@@ -38,9 +38,9 @@ def avec_ligne(texte, ligne):
     return f"{titre}\n{ligne}{reste}"
 
 
-def documents_base(paquet):
+def documents_base(paquet, rattachements=None):
     docs = []
-    for serie, matiere, prefixe, ligne in RATTACHEMENTS:
+    for serie, matiere, prefixe, ligne in (rattachements or RATTACHEMENTS):
         for d in paquet["documents"]:
             texte = avec_ligne(d["texte"], ligne)
             docs.append(dict(

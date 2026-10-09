@@ -59,7 +59,7 @@ class SourceTests(unittest.TestCase):
     source = Path(main.__file__).read_text(encoding="utf-8")
 
     def test_bts_avant_la_question_gardee(self):
-        self.assertIn("Le BT, le BTS, l'enseignement professionnel et l'université ne sont pas encore disponibles",
+        self.assertIn("Le CAP, le BTS et l'université ne sont pas encore disponibles",
                       main.MESSAGE_HORS_CHAMP)
         self.assertLess(self.source.index('track_inbound("hors_champ_bts_universite"'),
                         self.source.index('track_inbound("forced_onboarding_pending_question"'))

@@ -23,12 +23,15 @@ class MatieresTechniqueTests(unittest.TestCase):
         self.assertEqual(main.choix_matieres_technique(None), main.BAC_TECHNIQUE_SUBJECT_CHOICES)
 
     def test_chaque_serie_a_sa_liste(self):
-        for serie in main.BAC_TECHNIQUE_SERIES_CHOICES.values():
+        series = [s for s in main.BAC_TECHNIQUE_SERIES_CHOICES.values() if s != "BT"]
+        series += list(main.BT_OPTIONS_CHOICES.values())  # BT : une liste par option
+        for serie in series:
             matieres = main.MATIERES_TECHNIQUE_PAR_SERIE[serie]
             codes = [c for c, _ in matieres]
             self.assertLessEqual(len(matieres), 13, serie)
             self.assertEqual(len(codes), len(set(codes)), serie)
-            for code in ("FRANCAIS", "ANGLAIS", "HG"):
+            # Le BT n'a pas d'histoire-geographie dans les documents recus.
+            for code in ("FRANCAIS", "ANGLAIS") + (() if main.est_serie_bt(serie) else ("HG",)):
                 self.assertIn(code, codes, serie)
             self.assertIn("MATHS", codes, serie)  # meme code que les documents de maths
             for code in codes:

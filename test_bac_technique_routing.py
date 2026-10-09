@@ -76,7 +76,7 @@ class BacTechniqueRoutingTests(unittest.TestCase):
     def test_whatsapp_series_choices_are_distinct(self):
         ns = load_whatsapp_choices()
         self.assertEqual(
-            ["B", "G1", "G2", "E", "F1", "F2", "F3", "F4", "F7"],
+            ["B", "G1", "G2", "E", "F1", "F2", "F3", "F4", "F7", "BT"],  # BT : puis l'option (etape serie_bt)
             list(ns["BAC_TECHNIQUE_SERIES_CHOICES"].values()),
         )
         self.assertNotIn("E", ns["BAC_GENERAL_SERIES_CHOICES"].values())
