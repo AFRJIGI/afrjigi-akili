@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 SOURCE = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
-NOMS = {"MATIERES_TECHNIQUES_GUIDEES", "LIBELLES_CLASSES_TECHNIQUE", "LIBELLES_SERIES_BT", "LIBELLES_ANNEES_BT", "CONSIGNE_TECHNIQUE", "niveau_bac_technique",
+NOMS = {"MATIERES_TECHNIQUES_GUIDEES", "LIBELLES_CLASSES_TECHNIQUE", "CONSIGNE_TECHNIQUE", "niveau_bac_technique",
         "FORMATAGE_TEXTE_SIMPLE", "formatage_texte_simple"}
 ns = {"re": __import__("re")}
 noeuds = [n for n in ast.parse(SOURCE).body

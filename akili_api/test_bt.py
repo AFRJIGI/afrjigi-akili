@@ -1,4 +1,5 @@
-"""BT (Brevet de Technicien) dans le BAC Technique : documents, libelles et annee (9 oct. 2026)."""
+"""BT = BAC Technique (9 oct. 2026) : les documents BT sont rattaches aux series B, G1, G2, E et F ;
+« 1re, 2e, 3e annee » et « 1BT, 2BT, 3BT » designent la Seconde, la Premiere et la Terminale."""
 import ast
 import re
 import unicodedata
@@ -6,9 +7,8 @@ import unittest
 from pathlib import Path
 
 SOURCE = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
-NOMS = {"serie_match", "LIBELLES_SERIES_BT", "LIBELLES_ANNEES_BT", "LIBELLES_CLASSES_TECHNIQUE",
-        "niveau_bac_technique", "annee_bt_demandee", "normaliser_libelle_classe", "niveau_demande",
-        "CLASSES_CONNUES", "progression_de_reference", "normaliser_examen_requete"}
+NOMS = {"serie_match", "annee_bt_demandee", "normaliser_libelle_classe", "niveau_demande",
+        "CLASSES_CONNUES", "progression_de_reference"}
 ns = {"re": re, "unicodedata": unicodedata}
 noeuds = [n for n in ast.parse(SOURCE).body
           if (isinstance(n, ast.FunctionDef) and n.name in NOMS)
@@ -16,39 +16,37 @@ noeuds = [n for n in ast.parse(SOURCE).body
 exec(compile(ast.Module(body=noeuds, type_ignores=[]), "main.py", "exec"), ns)
 
 
-def prog(serie, niveau, texte):
-    return {"type_doc": "PROGRESSION_ANNUELLE", "matiere": "TELEPHONIE", "examen": "BAC_TECHNIQUE",
-            "serie": serie, "niveau": niveau, "texte": texte}
+def prog(serie, niveau, texte, priorite=0):
+    return {"type_doc": "PROGRESSION_ANNUELLE", "matiere": "ECO", "examen": "BAC_TECHNIQUE",
+            "serie": serie, "niveau": niveau, "texte": texte, "priorite": priorite}
 
 
 class BTTests(unittest.TestCase):
-    def test_documents_bt_reserves_aux_options_bt(self):
+    def test_series_des_documents_bt(self):
         match = ns["serie_match"]
-        self.assertTrue(match("BT_ELN", "BT_ELN"))
-        self.assertTrue(match("BT_ELN BT_IND", "BT_IND"))
-        self.assertFalse(match("BT_ELN BT_IND", "BT_TER"))
-        self.assertTrue(match("TOUTES", "BT_TER"))
-        self.assertFalse(match("F2", "BT_ELN"))
-        # « BT_IND » contient un D, « BT_ELN » un E, « BT_TER » un T : pas pour les series D, E, B.
-        for serie in ("D", "E", "B", "G1", "F2", "C"):
-            self.assertFalse(match("BT_ELN BT_IND BT_TER", serie), serie)
-        self.assertTrue(match("G1G2", "G1"))  # inchange
+        for serie in ("E", "F1", "F2", "F3", "F4", "F7"):
+            self.assertTrue(match("E F1 F2 F3 F4 F7", serie), serie)   # maths BT industriel
+            self.assertFalse(match("B G1 G2", serie), serie)
+        for serie in ("B", "G1", "G2"):
+            self.assertTrue(match("B G1 G2", serie), serie)            # maths BT tertiaire
+            self.assertFalse(match("E F1 F2 F3 F4 F7", serie), serie)
+        self.assertTrue(match("G1 G2", "G2"))
+        self.assertFalse(match("G1 G2", "B"))
 
-    def test_libelles(self):
-        niveau = ns["niveau_bac_technique"]
-        self.assertEqual(niveau("BT_ELN", "TERMINALE"), "BT Électronique (Brevet de Technicien), 3e année")
-        self.assertEqual(niveau("BT_TER", ""), "BT Tertiaire (Brevet de Technicien)")
-        self.assertEqual(niveau("F2", "SECONDE"), "BAC Technique, série F2, classe de Seconde")
-        self.assertEqual(ns["normaliser_examen_requete"]("", "BT_IND"), "BAC_TECHNIQUE")
+    def test_annee_citee(self):
+        annee = ns["annee_bt_demandee"]
+        self.assertEqual(annee("COURS DE 1ERE ANNEE"), "SECONDE")
+        self.assertEqual(annee("PROGRAMME 3BT"), "TERMINALE")
+        self.assertEqual(annee("2 BT"), "PREMIERE")
+        self.assertIsNone(annee("EXERCICE DE PREMIERE"))
 
-    def test_progression_de_l_annee(self):
-        docs = [prog("BT_ELN", "SECONDE", "1A"), prog("BT_ELN", "PREMIERE", "2A"), prog("BT_ELN", "TERMINALE", "3A")]
+    def test_progression_de_l_annee_et_priorite(self):
+        docs = [prog("G1 G2", "SECONDE", "1BT", priorite=-1), prog("G1G2", "SECONDE", "officielle"),
+                prog("G1 G2", "PREMIERE", "2BT", priorite=-1)]
         ref = ns["progression_de_reference"]
-        self.assertEqual(ref(docs, "TELEPHONIE", "BT_ELN", "BAC_TECHNIQUE", "exercice", classe="PREMIERE")["texte"], "2A")
-        # L'annee citee l'emporte ; « 1ere annee » n'est pas la Premiere (2e annee) pour un eleve de BT.
-        self.assertEqual(ref(docs, "TELEPHONIE", "BT_ELN", "BAC_TECHNIQUE", "cours de 1ère année", classe="TERMINALE")["texte"], "1A")
-        self.assertEqual(ref(docs, "TELEPHONIE", "BT_ELN", "BAC_TECHNIQUE", "programme 3BT", classe="SECONDE")["texte"], "3A")
-        self.assertIsNone(ref(docs, "TELEPHONIE", "F2", "BAC_TECHNIQUE", "exercice", classe="SECONDE"))
+        # A classe egale, la progression deja en place passe avant celle du BT (priorite -1).
+        self.assertEqual(ref(docs, "ECO", "G2", "BAC_TECHNIQUE", "exercice", classe="SECONDE")["texte"], "officielle")
+        self.assertEqual(ref(docs, "ECO", "G2", "BAC_TECHNIQUE", "cours de 2e année", classe="SECONDE")["texte"], "2BT")
 
 
 if __name__ == "__main__":

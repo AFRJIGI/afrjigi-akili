@@ -214,10 +214,6 @@ def serie_match(serie_doc, serie_eleve):
     if s_el == "BEPC":                     return s_doc == "BEPC"
     if s_doc == "BEPC":                    return False
     if not s_doc or s_doc == "TOUTES":     return True   # BAC toutes series
-    # BT (Brevet de Technicien) : options BT_ELN, BT_IND, BT_TER. Un document BT ne vaut que pour ses
-    # options (« BT_ELN BT_IND »), et jamais pour les series B, D, E... dont la lettre est dans « BT_... ».
-    if s_el.startswith("BT_") or "BT_" in s_doc:
-        return s_el.startswith("BT_") and s_el in s_doc.replace(",", " ").split()
     if s_doc == s_el:                      return True
     if s_el in ("A1", "A2"):
         if s_el in s_doc:                  return True   # A1, A2, A1A2, A2A1
@@ -310,10 +306,8 @@ MATIERES_TECHNIQUES_GUIDEES = {
     "DESSIN_GENIE_CIVIL": "Dessin technique (génie civil)", "BIOCHIMIE": "Biochimie",
     "MICROBIOLOGIE": "Microbiologie", "BIOLOGIE": "Biologie", "CHIMIE": "Chimie",
     "INFORMATIQUE_INDUSTRIELLE": "Informatique industrielle",
-    # BT Electronique (progressions de M. Adia)
-    "ELECTRONIQUE_ANALOGIQUE": "Électronique analogique", "ELECTRONIQUE_NUMERIQUE": "Électronique numérique",
+    # F2 : progressions du BT Electronique de M. Adia
     "RADIO_TV": "Radio-télévision", "TELEPHONIE": "Téléphonie",
-    "CONSTRUCTION_ELECTRONIQUE": "Construction électronique et maintenance (atelier)",
 }
 LIBELLES_CLASSES_TECHNIQUE = {"SECONDE": "Seconde", "PREMIERE": "Première", "TERMINALE": "Terminale"}
 CONSIGNE_TECHNIQUE = (
@@ -349,7 +343,7 @@ LIBELLES_MATIERES_API = dict(MATIERES_TECHNIQUES_GUIDEES, **{
     "ANGLAIS": "Anglais", "ESPAGNOL": "Espagnol", "ALLEMAND": "Allemand", "ECO": "Économie", "EDHC": "EDHC",
     "COMPTA": "Comptabilité", "COMPTA_FIN": "Comptabilité financière", "COMPTA_SOCIETES": "Comptabilité des sociétés",
     "COMPTA_ANALYTIQUE": "Comptabilité analytique", "DROIT": "Droit", "EXPRESSION_PRO": "Expression professionnelle",
-    "LEGISLATION": "Législation", "EOE": "Économie et organisation des entreprises",
+    "LEGISLATION": "Législation",
 })
 LIBELLES_CLASSES_GENERALES = {
     "6E": "6e", "5E": "5e", "4E": "4e", "SECONDE_A": "Seconde A", "SECONDE_C": "Seconde C",
@@ -543,17 +537,7 @@ Pour une question de cours, réponds court et précis, avec un exemple concret. 
 Pas de LaTeX. Toute ta réponse doit tenir en 700 caractères au maximum."""
 
 
-LIBELLES_SERIES_BT = {"BT_ELN": "BT Électronique", "BT_IND": "BT Industriel", "BT_TER": "BT Tertiaire"}
-LIBELLES_ANNEES_BT = {"SECONDE": "1re année", "PREMIERE": "2e année", "TERMINALE": "3e année"}
-
-
 def niveau_bac_technique(serie, classe):
-    serie_bt = (serie or "").strip().upper()
-    if serie_bt in LIBELLES_SERIES_BT:
-        # BT : Brevet de Technicien, 3 ans apres le BEPC ; annees rangees comme Seconde, Premiere, Terminale.
-        texte = f"{LIBELLES_SERIES_BT[serie_bt]} (Brevet de Technicien)"
-        annee = LIBELLES_ANNEES_BT.get(str(classe or "").strip().upper())
-        return texte + (f", {annee}" if annee else "")
     texte = "BAC Technique"
     if (serie or "").strip():
         texte += f", série {serie.strip().upper()}"
@@ -580,7 +564,6 @@ def normaliser_examen_requete(type_examen=None, serie=None):
 
     if (
         "TECH" in raw
-        or s.startswith("BT_")
         or s in {"B", "E", "G1", "G2", "G1G2", "BG1", "BG2", "BG1G2", "F", "F1", "F2", "F3", "F4", "F7", "STI"}
     ):
         return "BAC_TECHNIQUE"
@@ -919,7 +902,8 @@ def progression_de_reference(docs, matiere, serie, examen, question="", classe=N
     ]
     # Une classe citee dans la question l'emporte, puis la classe du profil, puis Terminale.
     q = normaliser_libelle_classe(question)
-    annee_bt = annee_bt_demandee(q) if str(serie or "").upper().startswith("BT_") else None
+    # BT = BAC Technique : « 2e annee », « 3BT » designent la Premiere, la Terminale.
+    annee_bt = annee_bt_demandee(q)
     if annee_bt:
         niveau = annee_bt
     elif re.search(r"\b(SECONDE|2NDE|2ND|PREMIERE|1ERE|1IERE|TERMINALE|TLE)\b", q):
@@ -1389,8 +1373,7 @@ POSTURE : Ton digne, académique, rigoureux mais accessible et motivant. Valoris
                 system_prompt = PROMPT_HIST_GEO_BEPC
             else:
                 system_prompt = PROMPT_HIST_GEO
-        elif matiere_propre == "ECO" and not (serie or "").strip().upper().startswith("BT_"):
-            # BT tertiaire : pas ce referentiel de Terminale G, mais le guide general et la progression BT.
+        elif matiere_propre == "ECO":
             # Serie B : programme officiel SES de la filiere B, Seconde AB a Terminale B (Inspection Generale).
             # Series G1/G2 : support d'harmonisation transmis par les enseignants d'Economie.
             serie_eco = (serie or "").upper().replace("SERIE", "").replace("_", "").replace("-", "").replace(" ", "").strip()

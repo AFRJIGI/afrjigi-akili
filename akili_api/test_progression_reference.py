@@ -9,7 +9,7 @@ from pathlib import Path
 
 SOURCE = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
 VOULUES = {"serie_match", "normaliser_libelle_classe", "niveau_demande",
-           "progression_de_reference", "consigne_progression"}
+           "progression_de_reference", "consigne_progression", "annee_bt_demandee"}
 NOMS = {"MOIS_FR", "CLASSES_CONNUES", "CLASSES_GENERALES", "ALIAS_CLASSES", "MOIS_MAJ", "_SANS_ACCENT"}
 VOULUES |= {"progression_generale", "classe_generale", "titres_de_classes", "section_de_classe", "aplatir"}
 ns = {"re": re, "unicodedata": unicodedata, "datetime": datetime, "timezone": timezone}

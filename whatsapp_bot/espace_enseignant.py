@@ -45,15 +45,15 @@ def extraire_code(texte):
     return f"PROF-{trouve.group(1)}-{trouve.group(2)}" if trouve else None
 
 
-OPTIONS_BT = [("BT_ELN", {"ELN", "ELECTRONIQUE"}),
-              ("BT_TER", {"TER", "TERTIAIRE", "COMPTABILITE", "GESTION", "SECRETARIAT", "COMMERCE"}),
-              ("BT_IND", {"IND", "INDUSTRIEL", "ELECTROTECHNIQUE", "ELT", "MECANIQUE", "FROID"})]
+# BT = BAC Technique : la specialite donne la serie, 1re a 3e annee = Seconde a Terminale.
+OPTIONS_BT = [("F2", {"ELN", "ELECTRONIQUE"}), ("F3", {"ELECTROTECHNIQUE", "ELT", "ELECTRICITE"}),
+              ("F1", {"MECANIQUE"}), ("F4", {"BATIMENT", "BTP"}), ("F7", {"BIOCHIMIE"}),
+              ("G2", {"COMPTABILITE", "COMPTA", "GESTION"}), ("G1", {"SECRETARIAT", "ADMINISTRATION"})]
 ANNEES_BT = {"1": "SECONDE", "2": "PREMIERE", "3": "TERMINALE"}
 
 
 def classe_bt_vers_profil(texte):
-    """'1A BT ELN', '3BT ELN', '2 BT tertiaire' -> profil BAC Technique (BT), sinon None.
-    Les 3 annees du BT sont rangees comme Seconde, Premiere et Terminale."""
+    """'1A BT ELN' -> F2 Seconde, '3BT compta' -> G2 Terminale ; sinon None."""
     colle = re.sub(r"(?<![A-Z0-9])([123])\s*(?:A|E|ER|ERE|EME|IERE)?\s*(?:ANNEE\s*)?(?:DE\s*)?BT(?![A-Z0-9])", r"\1 BT", texte)
     annee = re.search(r"(?<![A-Z0-9])([123]) BT(?![A-Z0-9])", colle) or re.search(r"(?<![A-Z0-9])BT ?([123])(?![A-Z0-9])", colle)
     if not annee:

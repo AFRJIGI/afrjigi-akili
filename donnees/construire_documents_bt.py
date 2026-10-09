@@ -2,9 +2,9 @@
 
   python3 donnees/construire_documents_bt.py "dossier Mr Adia" "dossier Progression_Mr Coulibaly" donnees/documents_bt.json
 
-Le BT fait partie du BAC Technique d'Akili (decision de Daouda, 9 oct. 2026), avec trois options :
-BT_ELN (Electronique), BT_IND (autres options industrielles), BT_TER (tertiaire). Les 3 annees du BT
-sont rangees comme Seconde (1re annee), Premiere (2e annee) et Terminale (3e annee).
+BT = BAC Technique (decision de Daouda, 9 oct. 2026). Le paquet garde l'origine des documents (BT_ELN :
+Electronique ; BT_ELN BT_IND : industriel ; BT_TER : tertiaire) ; injecter_documents_bt.py les rattache
+aux series F2, E et F, B G1 G2. Les 3 annees sont la Seconde, la Premiere et la Terminale.
 
 Sources :
   - M. Adia (ETIC Korhogo) : « PROGRESSION BT ELN 2026-2027.pdf », 26 progressions de la 1re a la 3e annee

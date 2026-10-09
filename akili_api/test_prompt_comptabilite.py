@@ -4,7 +4,7 @@ from pathlib import Path
 
 SOURCE = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
 NOMS = {"MATIERES_TECHNIQUES_GUIDEES", "LIBELLES_MATIERES_API", "LIBELLES_CLASSES_GENERALES",
-        "LIBELLES_CLASSES_TECHNIQUE", "LIBELLES_SERIES_BT", "LIBELLES_ANNEES_BT", "niveau_bac_technique", "niveau_enseignant",
+        "LIBELLES_CLASSES_TECHNIQUE", "niveau_bac_technique", "niveau_enseignant",
         "MATIERES_COMPTABLES", "ETAPES_FINANCIERE", "COMPTES_SYSCOHADA", "ETAPES_COMPTABLES", "PROMPT_COMPTABILITE",
         "prompt_comptabilite", "prompt_general_guide"}
 ns = {}

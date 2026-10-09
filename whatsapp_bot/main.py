@@ -489,6 +489,20 @@ def extract_acquisition_tracking(text):
 _etat_lecture_echouee = set()
 
 
+SERIES_BT_RETIREES = {"BT_ELN": "F2", "BT_TER": "G2", "BT_IND": "F1"}
+
+
+def migrer_serie_bt(profile):
+    """Profils inscrits le 9 oct. avec une option BT (BT_ELN...) : le BT est le BAC Technique, on reprend la serie."""
+    serie = str((profile or {}).get("serie") or "").upper()
+    if serie in SERIES_BT_RETIREES:
+        profile["serie"] = SERIES_BT_RETIREES[serie]
+        matieres = [code for code, _ in matieres_technique(profile["serie"])]
+        if profile.get("matiere") not in matieres:
+            profile["matiere"] = "MATHS"
+    return profile
+
+
 def charger_etat_whatsapp(phone):
     """Recharge l'etat conversationnel depuis Firestore (survit au scale-to-zero)."""
     try:
@@ -932,30 +946,16 @@ BAC_TECHNIQUE_SERIES_CHOICES = {
     "g": "F3",
     "h": "F4",
     "i": "F7",
-    "j": "BT",  # puis l'option du BT (etape serie_bt)
 }
 
-# BT (Brevet de Technicien, 3 ans apres le BEPC, niveau bac) : une option par liste de matieres.
-# Les 3 annees sont rangees comme Seconde, Premiere et Terminale (1re, 2e et 3e annee).
-BT_OPTIONS_CHOICES = {"a": "BT_ELN", "b": "BT_IND", "c": "BT_TER"}
-LIBELLES_SERIES_BT = {"BT_ELN": "BT Électronique", "BT_IND": "BT Industriel", "BT_TER": "BT Tertiaire"}
-LIBELLES_ANNEES_BT = {"SECONDE": "1re année", "PREMIERE": "2e année", "TERMINALE": "3e année"}
-
-
-def est_serie_bt(serie):
-    return str(serie or "").upper().startswith("BT_")
-
-
-def libelle_serie_technique(serie):
-    serie = str(serie or "").upper()
-    return LIBELLES_SERIES_BT.get(serie) or (f"série {serie}" if serie and serie != "TOUTES" else "")
-
-
-def libelle_classe_technique(serie, classe):
-    classe = str(classe or "").upper()
-    if est_serie_bt(serie):
-        return LIBELLES_ANNEES_BT.get(classe, "")
-    return LIBELLES_CLASSES.get(classe, "")
+# BT = BAC Technique (precision de Daouda, 9 oct.) : tertiaire = series B, G1, G2 ; industriel = E et F.
+# Les classes restent Seconde, Premiere, Terminale (« 1BT », « 2BT », « 3BT » dans les documents).
+PRECISIONS_SERIES_TECHNIQUES = {
+    "B": "Tertiaire : économie", "G1": "Tertiaire : techniques administratives",
+    "G2": "Tertiaire : comptabilité, gestion", "E": "Industriel : maths et technique",
+    "F1": "Industriel : construction mécanique", "F2": "Industriel : électronique",
+    "F3": "Industriel : électrotechnique", "F4": "Industriel : génie civil", "F7": "Industriel : biochimie",
+}
 
 
 BAC_TECHNIQUE_SUBJECT_CHOICES = {
@@ -1106,39 +1106,9 @@ MATIERES_TECHNIQUE_PAR_SERIE = {
         ("DESSIN_INDUSTRIEL", "Dessin industriel / Dessin technique"),
         ("TECHNO_SCHEMAS", "Technologie et schémas"),
         ("INFORMATIQUE_INDUSTRIELLE", "Informatique industrielle"),
-    ],
-    # BT : d'apres les progressions transmises par M. Adia (BT Electronique, ETIC Korhogo) et
-    # M. Coulibaly (economie 1re a 3e annee BT, programmes de maths BT industriel et tertiaire).
-    "BT_ELN": [
-        ("ELECTRONIQUE_ANALOGIQUE", "Électronique analogique"),
-        ("ELECTRONIQUE_NUMERIQUE", "Électronique numérique"),
-        ("TECHNO_SCHEMAS", "Technologie et schémas"),
-        ("MESURES_ESSAIS", "Mesures et instrumentation"),
+        # Progressions du BT Electronique de M. Adia (ETIC Korhogo) : 1re a 3e annee = Seconde a Terminale.
         ("RADIO_TV", "Radio-télévision"),
         ("TELEPHONIE", "Téléphonie"),
-        ("CONSTRUCTION_ELECTRONIQUE", "Construction électronique et maintenance (atelier)"),
-        ("MATHS", "Mathématiques"),
-        ("FRANCAIS", "Français"),
-        ("ANGLAIS", "Anglais"),
-    ],
-    "BT_IND": [
-        ("MATHS", "Mathématiques"),
-        ("PHYSIQUE_APPLIQUEE", "Physique appliquée"),
-        ("MECANIQUE_APPLIQUEE", "Mécanique appliquée et RDM"),
-        ("TECHNO_SCHEMAS", "Technologie et schémas"),
-        ("DESSIN_INDUSTRIEL", "Dessin industriel / Dessin technique"),
-        ("FRANCAIS", "Français"),
-        ("ANGLAIS", "Anglais"),
-    ],
-    "BT_TER": [
-        ("ECO", "Économie générale"),
-        ("EOE", "Économie et organisation des entreprises"),
-        ("MATHS", "Mathématiques générales"),
-        ("COMPTA_FIN", "Comptabilité"),
-        ("DROIT", "Droit"),
-        ("EXPRESSION_PRO", "Expression professionnelle"),
-        ("FRANCAIS", "Français"),
-        ("ANGLAIS", "Anglais"),
     ],
 }
 
@@ -1187,13 +1157,8 @@ MOTS_CLES_MATIERE_TECHNIQUE = {
     "MICROBIOLOGIE": ["MICROBIOLOGIE", "MICROBIO"],
     "BIOLOGIE": ["BIOLOGIE", "BIO"],
     "CHIMIE": ["CHIMIE"],
-    "ELECTRONIQUE_ANALOGIQUE": ["ELECTRONIQUE ANALOGIQUE", "ANALOGIQUE", "ELECTRONIQUE"],
-    "ELECTRONIQUE_NUMERIQUE": ["ELECTRONIQUE NUMERIQUE", "NUMERIQUE", "LOGIQUE"],
     "RADIO_TV": ["RADIO TELEVISION", "RADIO TELE", "RADIO", "TELEVISION", "TELE"],
     "TELEPHONIE": ["TELEPHONIE", "TELEPHONE"],
-    "CONSTRUCTION_ELECTRONIQUE": ["CONSTRUCTION ELECTRONIQUE", "ATELIER", "MAINTENANCE"],
-    "EOE": ["ECONOMIE ET ORGANISATION DES ENTREPRISES", "ORGANISATION DES ENTREPRISES",
-            "ECONOMIE D ENTREPRISE", "EOE"],
 }
 
 
@@ -1243,8 +1208,8 @@ def choice_key(text):
 
 
 MESSAGE_HORS_CHAMP = (
-    "Akili accompagne pour l'instant les élèves de la 6e à la Terminale : BEPC, BAC Général et BAC Technique, "
-    "BT compris (choisis BAC Technique, puis BT). "
+    "Akili accompagne pour l'instant les élèves de la 6e à la Terminale : BEPC, BAC Général et BAC Technique "
+    "(BT : séries B, G1, G2, E et F). "
     "Le CAP, le BTS et l'université ne sont pas encore disponibles, ils arriveront plus tard. "
     "Si tu es dans l'une de ces classes, choisis ton niveau :"
 )
@@ -1440,7 +1405,7 @@ def envoyer_choix(phone, question, options, vous=False):
 OPTIONS_EXAM = [
     ("a", "BEPC / 3e", ""),
     ("b", "BAC Général", ""),
-    ("c", "BAC Technique / BT", ""),
+    ("c", "BAC Technique (BT)", "Tertiaire (B, G1, G2) ou industriel (E, F)"),
     ("d", "Classe intermédiaire", "6e, 5e, 4e, Seconde ou Première"),
 ]
 
@@ -1461,26 +1426,14 @@ LIBELLES_CLASSES = {"SECONDE": "Seconde", "PREMIERE": "Première", "TERMINALE": 
 
 
 def ask_classe_technique(phone, serie=None):
-    if est_serie_bt(serie):
-        envoyer_choix(phone, "Tu es en quelle année de BT ?",
-                      [("a", "1re année", ""), ("b", "2e année", ""), ("c", "3e année", "")])
-        return
     envoyer_choix(phone, "Tu es en quelle classe ?",
                   [("a", "Seconde", ""), ("b", "Première", ""), ("c", "Terminale", "")])
 
 
 def ask_serie_technique(phone):
-    envoyer_choix(phone, "Quelle série du BAC Technique ?",
-                  [(l, s, "") for l, s in zip("abcdefghi", ["B", "G1", "G2", "E", "F1", "F2", "F3", "F4", "F7"])]
-                  + [("j", "BT", "Brevet de Technicien")])
-
-
-def ask_serie_bt(phone):
-    envoyer_choix(phone, "Quel BT ?", [
-        ("a", "BT Électronique", ""),
-        ("b", "BT Industriel", "Électrotechnique, mécanique, froid… (autres options industrielles)"),
-        ("c", "BT Tertiaire", "Comptabilité, gestion, secrétariat, commerce…"),
-    ])
+    envoyer_choix(phone, "Quelle série du BAC Technique ?\nTertiaire : B, G1, G2. Industriel : E, F1, F2, F3, F4, F7.",
+                  [(l, s, PRECISIONS_SERIES_TECHNIQUES[s])
+                   for l, s in zip("abcdefghi", ["B", "G1", "G2", "E", "F1", "F2", "F3", "F4", "F7"])])
 
 
 def ask_seconde(phone):
@@ -1542,16 +1495,22 @@ CLASSES_DU_TEXTE = {"SECONDE": "SECONDE", "2NDE": "SECONDE", "2ND": "SECONDE", "
 SIGNES_NIVEAU = ("JE SUIS EN", "JE SUIS DANS", "EN CLASSE DE", "MA CLASSE", "JE FAIS LA", "JE SUIS AU", "MON NIVEAU")
 
 
+# Specialite citee avec « BT » -> serie du BAC Technique. « Tertiaire » ou « industriel » seuls ne
+# suffisent pas (plusieurs series) : l'eleve choisit alors dans la liste.
 OPTIONS_BT_DU_TEXTE = [
-    ("BT_ELN", ["ELN", "ELECTRONIQUE"]),
-    ("BT_TER", ["TERTIAIRE", "COMPTABILITE", "COMPTA", "GESTION", "SECRETARIAT", "COMMERCE", "TER"]),
-    ("BT_IND", ["INDUSTRIEL", "ELECTROTECHNIQUE", "ELT", "MECANIQUE", "FROID", "ELECTRICITE", "IND"]),
+    ("F2", ["ELN", "ELECTRONIQUE"]),
+    ("F3", ["ELECTROTECHNIQUE", "ELT", "ELECTRICITE"]),
+    ("F1", ["MECANIQUE", "CONSTRUCTION MECANIQUE"]),
+    ("F4", ["GENIE CIVIL", "BATIMENT", "BTP"]),
+    ("F7", ["BIOCHIMIE"]),
+    ("G2", ["COMPTABILITE", "COMPTA", "GESTION"]),
+    ("G1", ["SECRETARIAT", "ADMINISTRATION", "ADMINISTRATIVES"]),
 ]
 
 
 def niveau_bt_declare(msg):
-    """« 3eme annee BT electronique », « 1A BT ELN », « je suis en BT tertiaire » (texte normalise) :
-    {type_examen, serie, classe} si le message cite le BT et son option, sinon None."""
+    """« 3eme annee BT electronique » -> F2 Terminale, « 1A BT ELN » -> F2 Seconde (texte normalise) :
+    {type_examen, serie, classe} si le message cite le BT et sa specialite, sinon None."""
     if not re.search(r"(?<![A-Z0-9])(?:[123]\s*(?:A|E|ER|ERE|EME|IERE)?\s*)?BT(?:\s*[123])?(?![A-Z0-9])", msg) \
             and not has_expr(msg, "BREVET DE TECHNICIEN"):
         return None
@@ -1577,8 +1536,8 @@ def niveau_declare(text):
     mots = msg.split()
     if not msg or len(mots) > 14:
         return None
-    # Le BT et son option suffisent (« 3eme annee BT electronique » : le controle qualite du 9 oct.
-    # l'avait vu inscrit en BEPC a cause de « 3eme »).
+    # Le BT et sa specialite suffisent (« 3eme annee BT electronique » : le controle qualite du 9 oct.
+    # l'avait vu inscrit en BEPC a cause de « 3eme ») ; 1re, 2e, 3e annee = Seconde, Premiere, Terminale.
     bt = niveau_bt_declare(msg) if (len(mots) <= 6 or any(has_expr(msg, x) for x in SIGNES_NIVEAU)) else None
     if bt:
         return bt
@@ -1924,17 +1883,11 @@ def mot_cle_vers_lettre(step, text, profile):
             "b": ["PREMIERE", "1ERE", "1IERE", "2E ANNEE", "2EME ANNEE", "DEUXIEME ANNEE", "2A", "2BT", "2 BT"],
             "c": ["TERMINALE", "TERMINAL", "TLE", "3E ANNEE", "3EME ANNEE", "TROISIEME ANNEE", "3A", "3BT", "3 BT"],
         },
-        "serie_bt": {
-            "a": ["ELECTRONIQUE", "ELN", "BT ELN", "BT ELECTRONIQUE"],
-            "b": ["INDUSTRIEL", "BT INDUSTRIEL", "ELECTROTECHNIQUE", "MECANIQUE", "FROID", "ELECTRICITE"],
-            "c": ["TERTIAIRE", "BT TERTIAIRE", "COMPTABILITE", "COMPTA", "GESTION", "SECRETARIAT", "COMMERCE"],
-        },
         "serie_technique": {
             "a": ["SERIE B", "TERMINALE B", "TERMINAL B"],
             "b": ["G1"], "c": ["G2"],
             "d": ["SERIE E", "TERMINALE E", "TERMINAL E"],
             "e": ["F1"], "f": ["F2"], "g": ["F3"], "h": ["F4"], "i": ["F7"],
-            "j": ["BT", "BREVET DE TECHNICIEN"],
         },
         "seconde": {
             "a": ["SECONDE A", "2NDE A"],
@@ -1977,7 +1930,7 @@ def handle_onboarding_choice(phone, profile, text):
         return False
 
     # « Terminale D » tapee a une question de niveau ou de serie : niveau complet, on passe a la matiere.
-    if (step in {"exam", "serie_general", "serie_technique", "serie_bt", "classe_technique", "seconde",
+    if (step in {"exam", "serie_general", "serie_technique", "classe_technique", "seconde",
                  "classe_intermediaire"}
             and not choice_key(text) and inscrire_niveau_donne(phone, profile, text)):
         return True
@@ -2087,27 +2040,11 @@ def handle_onboarding_choice(phone, profile, text):
     if step == "serie_technique":
         values = BAC_TECHNIQUE_SERIES_CHOICES
         if key in values:
-            if values[key] == "BT":
-                profile.pop("serie", None)
-                profile["onboarding_step"] = "serie_bt"
-                user_profiles[phone] = profile
-                sauver_etat_whatsapp(phone, profile)
-                ask_serie_bt(phone)
-                return True
             profile["serie"] = values[key]
             profile["onboarding_step"] = "classe_technique"
             user_profiles[phone] = profile
             sauver_etat_whatsapp(phone, profile)
             ask_classe_technique(phone)
-            return True
-
-    if step == "serie_bt":
-        if key in BT_OPTIONS_CHOICES:
-            profile["serie"] = BT_OPTIONS_CHOICES[key]
-            profile["onboarding_step"] = "classe_technique"
-            user_profiles[phone] = profile
-            sauver_etat_whatsapp(phone, profile)
-            ask_classe_technique(phone, profile["serie"])
             return True
 
     if step == "classe_technique":
@@ -2179,7 +2116,7 @@ def handle_onboarding_choice(phone, profile, text):
 
 # Etapes ou seule une lettre de la liste est attendue. L'etape "exam" n'y est pas :
 # l'eleve peut y ecrire son profil en toutes lettres ("Je suis en Terminale D...").
-ETAPES_A_REPOSER = {"exam", "serie_general", "serie_technique", "serie_bt", "classe_technique", "seconde", "classe_intermediaire", "matiere", "mode"}
+ETAPES_A_REPOSER = {"exam", "serie_general", "serie_technique", "classe_technique", "seconde", "classe_intermediaire", "matiere", "mode"}
 MESSAGE_CHOIX_NON_COMPRIS = "Je n'ai pas compris ton choix. Touche ton choix dans la liste, ou réponds avec sa lettre."
 
 
@@ -2194,7 +2131,7 @@ def precision_choix(profile, text):
             return f"Il y a {len(comptas)} comptabilités dans ta série. Choisis laquelle dans la liste :"
     if step == "serie_general" and msg in {"BAC GENERAL", "BAC", "GENERAL", "LE BAC GENERAL"}:
         return "C'est noté : BAC Général. Choisis maintenant ta série :"
-    if step in {"serie_technique", "serie_bt", "classe_technique"} and msg in {"BAC TECHNIQUE", "TECHNIQUE", "LE BAC TECHNIQUE"}:
+    if step in {"serie_technique", "classe_technique"} and msg in {"BAC TECHNIQUE", "TECHNIQUE", "LE BAC TECHNIQUE"}:
         return "C'est noté : BAC Technique. Réponds maintenant à cette question :"
     return None
 
@@ -2235,8 +2172,6 @@ def reposer_question_onboarding(phone, profile):
         ask_serie_general(phone)
     elif step == "serie_technique":
         ask_serie_technique(phone)
-    elif step == "serie_bt":
-        ask_serie_bt(phone)
     elif step == "classe_technique":
         ask_classe_technique(phone, profile.get("serie"))
     elif step == "seconde":
@@ -3389,10 +3324,7 @@ LIBELLES_MATIERES = {
     "BIOCHIMIE": "Biochimie", "MICROBIOLOGIE": "Microbiologie", "BIOLOGIE": "Biologie",
     "CHIMIE": "Chimie",
     "INFORMATIQUE_INDUSTRIELLE": "Informatique industrielle",
-    "ELECTRONIQUE_ANALOGIQUE": "Électronique analogique", "ELECTRONIQUE_NUMERIQUE": "Électronique numérique",
     "RADIO_TV": "Radio-télévision", "TELEPHONIE": "Téléphonie",
-    "CONSTRUCTION_ELECTRONIQUE": "Construction électronique et maintenance",
-    "EOE": "Économie et organisation des entreprises",
 }
 
 
@@ -3419,8 +3351,8 @@ def resume_profil(profile):
     examen = (profile.get("type_examen") or "BAC_GENERAL").upper()
     serie = str(profile.get("serie") or "").upper()
     if examen == "BAC_TECHNIQUE":
-        parties = ["BAC Technique" if not est_serie_bt(serie) else "", libelle_serie_technique(serie),
-                   libelle_classe_technique(serie, profile.get("classe"))]
+        parties = ["BAC Technique", f"série {serie}" if serie and serie != "TOUTES" else "",
+                   LIBELLES_CLASSES.get(str(profile.get("classe") or "").upper(), "")]
     elif examen == "BEPC":
         parties = ["BEPC (3e)"]
     elif examen == "CLASSE_INTERMEDIAIRE":
@@ -3440,10 +3372,9 @@ def consigne_matiere_choisie(matiere, serie=None, type_examen=None, classe=None)
         return ""
     examen = LIBELLES_EXAMENS.get((type_examen or "").upper(), type_examen or "")
     niveau = ", ".join(x for x in [
-        examen if not est_serie_bt(serie) else "",
-        (libelle_serie_technique(serie) if est_serie_bt(serie)
-         else f"série {serie}" if serie and serie not in {"TOUTES", "BEPC"} else ""),
-        libelle_classe_technique(serie, classe),
+        examen,
+        f"série {serie}" if serie and serie not in {"TOUTES", "BEPC"} else "",
+        LIBELLES_CLASSES.get(str(classe or "").upper(), ""),
     ] if x)
     return (
         f"\nMATIERE CHOISIE PAR L'ELEVE : {libelle_matiere(matiere)}"
@@ -6278,6 +6209,7 @@ async def _receive_message_impl(request: Request):
             profile = user_profiles[phone] or etat_firestore or {"serie": "TOUTES", "matiere": "MATHS"}
         else:
             profile = etat_firestore or {"serie": "TOUTES", "matiere": "MATHS"}
+        migrer_serie_bt(profile)
         # Dernier message de l'eleve, quel que soit le traitement (liste, mini-test, menu) : le defi du lendemain
         # n'est envoye que 18 h apres (avant, seule la seance avec Akili comptait).
         profile["dernier_message_eleve"] = datetime.now(timezone.utc).isoformat()

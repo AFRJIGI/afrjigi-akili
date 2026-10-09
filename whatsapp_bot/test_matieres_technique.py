@@ -13,7 +13,9 @@ class MatieresTechniqueTests(unittest.TestCase):
         self.assertIn("k. Informatique industrielle", menu)
         self.assertNotIn("Mécanique\n", menu)
         self.assertNotIn("Comptabilité", menu)
-        self.assertTrue(menu.endswith("Réponds par a, b, c, d, e, f, g, h, i, j ou k."))
+        # l et m : radio-television et telephonie (progressions BT Electronique de M. Adia, 9 oct.)
+        self.assertIn("m. Téléphonie", menu)
+        self.assertTrue(menu.endswith("Réponds par a, b, c, d, e, f, g, h, i, j, k, l ou m."))
 
     def test_serie_inconnue_garde_la_liste_commune(self):
         for serie in ["STI", None]:
@@ -23,15 +25,12 @@ class MatieresTechniqueTests(unittest.TestCase):
         self.assertEqual(main.choix_matieres_technique(None), main.BAC_TECHNIQUE_SUBJECT_CHOICES)
 
     def test_chaque_serie_a_sa_liste(self):
-        series = [s for s in main.BAC_TECHNIQUE_SERIES_CHOICES.values() if s != "BT"]
-        series += list(main.BT_OPTIONS_CHOICES.values())  # BT : une liste par option
-        for serie in series:
+        for serie in main.BAC_TECHNIQUE_SERIES_CHOICES.values():
             matieres = main.MATIERES_TECHNIQUE_PAR_SERIE[serie]
             codes = [c for c, _ in matieres]
             self.assertLessEqual(len(matieres), 13, serie)
             self.assertEqual(len(codes), len(set(codes)), serie)
-            # Le BT n'a pas d'histoire-geographie dans les documents recus.
-            for code in ("FRANCAIS", "ANGLAIS") + (() if main.est_serie_bt(serie) else ("HG",)):
+            for code in ("FRANCAIS", "ANGLAIS", "HG"):
                 self.assertIn(code, codes, serie)
             self.assertIn("MATHS", codes, serie)  # meme code que les documents de maths
             for code in codes:
@@ -68,7 +67,7 @@ class MatieresTechniqueTests(unittest.TestCase):
         self.assertEqual(choix["a"], "MECANIQUE_APPLIQUEE")
         self.assertEqual(choix["f"], "MATHS")  # meme code que les documents de maths techniques
         self.assertEqual(choix["h"], "ELECTRONIQUE")
-        self.assertNotIn("l", choix)
+        self.assertEqual((choix["l"], choix["m"]), ("RADIO_TV", "TELEPHONIE"))
         self.assertNotIn("MECANIQUE", choix.values())
 
     def test_etape_matiere_f2(self):

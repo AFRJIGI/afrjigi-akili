@@ -5,7 +5,7 @@ from pathlib import Path
 
 SOURCE = Path(__file__).with_name("main.py").read_text(encoding="utf-8")
 NOMS = {"MATIERES_TECHNIQUES_GUIDEES", "LIBELLES_MATIERES_API", "LIBELLES_CLASSES_GENERALES",
-        "LIBELLES_CLASSES_TECHNIQUE", "LIBELLES_SERIES_BT", "LIBELLES_ANNEES_BT", "MOIS_FR", "niveau_bac_technique", "niveau_enseignant",
+        "LIBELLES_CLASSES_TECHNIQUE", "MOIS_FR", "niveau_bac_technique", "niveau_enseignant",
         "prompt_enseignant", "consigne_progression_enseignant"}
 ns = {"datetime": datetime, "timezone": timezone}
 noeuds = [n for n in ast.parse(SOURCE).body

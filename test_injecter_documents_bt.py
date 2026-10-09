@@ -1,52 +1,55 @@
-"""Documents BT : identifiants, series et annees des documents ajoutes a la base (sans Google Cloud)."""
+"""Documents BT rattaches aux series du BAC Technique : identifiants, series, matieres (sans Google Cloud)."""
 import json
 import unittest
 from collections import Counter
+from pathlib import Path
 
 import injecter_documents_bt as inj
+
+SOURCE_BOT = Path(__file__).with_name("whatsapp_bot").joinpath("main.py").read_text(encoding="utf-8")
+
+
+def matieres_de_la_serie(serie):
+    debut = SOURCE_BOT.index(f'    "{serie}": [')
+    return SOURCE_BOT[debut:SOURCE_BOT.index("    ],", debut)]
 
 
 class DocumentsBTTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.docs = inj.documents_paquet(json.loads(inj.DONNEES.read_text(encoding="utf-8")))
-        cls.meca = inj.documents_meca_bt()
 
-    def test_identifiants_uniques(self):
-        ids = [d["id"] for d in self.docs + self.meca]
+    def test_identifiants_uniques_et_aucune_serie_bt(self):
+        ids = [d["id"] for d in self.docs]
         self.assertEqual(len(ids), len(set(ids)))
-        self.assertIn("bt_eln_telephonie_terminale", ids)
-        self.assertIn("bt_ter_eoe_seconde", ids)
+        self.assertIn("bt_telephonie_terminale", ids)
+        self.assertIn("bt_eoe_seconde", ids)
+        self.assertFalse(any(inj.est_ancienne_version(d) for d in self.docs))
 
-    def test_progressions_par_option_et_annee(self):
-        progressions = Counter((d["serie"], d["niveau"]) for d in self.docs if d["type_doc"] == "PROGRESSION_ANNUELLE")
-        for annee in ("SECONDE", "PREMIERE", "TERMINALE"):
-            self.assertEqual(progressions[("BT_ELN", annee)], 7, annee)   # 7 matieres d'electronique par annee
-            self.assertEqual(progressions[("BT_TER", annee)], 2, annee)   # EG et EOE
-        self.assertTrue(all(d["examen"] == "BAC_TECHNIQUE" for d in self.docs))
+    def test_series(self):
+        series = Counter(d["serie"] for d in self.docs)
+        self.assertEqual(series["F2"], 21)          # BT Electronique de M. Adia
+        self.assertEqual(series["G1 G2"], 6)        # EG et EOE de M. Coulibaly
+        self.assertEqual(set(series), {"F2", "G1 G2", "E F1 F2 F3 F4 F7", "B G1 G2"})
+        self.assertTrue(all(d["examen"] == "BAC_TECHNIQUE" and d["priorite"] == -1 for d in self.docs))
 
-    def test_matieres_connues_du_bot(self):
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).with_name("whatsapp_bot")))
-        source = Path(__file__).with_name("whatsapp_bot").joinpath("main.py").read_text(encoding="utf-8")
+    def test_matieres_proposees_par_le_bot(self):
         for d in self.docs:
             for serie in d["serie"].split():
-                self.assertIn(f'("{d["matiere"]}", ', source[source.index(f'"{serie}": ['):], (serie, d["matiere"]))
+                self.assertIn(f'("{d["matiere"]}", ', matieres_de_la_serie(serie), (serie, d["matiere"]))
 
-    def test_programmes_de_maths_en_extraits(self):
-        maths = [d for d in self.docs if d["type_doc"] == "PROGRAMME"]
-        self.assertTrue(maths and all(d["matiere"] == "MATHS" and len(d["texte"]) <= 2800 for d in maths))
-        self.assertEqual({d["serie"] for d in maths}, {"BT_ELN BT_IND", "BT_TER"})
+    def test_classe_indiquee_dans_le_texte(self):
+        doc = next(d for d in self.docs if d["id"] == "bt_telephonie_seconde")
+        self.assertIn("Correspond au BAC Technique, série F2 (électronique), classe de Seconde.", doc["texte"])
+        self.assertTrue(doc["texte"].startswith("PROGRESSION 2026-2027 - BT Électronique, 1re année"))
 
-    def test_mecanique_pour_le_bt_industriel(self):
-        self.assertTrue(self.meca)
-        self.assertTrue(all(d["serie"] == "BT_IND" and d["matiere"] == "MECANIQUE_APPLIQUEE" for d in self.meca))
-        self.assertTrue(all(d["id"].startswith("sidibe_cours_meca_bt_ind_") for d in self.meca))
-        self.assertIn("Utilisé aussi en BT industriel", self.meca[0]["texte"])
-
-    def test_plan_ignore_les_documents_deja_presents(self):
-        self.assertEqual(inj.plan(self.docs[:3], self.docs[:5]), self.docs[3:5])
+    def test_retrait_de_la_version_du_9_octobre(self):
+        anciens = [{"id": "bt_eln_telephonie_seconde", "serie": "BT_ELN", "sha256": "x"},
+                   {"id": "sidibe_cours_meca_bt_ind_ch01_a_1", "serie": "BT_IND", "sha256": "y"},
+                   {"id": "sidibe_cours_meca_ch01_a_1", "serie": "F2", "sha256": "z"}]
+        self.assertEqual([inj.est_ancienne_version(d) for d in anciens], [True, True, False])
+        self.assertEqual(len(inj.plan(anciens, self.docs)), len(self.docs))
+        self.assertEqual(inj.plan(anciens + self.docs[:3], self.docs[:5]), self.docs[3:5])
 
 
 if __name__ == "__main__":
