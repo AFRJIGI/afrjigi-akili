@@ -15,7 +15,10 @@ from google.api_core.exceptions import ResourceExhausted, TooManyRequests
 
 # Configuration
 PROJECT_ID = "astute-curve-307922"
-LOCATION   = "us-central1"
+# Point d'acces mondial de Vertex AI : Google repartit les appels sur plusieurs regions. En us-central1, les
+# appels a Gemini 2.5 Flash prenaient 1 a 4 minutes au lieu de quelques secondes, avec des refus 429
+# (journaux du 9 oct.). Retour possible sans nouveau code : variable VERTEX_LOCATION=us-central1.
+LOCATION   = os.environ.get("VERTEX_LOCATION", "global")
 BUCKET_NAME = "akili-database-storage-astute-curve-307922"
 BLOB_NAME   = "data/jigi_global_database.json"
 

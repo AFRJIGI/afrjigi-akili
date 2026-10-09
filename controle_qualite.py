@@ -14,6 +14,7 @@ dans la collection Firestore controle_qualite.
 """
 
 import argparse
+import os
 import hashlib
 import json
 import random
@@ -23,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PROJECT_ID = "astute-curve-307922"
-LOCATION = "us-central1"
+LOCATION = os.environ.get("VERTEX_LOCATION", "global")  # moins de refus 429 qu'en us-central1 (9 oct.)
 MIN_MESSAGES_ELEVE = 3
 MAX_MESSAGES = 30
 # Avant : 600 caracteres, alors qu'Akili envoie jusqu'a 850 ; le relecteur prenait la coupure
