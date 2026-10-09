@@ -1547,12 +1547,38 @@ def matiere_demandee(profile, text):
     # BAC technique : PHILO, FRANCAIS, ANGLAIS, HG, MATHS, ECO, DROIT ont le meme code que la matiere citee ;
     # « compta » (COMPTA_FIN, COMPTA_SOCIETES…) n'est pas un code de la liste et ouvre donc la liste.
     citees = matieres_citees(text)
-    if len(citees) != 1 or re.search(REFUS_DE_MATIERE, normalize_for_match(text)):
+    actuelle = (profile.get("matiere") or "").upper()
+    autres = [c for c in citees if not (actuelle == c or actuelle.startswith(c + "_"))]
+    # Une seule nouvelle matiere ; la matiere actuelle peut aussi etre citee (« je fais maths, on passe au français »).
+    if len(autres) != 1 or len(citees) > 2 or re.search(REFUS_DE_MATIERE, normalize_for_match(text)):
         return None
-    citee, actuelle = citees[0], (profile.get("matiere") or "").upper()
-    if actuelle == citee or actuelle.startswith(citee + "_") or not matiere_proposee(profile, citee):
+    citee = autres[0]
+    if not matiere_proposee(profile, citee):
         return None
     return citee
+
+
+def nom_de_matiere_seul(phone, profile, text):
+    """« Français », « l'anglais svp » : l'eleve nomme seulement une autre matiere (controle qualite du 9 oct. :
+    Akili restait en maths). Pas si la derniere question d'Akili parlait de matieres ou citait celle-ci
+    (« Quelle matiere pose probleme a Kadiatou ? » attend « Français » comme reponse)."""
+    msg = normalize_for_match(text)
+    if not msg or len(msg.split()) > 4:
+        return None
+    nouvelle = matiere_demandee(profile, text)
+    if not nouvelle:
+        return None
+    reste = msg
+    for mot in ("STP", "SVP", "S IL TE PLAIT", "S IL VOUS PLAIT", "LE", "LA", "L", "EN", "DU", "DE", "ON FAIT",
+                "MAINTENANT", "PLUTOT", "ET"):
+        reste = re.sub(r"(?<![A-Z0-9])" + mot + r"(?![A-Z0-9])", " ", reste)
+    if len(reste.split()) > 2:
+        return None  # une phrase, pas un nom de matiere
+    derniere = normalize_for_match(load_last_assistant_context(phone) or "")
+    libelle = normalize_for_match(libelle_matiere(nouvelle))
+    if "MATIERE" in derniere or (libelle and libelle in derniere):
+        return None
+    return nouvelle
 
 
 DEMANDES_DANS_LE_MESSAGE = ["SUJET", "EXPLIQUE", "EXPLIQUER", "CORRIGE", "CORRIGER", "AIDE", "AIDER", "DONNE",
@@ -3074,10 +3100,16 @@ def est_demande_changement_matiere(text, matiere_actuelle=""):
         return False  # « Retour : Akili est lent sur mon exercice de maths » est un avis
     citee = detect_matiere_from_text(text, mots_cles_programme=False)
     actuelle = (matiere_actuelle or "").upper()
-    autre_matiere = bool(citee) and not (actuelle == citee or actuelle.startswith(citee + "_"))
+    # Toutes les matieres citees : « je fais en maths … on peut [passer au] français » (audio du 9 oct.) cite
+    # la matiere actuelle ET la nouvelle ; avant, seule la premiere (maths) etait vue.
+    autre_matiere = any(not (actuelle == c or actuelle.startswith(c + "_")) for c in matieres_citees(text))
     # « je vais traiter mon exercice d'histoire geo » en pleine seance de maths (controle qualite du 7 oct.).
     if autre_matiere and re.search(r"(?<![A-Z0-9])(?:MON|MA|UN|UNE|CE|CET|CETTE) (?:EXERCICE|DEVOIR|SUJET|LECON|COURS|"
                                    r"INTERRO|INTERROGATION|EVALUATION)S? (?:\w+ )?(?:DE|D|EN)(?![A-Z0-9])", msg):
+        return True
+    if len(mots) > 30:
+        return False
+    if re.search(r"(?<![A-Z0-9])" + VERBES_PASSAGE + r"(?![A-Z0-9])", msg) and autre_matiere:
         return True
     if len(mots) > 15:
         return False
@@ -3806,6 +3838,7 @@ def derniere_activite_eleve(phone, revision):
     dates = [parse_datetime(revision.get("derniere_activite"))]
     session = charger_session_bilan(phone) or {}
     dates.append(parse_datetime(session.get("derniere_activite")))
+    dates.append(parse_datetime((charger_etat_whatsapp(phone) or {}).get("dernier_message_eleve")))
     dates = [d for d in dates if d]
     return max(dates) if dates else None
 
@@ -4222,6 +4255,11 @@ def short_answer_has_exercise_context(phone, cle=None):
 
 def build_short_answer_prompt(phone, answer, cle=None):
     ctx = get_recent_phone_context_text(phone, cle=cle)
+    # « À » (accent ajoute par le correcteur du telephone) etait lu comme la preposition : Akili reposait la
+    # question en boucle (controle qualite du 9 oct.). Une lettre accentuee est transmise sans accent.
+    lettre = normalize_for_match(answer or "").strip(" .,!?:;)")
+    if len(lettre) == 1 and lettre in "ABCDE" and lettre not in (answer or "").upper():
+        answer = lettre
     return (
         "L'élève vient de répondre uniquement : "
         f"{answer}\n\n"
@@ -6096,6 +6134,9 @@ async def _receive_message_impl(request: Request):
             profile = user_profiles[phone] or etat_firestore or {"serie": "TOUTES", "matiere": "MATHS"}
         else:
             profile = etat_firestore or {"serie": "TOUTES", "matiere": "MATHS"}
+        # Dernier message de l'eleve, quel que soit le traitement (liste, mini-test, menu) : le defi du lendemain
+        # n'est envoye que 18 h apres (avant, seule la seance avec Akili comptait).
+        profile["dernier_message_eleve"] = datetime.now(timezone.utc).isoformat()
         user_profiles[phone] = profile
         _profil_charge_requete.set(phone)
 
@@ -6266,7 +6307,8 @@ async def _receive_message_impl(request: Request):
 
         if (not onboarding_step and is_profile_ready(profile) and media_file is None
                 and not espace_enseignant_actif(profile)
-                and est_demande_changement_matiere(text, profile.get("matiere"))):
+                and (est_demande_changement_matiere(text, profile.get("matiere"))
+                     or nom_de_matiere_seul(phone, profile, original_text))):
             nouvelle = matiere_demandee(profile, original_text)
             if nouvelle:
                 passer_a_la_matiere(phone, profile, nouvelle, original_text)

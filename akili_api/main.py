@@ -1,12 +1,11 @@
 import json
 import os
 from datetime import datetime, date, timezone
-import vertexai
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from google.cloud import storage, firestore
-from vertexai.generative_models import GenerativeModel, Part
+from gemini_client import ModeleGemini, Part, MODELE, LOCATION
 from typing import Optional
 from PIL import Image
 import io
@@ -15,16 +14,13 @@ from google.api_core.exceptions import ResourceExhausted, TooManyRequests
 
 # Configuration
 PROJECT_ID = "astute-curve-307922"
-# Point d'acces mondial de Vertex AI : Google repartit les appels sur plusieurs regions. En us-central1, les
-# appels a Gemini 2.5 Flash prenaient 1 a 4 minutes au lieu de quelques secondes, avec des refus 429
-# (journaux du 9 oct.). Retour possible sans nouveau code : variable VERTEX_LOCATION=us-central1.
-LOCATION   = os.environ.get("VERTEX_LOCATION", "global")
 BUCKET_NAME = "akili-database-storage-astute-curve-307922"
 BLOB_NAME   = "data/jigi_global_database.json"
 
-# Initialisation Vertex AI
-vertexai.init(project=PROJECT_ID, location=LOCATION)
-model = GenerativeModel("gemini-2.5-flash")
+# Gemini par la bibliotheque Google Gen AI (voir gemini_client.py) : point d'acces mondial par defaut, modele
+# et reflexion reglables par variables d'environnement. En us-central1 avec l'ancien SDK, des appels prenaient
+# 1 a 4 minutes avec des refus 429 (journaux du 9 oct.).
+model = ModeleGemini()
 
 
 # Controle qualite du 8 oct. : 15 erreurs de contenu en maths, physique-chimie et comptabilite (numerotation
@@ -1934,7 +1930,7 @@ def sante():
     try:
         texte = generer_texte_gemini("Reponds uniquement : OK", "Sante")
         if texte:
-            return {"gemini": "ok", "documents": len(documents)}
+            return {"gemini": "ok", "modele": MODELE, "point_acces": LOCATION, "documents": len(documents)}
         return {"gemini": "erreur", "detail": "reponse vide", "documents": len(documents)}
     except Exception as e:
         return {"gemini": "erreur", "detail": f"{type(e).__name__}: {str(e)[:200]}", "documents": len(documents)}

@@ -141,6 +141,10 @@ def texte_question(test):
     entete = f"Question {i + 1}/{NB_QUESTIONS}"
     if i == 0:
         entete = f"*{test['chapitre']}*\n\n{entete}"
+    elif test.get("reponses"):
+        # Controle qualite du 9 oct. : un eleve corrigeait sa reponse en tapant une autre lettre, qui partait
+        # a la question suivante. Il voit maintenant ce qui a ete note.
+        entete = f"Réponse {test['reponses'][-1]} notée.\n\n{entete}"
     return f"{entete} : {q['question']}\n\na. {q['a']}\nb. {q['b']}\nc. {q['c']}"
 
 

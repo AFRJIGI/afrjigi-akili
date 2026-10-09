@@ -203,3 +203,45 @@ class MatiereEtDocumentTests(unittest.TestCase):
     def test_lycee_professionnel_hors_champ(self):
         self.assertTrue(main.is_other_or_concours("Je suis au professionnel"))
         self.assertTrue(main.is_other_or_concours("je fais le lycée professionnel"))
+
+
+class SecondControleDu9OctTests(unittest.TestCase):
+    """Second controle qualite du 9 oct. : « Français » seul, audio qui cite deux matieres, « À » accentue,
+    defi du lendemain en pleine seance."""
+    PROFIL = {"type_examen": "BEPC", "serie": "BEPC", "matiere": "MATHS", "mode": "etude", "profile_ready": True,
+              "matiere_confirmed": True, "profile_locked": True}
+
+    def test_nom_de_matiere_seul(self):
+        with mock.patch.object(main, "load_last_assistant_context",
+                               return_value="Développe (x+3)². Te souviens-tu de la formule pour (a+b)² ?"):
+            self.assertEqual(main.nom_de_matiere_seul("225", dict(self.PROFIL), "Français"), "FRANCAIS")
+            self.assertEqual(main.nom_de_matiere_seul("225", dict(self.PROFIL), "le français stp"), "FRANCAIS")
+            self.assertIsNone(main.nom_de_matiere_seul("225", dict(self.PROFIL), "Maths"))
+            self.assertIsNone(main.nom_de_matiere_seul("225", dict(self.PROFIL),
+                                                       "le français c'est dur pour moi"))
+
+    def test_francais_reponse_a_une_question_sur_les_matieres(self):
+        with mock.patch.object(main, "load_last_assistant_context",
+                               return_value="Quelle matière pose problème à Kadiatou ? a. HG b. Français"):
+            self.assertIsNone(main.nom_de_matiere_seul("225", dict(self.PROFIL), "Français"))
+
+    def test_audio_qui_cite_deux_matieres(self):
+        audio = ("S'il vous plaît passons du du je je je fais en maths le mot donc on peut français "
+                 "C'est le français qui me pratique français")
+        self.assertTrue(main.est_demande_changement_matiere(audio, "MATHS"))
+        self.assertEqual(main.matiere_demandee(dict(self.PROFIL), audio), "FRANCAIS")
+        self.assertIsNone(main.matiere_demandee(dict(self.PROFIL), "je veux faire maths et français et anglais"))
+
+    def test_lettre_accentuee(self):
+        with mock.patch.object(main, "get_recent_phone_context_text", return_value="assistant: a. dynamomètre ?"):
+            self.assertIn("uniquement : A\n", main.build_short_answer_prompt("225", "À"))
+            self.assertIn("uniquement : b\n", main.build_short_answer_prompt("225", "b"))
+
+    def test_defi_du_lendemain_attend_le_dernier_message(self):
+        from datetime import datetime, timedelta, timezone
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        ancien = (datetime.now(timezone.utc) - timedelta(hours=20)).isoformat()
+        with mock.patch.object(main, "charger_session_bilan", return_value={"derniere_activite": ancien}), \
+                mock.patch.object(main, "charger_etat_whatsapp", return_value={"dernier_message_eleve": recent}):
+            derniere = main.derniere_activite_eleve("225", {"derniere_activite": ancien})
+        self.assertEqual(derniere.isoformat(), recent)

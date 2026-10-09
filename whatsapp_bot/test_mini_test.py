@@ -186,7 +186,7 @@ class WebhookTests(unittest.TestCase):
         self.assertEqual(self.boutons[-1][1], mini_test.boutons_reponse(0))
         self.envoyer(bouton="minitest_q1_a")
         self.envoyer(bouton="minitest_q2_b")
-        self.assertTrue(self.boutons[-1][0].startswith("Question 3/3"))
+        self.assertTrue(self.boutons[-1][0].startswith("Réponse b notée.\n\nQuestion 3/3"))
         self.envoyer(texte="b")  # lettre tapee au lieu du bouton
         self.assertTrue(self.envoyes[-1].startswith("Merci ! Tu as 2/3."))
         self.assertTrue(self.envoyes[-1].endswith("Bon travail ! Envoie ton exercice ou ta question quand tu veux."))

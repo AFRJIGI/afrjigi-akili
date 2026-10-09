@@ -25,6 +25,7 @@ from pathlib import Path
 
 PROJECT_ID = "astute-curve-307922"
 LOCATION = os.environ.get("VERTEX_LOCATION", "global")  # moins de refus 429 qu'en us-central1 (9 oct.)
+MODELE_RELECTEUR = os.environ.get("MODELE_RELECTEUR", "gemini-2.5-flash")
 MIN_MESSAGES_ELEVE = 3
 MAX_MESSAGES = 30
 # Avant : 600 caracteres, alors qu'Akili envoie jusqu'a 850 ; le relecteur prenait la coupure
@@ -216,8 +217,8 @@ def main():
     args = parser.parse_args()
 
     from google.cloud import firestore
-    import vertexai
-    from vertexai.generative_models import GenerativeModel, GenerationConfig
+    from google import genai  # pip install --user google-genai
+    from google.genai import types
 
     db = firestore.Client(project=PROJECT_ID)
     maintenant = datetime.now(timezone.utc)
@@ -230,15 +231,15 @@ def main():
     choisis = echantillon(conversations, args.n, graine=etiquette)
     print(f"{len(messages)} messages, {len(conversations)} conversations de travail, {len(choisis)} relues.")
 
-    vertexai.init(project=PROJECT_ID, location=LOCATION)
-    modele = GenerativeModel("gemini-2.5-flash")
-    config = GenerationConfig(response_mime_type="application/json", temperature=0.1)
+    # Bibliotheque Google Gen AI, point d'acces mondial (l'ancien SDK le refusait ; 9 oct.).
+    client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
+    config = types.GenerateContentConfig(response_mime_type="application/json", temperature=0.1)
     resultats = []
     for phone in choisis:
         liste = conversations[phone]
         prompt = GRILLE.format(profil=profil_de(liste) or "inconnu", transcription=transcription(liste))
         try:
-            reponse = modele.generate_content([prompt], generation_config=config)
+            reponse = client.models.generate_content(model=MODELE_RELECTEUR, contents=prompt, config=config)
             resultat = lire_resultat(reponse.text)
         except Exception as exc:
             print(f"  {masquer(phone)} : echec de la relecture ({exc!r})")
