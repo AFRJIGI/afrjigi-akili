@@ -1,6 +1,5 @@
 """Le bilan de fin de session suit le mode (etude / examen) et la source (au revoir / pause)."""
 import ast
-import asyncio
 import json
 import time
 import unittest
@@ -32,7 +31,7 @@ def charger(modele):
     for node in tree.body:
         if isinstance(node, ast.Assign) and {t.id for t in node.targets if isinstance(t, ast.Name)} & noms:
             noeuds.append(node)
-        elif isinstance(node, ast.AsyncFunctionDef) and node.name == "bilan_session":
+        elif isinstance(node, ast.FunctionDef) and node.name == "bilan_session":
             node.decorator_list = []
             noeuds.append(node)
     ns = {"json": json, "time": time, "Optional": Optional, "Form": lambda *a, **k: None,
@@ -55,7 +54,7 @@ class BilanSessionTests(unittest.TestCase):
         params = dict(historique=HISTORIQUE, matiere="ECO", serie="G1", type_examen="BAC_TECHNIQUE",
                       mode="etude", source="au_revoir")
         params.update(k)
-        return asyncio.run(bilan(**params))
+        return bilan(**params)
 
     def test_mode_etude(self):
         m = FauxModele(["Bravo pour ta séance !"])

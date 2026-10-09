@@ -1065,8 +1065,11 @@ MODE ETUDE ACTIVE.
 """
 
 
+# Les routes qui appellent Gemini sont des fonctions ordinaires (def, pas async def) : FastAPI les execute
+# dans des fils separes. En async def, l'appel bloquant a Gemini arretait tout le serveur : les autres
+# eleves attendaient, jusqu'a la coupure par Cloud Run au pic du soir (journaux du 8 oct., 19 h 52).
 @app.post("/question")
-async def ask_question(
+def ask_question(
     question: Optional[str] = Form(None),
     question_brute: Optional[str] = Form(None),
     email: str = Form(...),
@@ -1519,7 +1522,7 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
             
         # Si un fichier image a été téléversé par l'élève
         if file is not None:
-            file_bytes = await file.read()
+            file_bytes = file.file.read()
             img_mime = file.content_type or "image/jpeg"
             if ";" in img_mime:
                 img_mime = img_mime.split(";")[0]
@@ -1653,7 +1656,7 @@ BILAN_INACTIVITE = """Contexte : l'eleve n'a plus ecrit depuis un moment, il a s
 
 
 @app.post("/bilan-session")
-async def bilan_session(
+def bilan_session(
     historique: str = Form(...),
     matiere: Optional[str] = Form(None),
     serie: Optional[str] = Form(None),
@@ -1762,7 +1765,7 @@ def generer_texte_gemini(prompt, nom="texte"):
 
 
 @app.post("/revision-lendemain")
-async def revision_lendemain(
+def revision_lendemain(
     historique: str = Form(...),
     bilan: Optional[str] = Form(""),
     matiere: Optional[str] = Form(None),
@@ -1830,7 +1833,7 @@ def lire_json_modele(texte):
 
 
 @app.post("/mini-test")
-async def mini_test(
+def mini_test(
     historique: str = Form("[]"),
     matiere: Optional[str] = Form(None),
     serie: Optional[str] = Form(None),

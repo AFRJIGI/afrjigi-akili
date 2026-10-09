@@ -1,6 +1,5 @@
 """Endpoint /revision-lendemain : prompt construit a partir de la seance et du bilan d'hier."""
 import ast
-import asyncio
 import json
 import time
 import unittest
@@ -35,9 +34,9 @@ class RevisionTests(unittest.TestCase):
         modele = FauxModele("Hier, tu as travaillé les vecteurs.\nPetit défi de 2 minutes : ...\nRéponds par a, b ou c.")
         ns = charger(modele)
         historique = json.dumps([{"role": "user", "content": "AB-> + BC-> ?"}, {"role": "assistant", "content": "AC->"}])
-        res = asyncio.run(ns["revision_lendemain"](historique=historique, bilan="À revoir : la relation de Chasles",
-                                                   matiere="Mathématiques", serie="F1", type_examen="BAC_TECHNIQUE",
-                                                   classe="PREMIERE"))
+        res = ns["revision_lendemain"](historique=historique, bilan="À revoir : la relation de Chasles",
+                                       matiere="Mathématiques", serie="F1", type_examen="BAC_TECHNIQUE",
+                                       classe="PREMIERE")
         self.assertIn("Petit défi", res["reponse"])
         prompt = modele.prompts[0]
         self.assertIn("relation de Chasles", prompt)
@@ -46,7 +45,7 @@ class RevisionTests(unittest.TestCase):
 
     def test_historique_vide(self):
         ns = charger(FauxModele("x"))
-        self.assertIn("error", asyncio.run(ns["revision_lendemain"](historique="[]")))
+        self.assertIn("error", ns["revision_lendemain"](historique="[]"))
 
 
 if __name__ == "__main__":
