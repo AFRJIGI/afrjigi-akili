@@ -1,6 +1,7 @@
 """Construit donnees/documents_bt.json : tous les documents BT (Brevet de Technicien) recus.
 
-  python3 donnees/construire_documents_bt.py "dossier Mr Adia" "dossier Progression_Mr Coulibaly" donnees/documents_bt.json
+  python3 donnees/construire_documents_bt.py "dossier Mr Adia" "dossier Progression_Mr Coulibaly" donnees/documents_bt.json \
+      "dossier Progressions_Electroniques"
 
 BT = BAC Technique (decision de Daouda, 9 oct. 2026). Le paquet garde l'origine des documents (BT_ELN :
 Electronique ; BT_ELN BT_IND : industriel ; BT_TER : tertiaire) ; injecter_documents_bt.py les rattache
@@ -13,15 +14,22 @@ Sources :
   - M. Coulibaly : progressions 2026-2027 d'Economie generale (EG) et d'Economie et organisation des
     entreprises (EOE), 1re a 3e annee BT ; programmes de Mathematiques BT industriel (toutes options) et
     BT tertiaire (METFPA, juillet 2022), decoupes en extraits.
+  - Dossier « Progressions_Electroniques » (10 oct.) : 29 progressions Word du BT Electronique. On ne garde que
+    les matieres absentes du PDF 2026-2027 de M. Adia : dessin industriel (1re a 3e annee), informatique,
+    architecture des systemes informatiques, teleinformatique et reseaux, francais / techniques d'expression
+    (1re a 3e annee, 2024-2025) et CMC (2e annee BT industriel, 2023-2024). Les autres sont des versions plus
+    anciennes (2021-2023) de progressions deja recues. Les numeros de telephone sont retires.
 Les fichiers ne sont pas dans le depot : seul le texte extrait l'est.
 """
 import hashlib
+import io
 import json
 import os
 import re
 import subprocess
 import sys
 import unicodedata
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from construire_documents_m_coulibaly import decouper, texte_docx, texte_pdf  # noqa: E402
@@ -140,8 +148,67 @@ def documents_coulibaly(dossier):
     return sources
 
 
-def main(dossier_adia, dossier_coulibaly, sortie):
+# fichier -> (matiere, serie d'origine, annee, libelle). « BT_TOUS » : toutes les options du BT.
+ELN_WORD = {
+    "file (6).docx": ("DESSIN_INDUSTRIEL", "BT_ELN", "1", "Dessin industriel"),
+    "file (1).docx": ("DESSIN_INDUSTRIEL", "BT_ELN", "2", "Dessin industriel"),
+    "file (2).docx": ("DESSIN_INDUSTRIEL", "BT_ELN", "3", "Dessin industriel"),
+    "file (24).docx": ("INFORMATIQUE_INDUSTRIELLE", "BT_ELN", "1", "Informatique"),
+    "file (9).docx": ("INFORMATIQUE_INDUSTRIELLE", "BT_ELN", "2", "Architecture des systèmes informatiques"),
+    "file (8).docx": ("INFORMATIQUE_INDUSTRIELLE", "BT_ELN", "2", "Téléinformatique et réseaux"),
+    "file (11).docx": ("FRANCAIS", "BT_TOUS", "1", "Français / techniques d'expression"),
+    "file (3).docx": ("FRANCAIS", "BT_TOUS", "2", "Français / techniques d'expression"),
+    "file (7).docx": ("FRANCAIS", "BT_TOUS", "3", "Français / techniques d'expression"),
+    "file (16).docx": ("HG", "BT_IND", "2", "Connaissance du monde contemporain (CMC)"),
+}
+# file (17).docx = file (16).docx ; les autres fichiers : versions 2021-2023 de progressions deja dans le PDF.
+TELEPHONES = re.compile(r"\d{9,}|(?<!\d)\d{6}-\d{4}(?!\d)")
+
+
+def ouvrir_docx(chemin):
+    """Document Word ; une image illisible (CRC faux dans « file (7).docx ») est remplacee par un fichier vide."""
+    import docx
+    try:
+        return docx.Document(chemin)
+    except zipfile.BadZipFile:
+        tampon = io.BytesIO()
+        with zipfile.ZipFile(chemin) as source, zipfile.ZipFile(tampon, "w", zipfile.ZIP_DEFLATED) as copie:
+            for nom in source.namelist():
+                try:
+                    contenu = source.read(nom)
+                except zipfile.BadZipFile:
+                    contenu = b""
+                copie.writestr(nom, contenu)
+        tampon.seek(0)
+        return docx.Document(tampon)
+
+
+def documents_eln_word(dossier):
+    import construire_documents_m_coulibaly as coul
+    sources = []
+    for fichier, (matiere, serie, annee, libelle) in ELN_WORD.items():
+        chemin = os.path.join(dossier, fichier)
+        document = ouvrir_docx(chemin)
+        original = coul.docx.Document
+        coul.docx.Document = lambda _chemin, _d=document: _d  # texte_docx relit le fichier : on lui passe le document
+        try:
+            texte = coul.texte_docx(chemin)
+        finally:
+            coul.docx.Document = original
+        texte = TELEPHONES.sub("", texte)
+        niveau = ANNEES[annee]
+        option = {"BT_ELN": "BT Électronique", "BT_IND": "BT industriel", "BT_TOUS": "BT"}[serie]
+        entete = f"PROGRESSION - {option}, {LIBELLES_ANNEES[niveau]} - {libelle}\n"
+        sources.append(source(f"Progressions_Electroniques/{fichier}", open(chemin, "rb").read(), "PROGRESSION_ANNUELLE",
+                              f"{libelle}, {LIBELLES_ANNEES[niveau]} {option}", matiere, serie, niveau,
+                              [entete + texte], "progressions BT transmises à AfrJigi (10 oct. 2026)", "METFPA"))
+    return sources
+
+
+def main(dossier_adia, dossier_coulibaly, sortie, dossier_eln_word=None):
     sources = documents_adia(dossier_adia) + documents_coulibaly(dossier_coulibaly)
+    if dossier_eln_word:
+        sources += documents_eln_word(dossier_eln_word)
     for s in sources:
         print(f"{s['serie']:14} {s['niveau']:10} {s['matiere']:26} {len(s['morceaux']):3} extraits "
               f"{sum(map(len, s['morceaux'])):7} car. | {s['titre']}")
@@ -150,4 +217,4 @@ def main(dossier_adia, dossier_coulibaly, sortie):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:4])
+    main(*sys.argv[1:5])

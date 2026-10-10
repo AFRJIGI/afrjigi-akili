@@ -5,6 +5,8 @@ des contenus se recoupent. Les progressions BT ne sont donc plus la « progressi
 (Akili ne s'en sert plus pour choisir la lecon du moment) : elles deviennent des documents d'accompagnement
 (DOCUMENT_ACCOMPAGNEMENT, en extraits de 2 600 caracteres au plus), qu'Akili consulte pour expliquer.
 Radio-television et telephonie ne sont plus des matieres de F2 : leurs documents vont dans Electronique.
+Progressions Word du 10 oct. (dossier Progressions_Electroniques) : dessin industriel et informatique -> F2 ;
+francais / techniques d'expression -> toutes les series du BAC Technique ; CMC du BT industriel -> E et F.
 
 Historique : le 9 oct., documents rattaches aux series du BAC Technique (decision de Daouda).
 
@@ -31,6 +33,8 @@ Redeployer akili-api ensuite : l'API charge la base au demarrage.
 import argparse
 import hashlib
 import json
+import re
+import unicodedata
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,17 +46,39 @@ CLASSES = {"SECONDE": "Seconde", "PREMIERE": "Première", "TERMINALE": "Terminal
 # Matieres du BT Electronique -> matieres de la serie F2
 MATIERES_F2 = {"ELECTRONIQUE_ANALOGIQUE": "ELECTRONIQUE", "ELECTRONIQUE_NUMERIQUE": "ELECTRONIQUE",
                "MESURES_ESSAIS": "ELECTRONIQUE", "CONSTRUCTION_ELECTRONIQUE": "ELECTRONIQUE",
-               "TECHNO_SCHEMAS": "TECHNO_SCHEMAS", "RADIO_TV": "ELECTRONIQUE", "TELEPHONIE": "ELECTRONIQUE"}
+               "TECHNO_SCHEMAS": "TECHNO_SCHEMAS", "RADIO_TV": "ELECTRONIQUE", "TELEPHONIE": "ELECTRONIQUE",
+               "DESSIN_INDUSTRIEL": "DESSIN_INDUSTRIEL", "INFORMATIQUE_INDUSTRIELLE": "INFORMATIQUE_INDUSTRIELLE"}
+SERIES_TECHNIQUES = "B G1 G2 E F1 F2 F3 F4 F7"
 ANCIENS_PREFIXES = ("sidibe_cours_meca_bt_ind_",)
 VERSION = 3          # 3 : documents d'accompagnement (10 oct.) ; les versions precedentes sont remplacees
 TAILLE_EXTRAIT = 2600  # l'API lit 2 800 caracteres par document qui n'est pas une progression
 
 
+def slug(texte):
+    texte = unicodedata.normalize("NFKD", texte).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "_", texte).strip("_")[:40]
+
+
+def prefixe_id(source):
+    # Progressions Word du 10 oct. : deux matieres « informatique » en 2e annee, l'id vient de leur titre.
+    if source["fichier"].startswith("Progressions_Electroniques/"):
+        return "bt_word_" + slug(source["titre"].split(",")[0])
+    return f"bt_{source['matiere'].lower()}"
+
+
 def rattachement(source):
     """(serie, matiere, prefixe d'id, ligne ajoutee sous le titre) d'une source du paquet."""
     classe = CLASSES.get(source["niveau"], "")
+    if source["serie"] == "BT_TOUS":
+        return (SERIES_TECHNIQUES, source["matiere"], prefixe_id(source),
+                f"Progression du BT (toutes options), donnée à titre de cours pour la classe de {classe} : le "
+                "programme des séries du BAC Technique est différent, suis la progression officielle de la série.")
+    if source["serie"] == "BT_IND" and source["type_doc"] != "PROGRAMME":
+        return ("E F1 F2 F3 F4 F7", source["matiere"], prefixe_id(source),
+                f"Progression du BT industriel, donnée à titre de cours pour la classe de {classe} : le programme "
+                "des séries E et F est différent, suis la progression officielle de la série.")
     if source["serie"] == "BT_ELN":
-        return ("F2", MATIERES_F2[source["matiere"]], f"bt_{source['matiere'].lower()}",
+        return ("F2", MATIERES_F2[source["matiere"]], prefixe_id(source),
                 f"Progression du BT Électronique ({classe} de F2), donnée à titre de cours : le programme du "
                 "BAC F2 peut être différent, suis la progression officielle de la série.")
     if source["type_doc"] == "PROGRAMME" and "BT_IND" in source["serie"]:
@@ -63,7 +89,7 @@ def rattachement(source):
         return ("B G1 G2", "MATHS", "bt_tertiaire_maths_programme",
                 "Vaut pour le BAC Technique tertiaire (séries B, G1, G2) ; "
                 "1re, 2e et 3e année = Seconde, Première et Terminale.")
-    return ("G1 G2", "ECO", f"bt_{source['matiere'].lower()}",
+    return ("G1 G2", "ECO", prefixe_id(source),
             f"Progression du BT tertiaire ({classe} de G1, G2), donnée à titre de cours : le programme des "
             "séries G1 et G2 est différent, suis la progression officielle de la série.")
 

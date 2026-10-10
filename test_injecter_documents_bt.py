@@ -1,6 +1,7 @@
 """Documents BT : documents de cours des series du BAC Technique (10 oct. : les progressions BT ne sont pas
 celles des series G et F, elles ne pilotent plus le choix de la lecon). Sans Google Cloud."""
 import json
+import re
 import unittest
 from collections import Counter
 from pathlib import Path
@@ -29,9 +30,17 @@ class DocumentsBTTests(unittest.TestCase):
 
     def test_series(self):
         series = Counter(d["serie"] for d in self.docs)
-        self.assertEqual(set(series), {"F2", "G1 G2", "E F1 F2 F3 F4 F7", "B G1 G2"})
+        self.assertEqual(set(series), {"F2", "G1 G2", "E F1 F2 F3 F4 F7", "B G1 G2", "B G1 G2 E F1 F2 F3 F4 F7"})
         self.assertTrue(all(d["examen"] == "BAC_TECHNIQUE" and d["priorite"] == -1 for d in self.docs))
-        self.assertEqual({d["matiere"] for d in self.docs if d["serie"] == "F2"}, {"ELECTRONIQUE", "TECHNO_SCHEMAS"})
+        self.assertEqual({d["matiere"] for d in self.docs if d["serie"] == "F2"},
+                         {"ELECTRONIQUE", "TECHNO_SCHEMAS", "DESSIN_INDUSTRIEL", "INFORMATIQUE_INDUSTRIELLE"})
+
+    def test_progressions_word_du_10_octobre(self):
+        word = [d for d in self.docs if d["id"].startswith("bt_word_")]
+        self.assertEqual(Counter(d["matiere"] for d in word),
+                         Counter(FRANCAIS=14, DESSIN_INDUSTRIEL=10, INFORMATIQUE_INDUSTRIELLE=3, HG=3))
+        self.assertIn("bt_word_architecture_des_systemes_informatiques_premiere", [d["id"] for d in word])
+        self.assertTrue(all(re.search(r"\d{9,}", d["texte"]) is None for d in word))  # telephones retires
 
     def test_plus_aucune_progression_officielle(self):
         # Les progressions BT (M. Adia, M. Coulibaly) sont des documents de cours, lus en entier (2 800 car.).
