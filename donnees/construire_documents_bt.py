@@ -1,7 +1,7 @@
 """Construit donnees/documents_bt.json : tous les documents BT (Brevet de Technicien) recus.
 
   python3 donnees/construire_documents_bt.py "dossier Mr Adia" "dossier Progression_Mr Coulibaly" donnees/documents_bt.json \
-      "dossier Progressions_Electroniques"
+      "dossier Progressions_Electroniques" "dossier CMC_Tertiare"
 
 BT = BAC Technique (decision de Daouda, 9 oct. 2026). Le paquet garde l'origine des documents (BT_ELN :
 Electronique ; BT_ELN BT_IND : industriel ; BT_TER : tertiaire) ; injecter_documents_bt.py les rattache
@@ -19,6 +19,8 @@ Sources :
     architecture des systemes informatiques, teleinformatique et reseaux, francais / techniques d'expression
     (1re a 3e annee, 2024-2025) et CMC (2e annee BT industriel, 2023-2024). Les autres sont des versions plus
     anciennes (2021-2023) de progressions deja recues. Les numeros de telephone sont retires.
+  - Dossier « CMC_Tertiare » (10 oct.) : CMC (Connaissance du monde contemporain) du BT tertiaire, 1re a 3e
+    annee (2023-2024).
 Les fichiers ne sont pas dans le depot : seul le texte extrait l'est.
 """
 import hashlib
@@ -161,6 +163,11 @@ ELN_WORD = {
     "file (7).docx": ("FRANCAIS", "BT_TOUS", "3", "Français / techniques d'expression"),
     "file (16).docx": ("HG", "BT_IND", "2", "Connaissance du monde contemporain (CMC)"),
 }
+CMC_TERTIAIRE = {
+    "file.docx": ("HG", "BT_TER", "1", "Connaissance du monde contemporain (CMC)"),
+    "file (1).docx": ("HG", "BT_TER", "2", "Connaissance du monde contemporain (CMC)"),
+    "file (2).docx": ("HG", "BT_TER", "3", "Connaissance du monde contemporain (CMC)"),
+}
 # file (17).docx = file (16).docx ; les autres fichiers : versions 2021-2023 de progressions deja dans le PDF.
 TELEPHONES = re.compile(r"\d{9,}|(?<!\d)\d{6}-\d{4}(?!\d)")
 
@@ -183,10 +190,10 @@ def ouvrir_docx(chemin):
         return docx.Document(tampon)
 
 
-def documents_eln_word(dossier):
+def documents_eln_word(dossier, fichiers=ELN_WORD, nom_dossier="Progressions_Electroniques"):
     import construire_documents_m_coulibaly as coul
     sources = []
-    for fichier, (matiere, serie, annee, libelle) in ELN_WORD.items():
+    for fichier, (matiere, serie, annee, libelle) in fichiers.items():
         chemin = os.path.join(dossier, fichier)
         document = ouvrir_docx(chemin)
         original = coul.docx.Document
@@ -197,18 +204,20 @@ def documents_eln_word(dossier):
             coul.docx.Document = original
         texte = TELEPHONES.sub("", texte)
         niveau = ANNEES[annee]
-        option = {"BT_ELN": "BT Électronique", "BT_IND": "BT industriel", "BT_TOUS": "BT"}[serie]
+        option = {"BT_ELN": "BT Électronique", "BT_IND": "BT industriel", "BT_TER": "BT tertiaire", "BT_TOUS": "BT"}[serie]
         entete = f"PROGRESSION - {option}, {LIBELLES_ANNEES[niveau]} - {libelle}\n"
-        sources.append(source(f"Progressions_Electroniques/{fichier}", open(chemin, "rb").read(), "PROGRESSION_ANNUELLE",
+        sources.append(source(f"{nom_dossier}/{fichier}", open(chemin, "rb").read(), "PROGRESSION_ANNUELLE",
                               f"{libelle}, {LIBELLES_ANNEES[niveau]} {option}", matiere, serie, niveau,
                               [entete + texte], "progressions BT transmises à AfrJigi (10 oct. 2026)", "METFPA"))
     return sources
 
 
-def main(dossier_adia, dossier_coulibaly, sortie, dossier_eln_word=None):
+def main(dossier_adia, dossier_coulibaly, sortie, dossier_eln_word=None, dossier_cmc_tertiaire=None):
     sources = documents_adia(dossier_adia) + documents_coulibaly(dossier_coulibaly)
     if dossier_eln_word:
         sources += documents_eln_word(dossier_eln_word)
+    if dossier_cmc_tertiaire:
+        sources += documents_eln_word(dossier_cmc_tertiaire, CMC_TERTIAIRE, "CMC_Tertiare")
     for s in sources:
         print(f"{s['serie']:14} {s['niveau']:10} {s['matiere']:26} {len(s['morceaux']):3} extraits "
               f"{sum(map(len, s['morceaux'])):7} car. | {s['titre']}")
@@ -217,4 +226,4 @@ def main(dossier_adia, dossier_coulibaly, sortie, dossier_eln_word=None):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:5])
+    main(*sys.argv[1:6])

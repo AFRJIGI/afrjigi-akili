@@ -36,11 +36,17 @@ class DocumentsBTTests(unittest.TestCase):
                          {"ELECTRONIQUE", "TECHNO_SCHEMAS", "DESSIN_INDUSTRIEL", "INFORMATIQUE_INDUSTRIELLE"})
 
     def test_progressions_word_du_10_octobre(self):
-        word = [d for d in self.docs if d["id"].startswith("bt_word_")]
+        word = [d for d in self.docs if d["id"].startswith("bt_word_") and "cmc_tertiaire" not in d["id"]]
         self.assertEqual(Counter(d["matiere"] for d in word),
                          Counter(FRANCAIS=14, DESSIN_INDUSTRIEL=10, INFORMATIQUE_INDUSTRIELLE=3, HG=3))
         self.assertIn("bt_word_architecture_des_systemes_informatiques_premiere", [d["id"] for d in word])
         self.assertTrue(all(re.search(r"\d{9,}", d["texte"]) is None for d in word))  # telephones retires
+
+    def test_cmc_tertiaire(self):
+        cmc = [d for d in self.docs if d["id"].startswith("bt_word_cmc_tertiaire_")]
+        self.assertEqual({(d["serie"], d["matiere"]) for d in cmc}, {("B G1 G2", "HG")})
+        self.assertEqual({d["niveau"] for d in cmc}, {"SECONDE", "PREMIERE", "TERMINALE"})
+        self.assertTrue(all("suis la progression officielle de la série" in d["texte"] for d in cmc))
 
     def test_plus_aucune_progression_officielle(self):
         # Les progressions BT (M. Adia, M. Coulibaly) sont des documents de cours, lus en entier (2 800 car.).

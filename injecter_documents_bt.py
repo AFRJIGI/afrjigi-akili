@@ -6,7 +6,8 @@ des contenus se recoupent. Les progressions BT ne sont donc plus la « progressi
 (DOCUMENT_ACCOMPAGNEMENT, en extraits de 2 600 caracteres au plus), qu'Akili consulte pour expliquer.
 Radio-television et telephonie ne sont plus des matieres de F2 : leurs documents vont dans Electronique.
 Progressions Word du 10 oct. (dossier Progressions_Electroniques) : dessin industriel et informatique -> F2 ;
-francais / techniques d'expression -> toutes les series du BAC Technique ; CMC du BT industriel -> E et F.
+francais / techniques d'expression -> toutes les series du BAC Technique ; CMC du BT industriel -> E et F ;
+CMC du BT tertiaire (dossier CMC_Tertiare, 1re a 3e annee) -> B, G1, G2.
 
 Historique : le 9 oct., documents rattaches aux series du BAC Technique (decision de Daouda).
 
@@ -61,6 +62,8 @@ def slug(texte):
 
 def prefixe_id(source):
     # Progressions Word du 10 oct. : deux matieres « informatique » en 2e annee, l'id vient de leur titre.
+    if source["fichier"].startswith("CMC_Tertiare/"):
+        return "bt_word_cmc_tertiaire"
     if source["fichier"].startswith("Progressions_Electroniques/"):
         return "bt_word_" + slug(source["titre"].split(",")[0])
     return f"bt_{source['matiere'].lower()}"
@@ -77,6 +80,10 @@ def rattachement(source):
         return ("E F1 F2 F3 F4 F7", source["matiere"], prefixe_id(source),
                 f"Progression du BT industriel, donnée à titre de cours pour la classe de {classe} : le programme "
                 "des séries E et F est différent, suis la progression officielle de la série.")
+    if source["serie"] == "BT_TER" and source["matiere"] == "HG":
+        return ("B G1 G2", "HG", prefixe_id(source),
+                f"Progression du BT tertiaire, donnée à titre de cours pour la classe de {classe} : le programme de "
+                "CMC des séries B, G1 et G2 est différent, suis la progression officielle de la série.")
     if source["serie"] == "BT_ELN":
         return ("F2", MATIERES_F2[source["matiere"]], prefixe_id(source),
                 f"Progression du BT Électronique ({classe} de F2), donnée à titre de cours : le programme du "
