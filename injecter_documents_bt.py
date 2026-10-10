@@ -8,6 +8,11 @@ Radio-television et telephonie ne sont plus des matieres de F2 : leurs documents
 Progressions Word du 10 oct. (dossier Progressions_Electroniques) : dessin industriel et informatique -> F2 ;
 francais / techniques d'expression -> toutes les series du BAC Technique ; CMC du BT industriel -> E et F ;
 CMC du BT tertiaire (dossier CMC_Tertiare, 1re a 3e annee) -> B, G1, G2.
+Dossier Progressions_terminale_E (10 oct.) : trois progressions METFPA de series du BAC Technique, d'annees
+precedentes (Physique appliquee Tle F3 2023-2024, Philosophie Tle E 2022-2023, Francais Tles E, F, G2 2024-2025).
+Ce sont des progressions de la serie : elles restent PROGRESSION_ANNUELLE (Akili s'en sert pour choisir la
+lecon du moment), avec la priorite -1 : une progression deja en base pour la meme classe passe avant. L'audit
+liste les progressions deja en base pour ces classes.
 
 Historique : le 9 oct., documents rattaches aux series du BAC Technique (decision de Daouda).
 
@@ -69,9 +74,18 @@ def prefixe_id(source):
     return f"bt_{source['matiere'].lower()}"
 
 
+def est_progression_de_serie(source):
+    """Progression METFPA d'une serie du BAC Technique (pas une progression du BT)."""
+    return source["type_doc"] == "PROGRESSION_ANNUELLE" and not source["serie"].startswith("BT_")
+
+
 def rattachement(source):
     """(serie, matiere, prefixe d'id, ligne ajoutee sous le titre) d'une source du paquet."""
     classe = CLASSES.get(source["niveau"], "")
+    if est_progression_de_serie(source):
+        return (source["serie"], source["matiere"], f"tech_prog_{source['matiere'].lower()}_{slug(source['serie'])}",
+                f"Progression officielle METFPA de l'année {source['annee']} (dernière version reçue) : les dates "
+                "changent d'une année à l'autre, suis l'ordre des leçons.")
     if source["serie"] == "BT_TOUS":
         return (SERIES_TECHNIQUES, source["matiere"], prefixe_id(source),
                 f"Progression du BT (toutes options), donnée à titre de cours pour la classe de {classe} : le "
@@ -126,6 +140,18 @@ def documents_paquet(paquet):
     docs = []
     for s in paquet["sources"]:
         serie, matiere, prefixe, ligne = rattachement(s)
+        if est_progression_de_serie(s):
+            texte = avec_ligne(s["morceaux"][0], ligne)
+            docs.append(dict(
+                id=f"{prefixe}_{s['niveau'].lower()}", nom_fichier=s["fichier"], matiere=matiere,
+                discipline=matiere, examen="BAC_TECHNIQUE", serie=serie, niveau=s["niveau"],
+                type_doc="PROGRESSION_ANNUELLE", source="ENSEIGNANT", institution=s["institution"],
+                transmis_par=s["transmis_par"], titre=s["titre"], priorite=-1, annee=s["annee"],
+                sha256=hashlib.sha256(texte.encode("utf-8")).hexdigest(), sha256_source=s["sha256"],
+                texte=texte, score=5,
+                resume=f"{s['titre']} (progression METFPA {s['annee']}), transmise à AfrJigi",
+            ))
+            continue
         base_id = prefixe if s["type_doc"] == "PROGRAMME" else f"{prefixe}_{s['niveau'].lower()}"
         if s["type_doc"] == "PROGRAMME":
             textes = [avec_ligne(m, ligne) for m in s["morceaux"]]
@@ -156,6 +182,22 @@ def est_ancienne_version(doc):
             or (identifiant.startswith("bt_") and doc.get("version_bt") != VERSION))
 
 
+def series_du_champ(serie):
+    return set(re.findall(r"[A-Z]\d?", str(serie or "").upper().replace(" ", "")))
+
+
+def progressions_en_place(existants, candidat):
+    """Progressions deja en base pour la matiere, une serie et la classe d'une progression de serie."""
+    series = series_du_champ(candidat["serie"])
+    return [d for d in existants
+            if d.get("id") != candidat["id"]
+            and str(d.get("type_doc") or "").upper().startswith("PROGRESSION")
+            and str(d.get("examen") or "").upper() in {"BAC_TECHNIQUE", "TOUS"}
+            and str(d.get("matiere") or "").upper() == candidat["matiere"]
+            and str(d.get("niveau") or "").upper() in {candidat["niveau"], "TOUS", ""}
+            and series & series_du_champ(d.get("serie"))]
+
+
 def plan(existants, candidats):
     restants = [d for d in existants if not est_ancienne_version(d)]
     ids = {d.get("id") for d in restants}
@@ -181,6 +223,12 @@ def main():
     ajouts = plan(data["documents"], candidats)
     for (serie, matiere), n in sorted(Counter((d["serie"], d["matiere"]) for d in ajouts).items()):
         print(f"  {serie:18} {matiere:16} : {n} à ajouter")
+    for c in candidats:
+        if c["type_doc"] == "PROGRESSION_ANNUELLE":
+            deja = progressions_en_place(data["documents"], c)
+            print(f"  {c['titre']} : " + ("; ".join(
+                f"déjà en base {d.get('id')} ({d.get('serie')}, {d.get('annee') or d.get('version') or '?'}, "
+                f"priorité {d.get('priorite') or 0})" for d in deja) if deja else "aucune progression en base"))
     total = len(data["documents"]) - len(anciens) + len(ajouts)
     print(f"Retraits : {len(anciens)} ; ajouts : {len(ajouts)} ; déjà présents : {len(candidats) - len(ajouts)} ; "
           f"total prévu : {total}")

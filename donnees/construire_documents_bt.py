@@ -1,7 +1,7 @@
 """Construit donnees/documents_bt.json : tous les documents BT (Brevet de Technicien) recus.
 
   python3 donnees/construire_documents_bt.py "dossier Mr Adia" "dossier Progression_Mr Coulibaly" donnees/documents_bt.json \
-      "dossier Progressions_Electroniques" "dossier CMC_Tertiare"
+      "dossier Progressions_Electroniques" "dossier CMC_Tertiare" "dossier Progressions_terminale_E"
 
 BT = BAC Technique (decision de Daouda, 9 oct. 2026). Le paquet garde l'origine des documents (BT_ELN :
 Electronique ; BT_ELN BT_IND : industriel ; BT_TER : tertiaire) ; injecter_documents_bt.py les rattache
@@ -21,6 +21,9 @@ Sources :
     anciennes (2021-2023) de progressions deja recues. Les numeros de telephone sont retires.
   - Dossier « CMC_Tertiare » (10 oct.) : CMC (Connaissance du monde contemporain) du BT tertiaire, 1re a 3e
     annee (2023-2024).
+  - Dossier « Progressions_terminale_E » (10 oct.) : trois progressions METFPA de series du BAC Technique, des
+    annees precedentes (ce ne sont pas des progressions du BT) : Physique appliquee Tle F3 (2023-2024),
+    Philosophie Tle E (2022-2023), Francais / techniques d'expression Tles E, F et G2 (2024-2025).
 Les fichiers ne sont pas dans le depot : seul le texte extrait l'est.
 """
 import hashlib
@@ -96,10 +99,13 @@ def progressions_eln(chemin):
     return sortie
 
 
-def source(fichier, contenu, type_doc, titre, matiere, serie, niveau, morceaux, transmis_par, institution):
-    return {"fichier": fichier, "sha256": hashlib.sha256(contenu).hexdigest(), "type_doc": type_doc,
-            "titre": titre, "matiere": matiere, "serie": serie, "niveau": niveau, "morceaux": morceaux,
-            "transmis_par": transmis_par, "institution": institution}
+def source(fichier, contenu, type_doc, titre, matiere, serie, niveau, morceaux, transmis_par, institution, annee=None):
+    s = {"fichier": fichier, "sha256": hashlib.sha256(contenu).hexdigest(), "type_doc": type_doc,
+         "titre": titre, "matiere": matiere, "serie": serie, "niveau": niveau, "morceaux": morceaux,
+         "transmis_par": transmis_par, "institution": institution}
+    if annee:
+        s["annee"] = annee
+    return s
 
 
 def documents_adia(dossier):
@@ -190,19 +196,24 @@ def ouvrir_docx(chemin):
         return docx.Document(tampon)
 
 
-def documents_eln_word(dossier, fichiers=ELN_WORD, nom_dossier="Progressions_Electroniques"):
+def texte_word(chemin):
+    """Texte d'un document Word (tableaux compris), numeros de telephone retires."""
     import construire_documents_m_coulibaly as coul
+    document = ouvrir_docx(chemin)
+    original = coul.docx.Document
+    coul.docx.Document = lambda _chemin, _d=document: _d  # texte_docx relit le fichier : on lui passe le document
+    try:
+        texte = coul.texte_docx(chemin)
+    finally:
+        coul.docx.Document = original
+    return TELEPHONES.sub("", texte)
+
+
+def documents_eln_word(dossier, fichiers=ELN_WORD, nom_dossier="Progressions_Electroniques"):
     sources = []
     for fichier, (matiere, serie, annee, libelle) in fichiers.items():
         chemin = os.path.join(dossier, fichier)
-        document = ouvrir_docx(chemin)
-        original = coul.docx.Document
-        coul.docx.Document = lambda _chemin, _d=document: _d  # texte_docx relit le fichier : on lui passe le document
-        try:
-            texte = coul.texte_docx(chemin)
-        finally:
-            coul.docx.Document = original
-        texte = TELEPHONES.sub("", texte)
+        texte = texte_word(chemin)
         niveau = ANNEES[annee]
         option = {"BT_ELN": "BT Électronique", "BT_IND": "BT industriel", "BT_TER": "BT tertiaire", "BT_TOUS": "BT"}[serie]
         entete = f"PROGRESSION - {option}, {LIBELLES_ANNEES[niveau]} - {libelle}\n"
@@ -212,12 +223,56 @@ def documents_eln_word(dossier, fichiers=ELN_WORD, nom_dossier="Progressions_Ele
     return sources
 
 
-def main(dossier_adia, dossier_coulibaly, sortie, dossier_eln_word=None, dossier_cmc_tertiaire=None):
+# Dossier « Progressions_terminale_E » : fichier -> (matiere, series, classe, annee scolaire, libelle, classes citees).
+SERIES_TECHNIQUES_METFPA = {
+    "PROGRESSION TLE E.pdf": ("PHYSIQUE_APPLIQUEE", "F3", "TERMINALE", "2023-2024", "Physique appliquée",
+                              "Terminale F3"),
+    "file (1).docx": ("PHILO", "E", "TERMINALE", "2022-2023", "Philosophie", "Terminale E"),
+    "file.docx": ("FRANCAIS", "E F1 F2 F3 F4 F7 G2", "TERMINALE", "2024-2025", "Français / techniques d'expression",
+                  "Terminales E, F et G2"),
+}
+# En-tetes, signatures et cumuls d'heures des progressions METFPA (texte « pdftotext -raw » ou Word).
+BRUIT_METFPA = re.compile(
+    r"^(\d[\d\s,.%hH]*|[\s,.%hH]*|PREMIER|DEUXIEME|SECOND|SEMESTRE|DU|AU|[A-Z]|ETABLISSEMENT\s*:?|"
+    r"MODELE DE PROGRESSION.*|RESPONSABLE DU CONSEIL.*|NOM ET PRENOMS.*|NOTA BENE.*|EMARGEMENT.*|"
+    r"D : Dur.*|le cas\.|OBSERVATIONS SUR.*|MOIS|CD|TE|\(%\)|SEMAINE ELEMENTS? DE COMP.*|N° C PERIODE.*)$", re.I)
+# Libelle vertical d'un semestre (« PREMIER / SEMESTRE / DU / 11 / SEPTEMBRE / 2023 / AU / ... »), une ligne par mot.
+SEMESTRE_VERTICAL = re.compile(r"^(PREMIER|DEUXIEME)\nSEMESTRE\nDU\n\d+\n[A-ZÉÛ]+\n\d{4}\nAU\n\d+\n[A-ZÉÛ]+\n\d{4}\n", re.M)
+
+
+def texte_pdf_brut(chemin):
+    """Progression PDF lue dans l'ordre des cellules (pdftotext -raw), a partir du premier semestre."""
+    texte = subprocess.run(["pdftotext", "-raw", chemin, "-"], capture_output=True, text=True).stdout
+    debut = re.search(r"^PREMIER\s*$", texte, flags=re.M)
+    texte = texte[debut.start():] if debut else texte
+    return SEMESTRE_VERTICAL.sub(lambda m: f"=== {m.group(1)} SEMESTRE ===\n", texte)
+
+
+def documents_series_techniques(dossier):
+    """Progressions METFPA des series du BAC Technique (annees precedentes), dossier Progressions_terminale_E."""
+    sources = []
+    for fichier, (matiere, serie, niveau, annee, libelle, classes) in SERIES_TECHNIQUES_METFPA.items():
+        chemin = os.path.join(dossier, fichier)
+        brut = texte_pdf_brut(chemin) if fichier.endswith(".pdf") else texte_word(chemin)
+        lignes = [l.strip() for l in TELEPHONES.sub("", brut).replace("\f", "\n").split("\n")]
+        texte = "\n".join(l for l in lignes if l and not BRUIT_METFPA.match(l))
+        entete = f"PROGRESSION METFPA {annee} - {libelle}, {classes}\n"
+        sources.append(source(f"Progressions_terminale_E/{fichier}", open(chemin, "rb").read(),
+                              "PROGRESSION_ANNUELLE", f"{libelle}, {classes} ({annee})", matiere, serie, niveau,
+                              [entete + texte], "progressions transmises à AfrJigi (10 oct. 2026)", "METFPA",
+                              annee=annee))
+    return sources
+
+
+def main(dossier_adia, dossier_coulibaly, sortie, dossier_eln_word=None, dossier_cmc_tertiaire=None,
+         dossier_terminale_e=None):
     sources = documents_adia(dossier_adia) + documents_coulibaly(dossier_coulibaly)
     if dossier_eln_word:
         sources += documents_eln_word(dossier_eln_word)
     if dossier_cmc_tertiaire:
         sources += documents_eln_word(dossier_cmc_tertiaire, CMC_TERTIAIRE, "CMC_Tertiare")
+    if dossier_terminale_e:
+        sources += documents_series_techniques(dossier_terminale_e)
     for s in sources:
         print(f"{s['serie']:14} {s['niveau']:10} {s['matiere']:26} {len(s['morceaux']):3} extraits "
               f"{sum(map(len, s['morceaux'])):7} car. | {s['titre']}")
@@ -226,4 +281,4 @@ def main(dossier_adia, dossier_coulibaly, sortie, dossier_eln_word=None, dossier
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:6])
+    main(*sys.argv[1:7])

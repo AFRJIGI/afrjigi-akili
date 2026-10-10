@@ -30,7 +30,8 @@ class DocumentsBTTests(unittest.TestCase):
 
     def test_series(self):
         series = Counter(d["serie"] for d in self.docs)
-        self.assertEqual(set(series), {"F2", "G1 G2", "E F1 F2 F3 F4 F7", "B G1 G2", "B G1 G2 E F1 F2 F3 F4 F7"})
+        self.assertEqual(set(series), {"F2", "G1 G2", "E F1 F2 F3 F4 F7", "B G1 G2", "B G1 G2 E F1 F2 F3 F4 F7",
+                                       "F3", "E", "E F1 F2 F3 F4 F7 G2"})
         self.assertTrue(all(d["examen"] == "BAC_TECHNIQUE" and d["priorite"] == -1 for d in self.docs))
         self.assertEqual({d["matiere"] for d in self.docs if d["serie"] == "F2"},
                          {"ELECTRONIQUE", "TECHNO_SCHEMAS", "DESSIN_INDUSTRIEL", "INFORMATIQUE_INDUSTRIELLE"})
@@ -50,10 +51,12 @@ class DocumentsBTTests(unittest.TestCase):
 
     def test_plus_aucune_progression_officielle(self):
         # Les progressions BT (M. Adia, M. Coulibaly) sont des documents de cours, lus en entier (2 800 car.).
-        self.assertFalse(any(d["type_doc"].startswith("PROGRESSION") for d in self.docs))
+        bt = [d for d in self.docs if d["id"].startswith("bt_")]
+        self.assertEqual(len(bt), len(self.docs) - 3)
+        self.assertFalse(any(d["type_doc"].startswith("PROGRESSION") for d in bt))
         accompagnement = [d for d in self.docs if d["type_doc"] == "DOCUMENT_ACCOMPAGNEMENT"]
         self.assertEqual({d["type_source"] for d in accompagnement}, {"PROGRESSION_ANNUELLE"})
-        self.assertTrue(all(len(d["texte"]) <= 2800 for d in self.docs))
+        self.assertTrue(all(len(d["texte"]) <= 2800 for d in bt))
         self.assertTrue(all("suis la progression officielle de la série" in d["texte"] for d in accompagnement))
 
     def test_matieres_proposees_par_le_bot(self):
@@ -75,6 +78,46 @@ class DocumentsBTTests(unittest.TestCase):
         self.assertEqual([inj.est_ancienne_version(d) for d in anciens], [True, True, False, True])
         self.assertEqual(len(inj.plan(anciens, self.docs)), len(self.docs))
         self.assertEqual(inj.plan(anciens + self.docs[:3], self.docs[:5]), self.docs[3:5])
+
+
+class ProgressionsDesSeriesTests(unittest.TestCase):
+    """Dossier Progressions_terminale_E (10 oct.) : progressions METFPA des series, annees precedentes."""
+
+    @classmethod
+    def setUpClass(cls):
+        docs = inj.documents_paquet(json.loads(inj.DONNEES.read_text(encoding="utf-8")))
+        cls.progs = {d["id"]: d for d in docs if d["id"].startswith("tech_prog_")}
+
+    def test_trois_progressions_de_terminale(self):
+        self.assertEqual({(d["serie"], d["matiere"], d["annee"]) for d in self.progs.values()},
+                         {("F3", "PHYSIQUE_APPLIQUEE", "2023-2024"), ("E", "PHILO", "2022-2023"),
+                          ("E F1 F2 F3 F4 F7 G2", "FRANCAIS", "2024-2025")})
+        for d in self.progs.values():
+            self.assertEqual((d["type_doc"], d["niveau"], d["priorite"], d["examen"]),
+                             ("PROGRESSION_ANNUELLE", "TERMINALE", -1, "BAC_TECHNIQUE"))
+            self.assertLessEqual(len(d["texte"]), 7000)              # l'API lit 7 000 car. d'une progression
+            self.assertIn("suis l'ordre des leçons", d["texte"])
+            self.assertIsNone(re.search(r"\d{9,}", d["texte"]))      # telephones retires
+            self.assertFalse(inj.est_ancienne_version(d))
+
+    def test_texte_lisible(self):
+        phys = self.progs["tech_prog_physique_appliquee_f3_terminale"]["texte"]
+        self.assertIn("=== DEUXIEME SEMESTRE ===", phys)
+        self.assertIn("APPLIQUER LA 3EME LOI DE KEPLER", phys)
+        self.assertNotIn("NOM ET PRENOMS", phys)
+        self.assertIn("Leçon 2 : Le commentaire de texte philosophique", self.progs["tech_prog_philo_e_terminale"]["texte"])
+
+    def test_progressions_deja_en_base(self):
+        philo = self.progs["tech_prog_philo_e_terminale"]
+        base = [{"id": "x", "type_doc": "PROGRESSION_ANNUELLE", "examen": "BAC_TECHNIQUE", "matiere": "PHILO",
+                 "serie": "E", "niveau": "TERMINALE"},
+                {"id": "y", "type_doc": "PROGRESSION_ANNUELLE", "examen": "BAC_TECHNIQUE", "matiere": "PHILO",
+                 "serie": "G1G2", "niveau": "TERMINALE"},
+                {"id": "z", "type_doc": "DOCUMENT_ACCOMPAGNEMENT", "examen": "BAC_TECHNIQUE", "matiere": "PHILO",
+                 "serie": "E", "niveau": "TERMINALE"}, philo]
+        self.assertEqual([d["id"] for d in inj.progressions_en_place(base, philo)], ["x"])
+        francais = self.progs["tech_prog_francais_e_f1_f2_f3_f4_f7_g2_terminale"]
+        self.assertEqual(len(inj.progressions_en_place([dict(base[1], matiere="FRANCAIS")], francais)), 1)
 
 
 if __name__ == "__main__":
