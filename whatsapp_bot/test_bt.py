@@ -21,9 +21,11 @@ class InscriptionBTTests(Base):
         self.assertNotIn("année", self.envoyes[-1])
         self.assertTrue(main.handle_onboarding_choice(PHONE, profil, "c"))   # Terminale
         self.assertEqual((profil["serie"], profil["classe"]), ("F2", "TERMINALE"))
-        self.assertIn("m. Téléphonie", self.envoyes[-1])                     # progressions BT ELN de M. Adia
-        self.assertTrue(main.handle_onboarding_choice(PHONE, profil, "m"))
-        self.assertIn("Profil prêt : BAC Technique, série F2, Terminale, Téléphonie", self.envoyes[-1])
+        # Radio-TV et telephonie (BT ELN de M. Adia) sont dans l'electronique ; HG s'appelle CMC au technique.
+        self.assertNotIn("Téléphonie", self.envoyes[-1])
+        self.assertIn("e. CMC (Histoire-Géographie)", self.envoyes[-1])
+        self.assertTrue(main.handle_onboarding_choice(PHONE, profil, "téléphonie"))
+        self.assertIn("Profil prêt : BAC Technique, série F2, Terminale, Électronique", self.envoyes[-1])
 
     def test_bt_ecrit_en_toutes_lettres(self):
         # Controle qualite du 9 oct. : « 3eme annee BT electronique » etait inscrit en BEPC maths.
@@ -37,6 +39,11 @@ class InscriptionBTTests(Base):
         profil = {"onboarding_step": "exam", "serie": "TOUTES"}
         self.assertTrue(main.handle_onboarding_choice(PHONE, profil, "BT"))
         self.assertEqual((profil["type_examen"], profil["onboarding_step"]), ("BAC_TECHNIQUE", "serie_technique"))
+
+    def test_cmc_au_technique(self):
+        profil = {"onboarding_step": "matiere", "type_examen": "BAC_TECHNIQUE", "serie": "G2", "classe": "PREMIERE"}
+        self.assertTrue(main.handle_onboarding_choice(PHONE, profil, "CMC"))
+        self.assertEqual(profil["matiere"], "HG")
 
     def test_annee_de_bt_a_la_question_de_la_classe(self):
         profil = {"onboarding_step": "classe_technique", "type_examen": "BAC_TECHNIQUE", "serie": "G2"}
@@ -73,7 +80,8 @@ class NiveauBTTests(unittest.TestCase):
     def test_profils_inscrits_avec_une_option_bt(self):
         profil = main.migrer_serie_bt({"type_examen": "BAC_TECHNIQUE", "serie": "BT_ELN", "classe": "TERMINALE",
                                        "matiere": "TELEPHONIE"})
-        self.assertEqual((profil["serie"], profil["matiere"]), ("F2", "TELEPHONIE"))
+        self.assertEqual((profil["serie"], profil["matiere"]), ("F2", "ELECTRONIQUE"))
+        self.assertEqual(main.migrer_serie_bt({"serie": "F2", "matiere": "RADIO_TV"})["matiere"], "ELECTRONIQUE")
         profil = main.migrer_serie_bt({"serie": "BT_TER", "matiere": "EOE"})
         self.assertEqual((profil["serie"], profil["matiere"]), ("G2", "MATHS"))
         self.assertEqual(main.migrer_serie_bt({"serie": "D", "matiere": "PC"}), {"serie": "D", "matiere": "PC"})

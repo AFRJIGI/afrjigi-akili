@@ -490,10 +490,14 @@ _etat_lecture_echouee = set()
 
 
 SERIES_BT_RETIREES = {"BT_ELN": "F2", "BT_TER": "G2", "BT_IND": "F1"}
+MATIERES_RETIREES = {"RADIO_TV": "ELECTRONIQUE", "TELEPHONIE": "ELECTRONIQUE"}  # F2 du 9 au 10 oct.
 
 
 def migrer_serie_bt(profile):
-    """Profils inscrits le 9 oct. avec une option BT (BT_ELN...) : le BT est le BAC Technique, on reprend la serie."""
+    """Profils inscrits le 9 oct. avec une option BT (BT_ELN...) : le BT est le BAC Technique, on reprend la serie.
+    Radio-television et telephonie (en F2 du 9 au 10 oct.) : matiere Electronique."""
+    if (profile or {}).get("matiere") in MATIERES_RETIREES:
+        profile["matiere"] = MATIERES_RETIREES[profile["matiere"]]
     serie = str((profile or {}).get("serie") or "").upper()
     if serie in SERIES_BT_RETIREES:
         profile["serie"] = SERIES_BT_RETIREES[serie]
@@ -895,7 +899,7 @@ def detect_matiere_from_text(message, mots_cles_programme=True, tous=False):
         ("PHILO", ["PHILO", "PHILOSOPHIE"] + (PHILO_KEYWORDS if mots_cles_programme else [])),
         ("PC", ["PC", "PHYSIQUE", "CHIMIE", "PHYSIQUE CHIMIE"]),
         ("SVT", ["SVT", "SCIENCES DE LA VIE ET DE LA TERRE"]),
-        ("HG", ["HG", "HISTOIRE", "GEOGRAPHIE", "HISTOIRE GEOGRAPHIE"]),
+        ("HG", ["HG", "HISTOIRE", "GEOGRAPHIE", "HISTOIRE GEOGRAPHIE", "CMC", "CONNAISSANCE DU MONDE CONTEMPORAIN"]),
         ("ANGLAIS", ["ANGLAIS"]),
         ("ALLEMAND", ["ALLEMAND", "ALLEMANDE", "ALL", "GERMAN"]),
         ("ESPAGNOL", ["ESPAGNOL", "ESPAGNOLE", "ESP", "ESPANOL", "SPANISH"]),
@@ -1002,7 +1006,7 @@ MATIERES_TECHNIQUE_PAR_SERIE = {
         ("MATHS", "Mathématiques"),
         ("FRANCAIS", "Français"),
         ("ANGLAIS", "Anglais"),
-        ("HG", "Histoire-Géographie"),
+        ("HG", "CMC (Histoire-Géographie)"),
         ("PHILO", "Philosophie"),
     ],
     "G1": [
@@ -1012,7 +1016,7 @@ MATIERES_TECHNIQUE_PAR_SERIE = {
         ("MATHS", "Mathématiques"),
         ("FRANCAIS", "Français"),
         ("ANGLAIS", "Anglais"),
-        ("HG", "Histoire-Géographie"),
+        ("HG", "CMC (Histoire-Géographie)"),
         ("PHILO", "Philosophie"),
     ],
     "G2": [
@@ -1026,7 +1030,7 @@ MATIERES_TECHNIQUE_PAR_SERIE = {
         ("EXPRESSION_PRO", "Expression professionnelle"),
         ("FRANCAIS", "Français"),
         ("ANGLAIS", "Anglais"),
-        ("HG", "Histoire-Géographie"),
+        ("HG", "CMC (Histoire-Géographie)"),
         ("PHILO", "Philosophie"),
     ],
     "E": [
@@ -1039,7 +1043,7 @@ MATIERES_TECHNIQUE_PAR_SERIE = {
         ("FABRICATION", "Fabrication (tournage, fraisage)"),
         ("FRANCAIS", "Français"),
         ("ANGLAIS", "Anglais"),
-        ("HG", "Histoire-Géographie"),
+        ("HG", "CMC (Histoire-Géographie)"),
         ("PHILO", "Philosophie"),
     ],
     "F3": [
@@ -1051,7 +1055,7 @@ MATIERES_TECHNIQUE_PAR_SERIE = {
         ("MATHS", "Mathématiques"),
         ("FRANCAIS", "Français"),
         ("ANGLAIS", "Anglais"),
-        ("HG", "Histoire-Géographie"),
+        ("HG", "CMC (Histoire-Géographie)"),
         ("PHILO", "Philosophie"),
     ],
     "F4": [
@@ -1065,7 +1069,7 @@ MATIERES_TECHNIQUE_PAR_SERIE = {
         ("MATHS", "Mathématiques"),
         ("FRANCAIS", "Français"),
         ("ANGLAIS", "Anglais"),
-        ("HG", "Histoire-Géographie"),
+        ("HG", "CMC (Histoire-Géographie)"),
         ("PHILO", "Philosophie"),
     ],
     "F7": [
@@ -1076,7 +1080,7 @@ MATIERES_TECHNIQUE_PAR_SERIE = {
         ("MATHS", "Mathématiques"),
         ("FRANCAIS", "Français"),
         ("ANGLAIS", "Anglais"),
-        ("HG", "Histoire-Géographie"),
+        ("HG", "CMC (Histoire-Géographie)"),
         ("PHILO", "Philosophie"),
     ],
     "F1": [
@@ -1091,7 +1095,7 @@ MATIERES_TECHNIQUE_PAR_SERIE = {
         ("PHYSIQUE_APPLIQUEE", "Physique appliquée (PCT)"),
         ("FRANCAIS", "Français"),
         ("ANGLAIS", "Anglais"),
-        ("HG", "Histoire-Géographie"),
+        ("HG", "CMC (Histoire-Géographie)"),
         ("PHILO", "Philosophie"),
     ],
     "F2": [
@@ -1099,16 +1103,13 @@ MATIERES_TECHNIQUE_PAR_SERIE = {
         ("CMI", "Construction mécanique industrielle"),
         ("FRANCAIS", "Français"),
         ("ANGLAIS", "Anglais"),
-        ("HG", "Histoire-Géographie"),
+        ("HG", "CMC (Histoire-Géographie)"),
         ("MATHS", "Mathématiques"),
         ("PHYSIQUE_APPLIQUEE", "Physique appliquée (PCT)"),
         ("ELECTRONIQUE", "Électronique"),
         ("DESSIN_INDUSTRIEL", "Dessin industriel / Dessin technique"),
         ("TECHNO_SCHEMAS", "Technologie et schémas"),
         ("INFORMATIQUE_INDUSTRIELLE", "Informatique industrielle"),
-        # Progressions du BT Electronique de M. Adia (ETIC Korhogo) : 1re a 3e annee = Seconde a Terminale.
-        ("RADIO_TV", "Radio-télévision"),
-        ("TELEPHONIE", "Téléphonie"),
     ],
 }
 
@@ -1127,14 +1128,16 @@ MOTS_CLES_MATIERE_TECHNIQUE = {
     "PHYSIQUE_APPLIQUEE": ["PHYSIQUE APPLIQUEE", "PHYSIQUE", "PCT"],
     "PC": ["SCIENCES PHYSIQUES", "PHYSIQUE", "PHYSIQUE CHIMIE", "PC"],
     "ESTI": ["ETUDE DES SYSTEMES", "SYSTEMES TECHNIQUES", "ESTI"],
-    "HG": ["HISTOIRE GEOGRAPHIE", "HG", "HISTOIRE", "GEOGRAPHIE"],
+    # Enseignement technique : CMC, Connaissance du monde contemporain (precision de M. Coulibaly, 10 oct.).
+    "HG": ["HISTOIRE GEOGRAPHIE", "HG", "HISTOIRE", "GEOGRAPHIE", "CMC", "CONNAISSANCE DU MONDE CONTEMPORAIN"],
     "FRANCAIS": ["FRANCAIS", "FRENCH"],
     "ANGLAIS": ["ANGLAIS", "ENGLISH"],
     "PHILO": ["PHILOSOPHIE", "PHILO"],
     "MECANIQUE_APPLIQUEE": ["MECANIQUE APPLIQUEE"],
     "MECANIQUE": ["MECANIQUE", "MECA"],
     "CMI": ["CMI", "CONSTRUCTION MECANIQUE"],
-    "ELECTRONIQUE": ["ELECTRONIQUE"],
+    # Radio-television et telephonie (progressions BT de M. Adia) sont rangees dans l'electronique en F2.
+    "ELECTRONIQUE": ["ELECTRONIQUE", "RADIO", "TELEVISION", "TELEPHONIE"],
     "DESSIN_INDUSTRIEL": ["DESSIN INDUSTRIEL", "DESSIN TECHNIQUE", "DESSIN"],
     "TECHNO_SCHEMAS": ["TECHNOLOGIE ET SCHEMAS", "TECHNO SCHEMA", "TECHNO SCHEMAS", "SCHEMAS", "SCHEMA"],
     "INFORMATIQUE_INDUSTRIELLE": ["INFORMATIQUE INDUSTRIELLE", "INFORMATIQUE"],
@@ -1157,8 +1160,6 @@ MOTS_CLES_MATIERE_TECHNIQUE = {
     "MICROBIOLOGIE": ["MICROBIOLOGIE", "MICROBIO"],
     "BIOLOGIE": ["BIOLOGIE", "BIO"],
     "CHIMIE": ["CHIMIE"],
-    "RADIO_TV": ["RADIO TELEVISION", "RADIO TELE", "RADIO", "TELEVISION", "TELE"],
-    "TELEPHONIE": ["TELEPHONIE", "TELEPHONE"],
 }
 
 
@@ -5289,7 +5290,7 @@ def update_profile_from_text(profile, message):
         ("PHILO", ["PHILO", "PHILOSOPHIE"]),
         ("PC", ["PC", "PHYSIQUE", "CHIMIE", "PHYSIQUE CHIMIE", "PHYSIQUE CHIMIE"]),
         ("SVT", ["SVT", "SCIENCES DE LA VIE ET DE LA TERRE"]),
-        ("HG", ["HG", "HISTOIRE", "GEOGRAPHIE", "HISTOIRE GEOGRAPHIE"]),
+        ("HG", ["HG", "HISTOIRE", "GEOGRAPHIE", "HISTOIRE GEOGRAPHIE", "CMC", "CONNAISSANCE DU MONDE CONTEMPORAIN"]),
         ("ANGLAIS", ["ANGLAIS"]),
         ("ALLEMAND", ["ALLEMAND", "ALLEMANDE", "ALL", "GERMAN"]),
         ("ESPAGNOL", ["ESPAGNOL", "ESPAGNOLE", "ESP", "ESPANOL", "SPANISH"]),

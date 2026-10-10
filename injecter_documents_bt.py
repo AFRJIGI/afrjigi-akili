@@ -1,4 +1,12 @@
-"""Documents BT rattaches aux series du BAC Technique (decision de Daouda, 9 oct. 2026).
+"""Documents BT dans la base, comme documents de cours des series du BAC Technique.
+
+10 oct. (M. Coulibaly) : les progressions du BT et celles des series G1, G2 (ou F) sont differentes, meme si
+des contenus se recoupent. Les progressions BT ne sont donc plus la « progression officielle » d'une serie
+(Akili ne s'en sert plus pour choisir la lecon du moment) : elles deviennent des documents d'accompagnement
+(DOCUMENT_ACCOMPAGNEMENT, en extraits de 2 600 caracteres au plus), qu'Akili consulte pour expliquer.
+Radio-television et telephonie ne sont plus des matieres de F2 : leurs documents vont dans Electronique.
+
+Historique : le 9 oct., documents rattaches aux series du BAC Technique (decision de Daouda).
 
 BT = BAC Technique : le tertiaire regroupe les series B, G1, G2 ; l'industriel, les series E et F.
 Les classes sont Seconde, Premiere, Terminale (« 1BT, 2BT, 3BT » ou « 1re a 3e annee » dans les documents).
@@ -34,8 +42,10 @@ CLASSES = {"SECONDE": "Seconde", "PREMIERE": "Première", "TERMINALE": "Terminal
 # Matieres du BT Electronique -> matieres de la serie F2
 MATIERES_F2 = {"ELECTRONIQUE_ANALOGIQUE": "ELECTRONIQUE", "ELECTRONIQUE_NUMERIQUE": "ELECTRONIQUE",
                "MESURES_ESSAIS": "ELECTRONIQUE", "CONSTRUCTION_ELECTRONIQUE": "ELECTRONIQUE",
-               "TECHNO_SCHEMAS": "TECHNO_SCHEMAS", "RADIO_TV": "RADIO_TV", "TELEPHONIE": "TELEPHONIE"}
+               "TECHNO_SCHEMAS": "TECHNO_SCHEMAS", "RADIO_TV": "ELECTRONIQUE", "TELEPHONIE": "ELECTRONIQUE"}
 ANCIENS_PREFIXES = ("sidibe_cours_meca_bt_ind_",)
+VERSION = 3          # 3 : documents d'accompagnement (10 oct.) ; les versions precedentes sont remplacees
+TAILLE_EXTRAIT = 2600  # l'API lit 2 800 caracteres par document qui n'est pas une progression
 
 
 def rattachement(source):
@@ -43,7 +53,8 @@ def rattachement(source):
     classe = CLASSES.get(source["niveau"], "")
     if source["serie"] == "BT_ELN":
         return ("F2", MATIERES_F2[source["matiere"]], f"bt_{source['matiere'].lower()}",
-                f"Correspond au BAC Technique, série F2 (électronique), classe de {classe}.")
+                f"Progression du BT Électronique ({classe} de F2), donnée à titre de cours : le programme du "
+                "BAC F2 peut être différent, suis la progression officielle de la série.")
     if source["type_doc"] == "PROGRAMME" and "BT_IND" in source["serie"]:
         return ("E F1 F2 F3 F4 F7", "MATHS", "bt_industriel_maths_programme",
                 "Vaut pour le BAC Technique industriel (séries E, F1, F2, F3, F4, F7) ; "
@@ -53,7 +64,8 @@ def rattachement(source):
                 "Vaut pour le BAC Technique tertiaire (séries B, G1, G2) ; "
                 "1re, 2e et 3e année = Seconde, Première et Terminale.")
     return ("G1 G2", "ECO", f"bt_{source['matiere'].lower()}",
-            f"Correspond au BAC Technique, séries G1 et G2, classe de {classe}.")
+            f"Progression du BT tertiaire ({classe} de G1, G2), donnée à titre de cours : le programme des "
+            "séries G1 et G2 est différent, suis la progression officielle de la série.")
 
 
 def avec_ligne(texte, ligne):
@@ -61,31 +73,54 @@ def avec_ligne(texte, ligne):
     return f"{titre}\n{ligne}\n{reste}"
 
 
+def decouper(texte, taille=TAILLE_EXTRAIT):
+    """Progression BT en extraits (coupes aux lignes) ; chaque extrait garde le titre et la ligne d'avertissement."""
+    lignes = texte.split("\n")
+    entete, corps = "\n".join(lignes[:2]), lignes[2:]
+    morceaux, actuel = [], []
+    for ligne in corps:
+        if actuel and len(entete) + sum(len(x) + 1 for x in actuel) + len(ligne) > taille:
+            morceaux.append(actuel)
+            actuel = []
+        actuel.append(ligne[:taille - len(entete) - 20])
+    if actuel:
+        morceaux.append(actuel)
+    nb = len(morceaux)
+    return [entete + (f" (extrait {k}/{nb})" if nb > 1 else "") + "\n" + "\n".join(m) for k, m in enumerate(morceaux, 1)]
+
+
 def documents_paquet(paquet):
     docs = []
     for s in paquet["sources"]:
         serie, matiere, prefixe, ligne = rattachement(s)
-        nb = len(s["morceaux"])
         base_id = prefixe if s["type_doc"] == "PROGRAMME" else f"{prefixe}_{s['niveau'].lower()}"
-        for k, morceau in enumerate(s["morceaux"], 1):
-            texte = avec_ligne(morceau, ligne)
+        if s["type_doc"] == "PROGRAMME":
+            textes = [avec_ligne(m, ligne) for m in s["morceaux"]]
+            type_doc = "PROGRAMME"
+        else:
+            textes = [t for m in s["morceaux"] for t in decouper(avec_ligne(m, ligne))]
+            type_doc = "DOCUMENT_ACCOMPAGNEMENT"
+        nb = len(textes)
+        for k, texte in enumerate(textes, 1):
             docs.append(dict(
                 id=base_id + (f"_{k:02d}" if nb > 1 else ""),
                 nom_fichier=s["fichier"] + (f" (extrait {k}/{nb})" if nb > 1 else ""),
                 matiere=matiere, discipline=s["matiere"], examen="BAC_TECHNIQUE", serie=serie, niveau=s["niveau"],
-                type_doc=s["type_doc"], source="ENSEIGNANT", institution=s["institution"],
-                transmis_par=s["transmis_par"], titre=s["titre"], priorite=-1,
+                type_doc=type_doc, type_source=s["type_doc"], source="ENSEIGNANT", institution=s["institution"],
+                transmis_par=s["transmis_par"], titre=s["titre"], priorite=-1, version_bt=VERSION,
                 annee="2026-2027" if s["type_doc"] == "PROGRESSION_ANNUELLE" else "2022",
                 sha256=hashlib.sha256(texte.encode("utf-8")).hexdigest(), sha256_source=s["sha256"],
                 texte=texte, score=5,
-                resume=f"{s['titre']} ({s['type_doc'].lower().replace('_', ' ')}), transmis par {s['transmis_par']}",
+                resume=f"{s['titre']} (BT, {s['type_doc'].lower().replace('_', ' ')}), transmis par {s['transmis_par']}",
             ))
     return docs
 
 
 def est_ancienne_version(doc):
+    identifiant = str(doc.get("id") or "")
     return (str(doc.get("serie") or "").upper().startswith("BT_")
-            or str(doc.get("id") or "").startswith(ANCIENS_PREFIXES))
+            or identifiant.startswith(ANCIENS_PREFIXES)
+            or (identifiant.startswith("bt_") and doc.get("version_bt") != VERSION))
 
 
 def plan(existants, candidats):
@@ -109,7 +144,7 @@ def main():
     original = blob.download_as_bytes(if_generation_match=generation, timeout=600)
     data = json.loads(original)
     anciens = [d for d in data["documents"] if est_ancienne_version(d)]
-    print(f"Base actuelle : {len(data['documents'])} documents, dont {len(anciens)} de la version BT_* du 9 oct. à retirer")
+    print(f"Base actuelle : {len(data['documents'])} documents, dont {len(anciens)} documents BT d'une version précédente à retirer")
     ajouts = plan(data["documents"], candidats)
     for (serie, matiere), n in sorted(Counter((d["serie"], d["matiere"]) for d in ajouts).items()):
         print(f"  {serie:18} {matiere:16} : {n} à ajouter")
