@@ -44,7 +44,7 @@ class GeminiClientTests(unittest.TestCase):
         genai_mod, types_mod = faux_genai(self.appels)
         self.patches = [mock.patch.dict(sys.modules, {"google.genai": genai_mod, "google.genai.types": types_mod}),
                         mock.patch.object(google, "genai", genai_mod, create=True),
-                        mock.patch.object(gemini_client, "_client", None)]
+                        mock.patch.object(gemini_client, "_clients", {})]
         for p in self.patches:
             p.start()
 
@@ -66,6 +66,38 @@ class GeminiClientTests(unittest.TestCase):
         self.assertIn("GEMINI_USAGE modele=gemini-2.5-flash", sortie.getvalue())
         self.assertIn("entree=1200 cache=800 sortie=90 reflexion=40", sortie.getvalue())
 
+    def test_secours_regional_sur_refus_429(self):
+        import google
+        lieux = []
+
+        class Modeles:
+            def __init__(self, lieu):
+                self.lieu = lieu
+
+            def generate_content(self, model, contents, config):
+                lieux.append(self.lieu)
+                if self.lieu == "global":
+                    raise RuntimeError("429 RESOURCE_EXHAUSTED")
+                return _Objet(text="ok", candidates=[], usage_metadata=None)
+
+        google.genai.Client = lambda **kw: _Objet(models=Modeles(kw["location"]))
+        with mock.patch.object(gemini_client, "LOCATION", "global"), \
+                mock.patch.object(gemini_client, "LOCATION_SECOURS", "us-central1"), redirect_stdout(io.StringIO()) as sortie:
+            reponse = gemini_client.ModeleGemini("gemini-2.5-flash").generate_content("q")
+        self.assertEqual((reponse.text, lieux), ("ok", ["global", "us-central1"]))
+        self.assertIn("GEMINI_SECOURS 429 sur global", sortie.getvalue())
+
+    def test_pas_de_secours_pour_une_autre_erreur(self):
+        import google
+
+        class Modeles:
+            def generate_content(self, model, contents, config):
+                raise ValueError("400 INVALID_ARGUMENT")
+
+        google.genai.Client = lambda **kw: _Objet(models=Modeles())
+        with mock.patch.object(gemini_client, "LOCATION", "global"), self.assertRaises(ValueError):
+            gemini_client.ModeleGemini("gemini-2.5-flash").generate_content("q")
+
     def test_reflexion(self):
         self.assertEqual(gemini_client.reglage_reflexion("gemini-2.5-flash", ""), {})
         self.assertEqual(gemini_client.reglage_reflexion("gemini-2.5-flash", "low"), {"thinking_budget": 512})
@@ -77,8 +109,8 @@ class GeminiClientTests(unittest.TestCase):
     def test_point_d_acces_et_modele_par_defaut(self):
         self.assertEqual(gemini_client.LOCATION, "global")
         self.assertEqual(gemini_client.MODELE, "gemini-2.5-flash")
-        gemini_client.client()
-        self.assertEqual(gemini_client._client.reglages,
+        self.assertEqual(gemini_client.LOCATION_SECOURS, "us-central1")
+        self.assertEqual(gemini_client.client().reglages,
                          {"vertexai": True, "project": "astute-curve-307922", "location": "global"})
 
 

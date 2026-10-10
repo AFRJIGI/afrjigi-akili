@@ -9,6 +9,9 @@ Reglages par variables d'environnement du service Cloud Run (aucun nouveau code 
   AKILI_MODELE     nom du modele (par defaut gemini-2.5-flash ; essais : gemini-3.6-flash...)
   VERTEX_LOCATION  point d'acces (par defaut global ; us-central1 pour revenir en arriere)
   AKILI_REFLEXION  reflexion du modele : vide (reglage du modele), none, low, medium ou high
+  VERTEX_LOCATION_SECOURS  point d'acces essaye une fois quand le premier repond 429 (par defaut us-central1 ;
+                   vide pour ne pas en avoir). Le point d'acces « global » partage sa capacite : les 9 et 10 oct.,
+                   3 refus 429 de suite ont donne « Beaucoup d'eleves utilisent Akili en ce moment ».
 """
 import os
 import time
@@ -17,19 +20,25 @@ PROJECT_ID = "astute-curve-307922"
 MODELE = os.environ.get("AKILI_MODELE", "gemini-2.5-flash").strip()
 LOCATION = os.environ.get("VERTEX_LOCATION", "global").strip()
 REFLEXION = os.environ.get("AKILI_REFLEXION", "").strip().lower()
+LOCATION_SECOURS = os.environ.get("VERTEX_LOCATION_SECOURS", "us-central1").strip()
 
 # Gemini 2.5 regle sa reflexion par un budget de tokens, Gemini 3 par un niveau.
 BUDGETS_2_5 = {"none": 0, "low": 512, "medium": 2048, "high": 8192}
 
-_client = None
+_clients = {}
 
 
-def client():
-    global _client
-    if _client is None:
+def client(location=None):
+    location = location or LOCATION
+    if location not in _clients:
         from google import genai
-        _client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
-    return _client
+        _clients[location] = genai.Client(vertexai=True, project=PROJECT_ID, location=location)
+    return _clients[location]
+
+
+def est_refus_de_quota(erreur):
+    texte = str(erreur)
+    return "429" in texte or "RESOURCE_EXHAUSTED" in texte.upper() or "resource exhausted" in texte.lower()
 
 
 class Part:
@@ -75,10 +84,19 @@ class ModeleGemini:
 
     def generate_content(self, contents, generation_config=None):
         debut = time.time()
-        reponse = client().models.generate_content(
-            model=self.nom_modele,
-            contents=list(contents) if isinstance(contents, (list, tuple)) else contents,
-            config=construire_config(generation_config, self.nom_modele),
-        )
+        demande = dict(model=self.nom_modele,
+                       contents=list(contents) if isinstance(contents, (list, tuple)) else contents,
+                       config=construire_config(generation_config, self.nom_modele))
+        try:
+            reponse = client().models.generate_content(**demande)
+        except Exception as erreur:
+            if not (est_refus_de_quota(erreur) and LOCATION_SECOURS and LOCATION_SECOURS != LOCATION):
+                raise
+            # Capacite partagee du point d'acces mondial saturee : un essai tout de suite sur le point regional.
+            print(f"GEMINI_SECOURS 429 sur {LOCATION}, essai sur {LOCATION_SECOURS}", flush=True)
+            try:
+                reponse = client(LOCATION_SECOURS).models.generate_content(**demande)
+            except Exception:
+                raise erreur
         print(ligne_consommation(reponse, time.time() - debut, self.nom_modele), flush=True)
         return reponse

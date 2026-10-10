@@ -1529,12 +1529,28 @@ def niveau_bt_declare(msg):
     return {"type_examen": "BAC_TECHNIQUE", "serie": serie, "classe": classe}
 
 
+# Controle qualite du 10 oct. : « Je veux changer de niveau », « Changer de classe » partaient chez Akili, qui
+# inventait une liste de niveaux ou affirmait « le niveau est bien Premiere G2 maintenant » sans rien changer.
+DEMANDES_CHANGEMENT_NIVEAU = re.compile(
+    # « changer de niveau », « changer de matiere et de niveau », pas « classe 6 » (comptes SYSCOHADA).
+    r"(?<![A-Z0-9])(?:CHANGER|CHANGE|CHANGEONS|CHANGEMENT|MODIFIER|MODIFIE)(?:\s+[A-Z]+){0,4}?\s+"
+    r"(?:NIVEAU|CLASSE|SERIE|EXAMEN)(?![A-Z0-9])(?!\s*\d)"
+    r"|(?<![A-Z0-9])(?:UN\s+|UNE\s+)?AUTRE\s+(?:NIVEAU|CLASSE|SERIE)(?![A-Z0-9])(?!\s*\d)")
+
+
+def est_demande_changement_niveau(text):
+    msg = normalize_for_match(text)
+    return bool(msg) and len(msg.split()) <= 30 and DEMANDES_CHANGEMENT_NIVEAU.search(msg) is not None
+
+
 def niveau_declare(text):
     """Niveau que l'eleve annonce (« je suis en 2nde C », « en classe de premiere G1 », « 2ndc ») :
     {type_examen, serie, classe} ou None. Seulement si le message annonce bien un niveau."""
     msg = normalize_for_match(text)
     mots = msg.split()
-    if not msg or len(mots) > 14:
+    # Au-dela de 14 mots, seulement une demande de changement (« est-ce que je peux changer de classe pour
+    # remettre ca en classe de premiere G2 », audio du 10 oct.) : un enonce peut citer une classe.
+    if not msg or len(mots) > 30 or (len(mots) > 14 and not est_demande_changement_niveau(text)):
         return None
     # Le BT et sa specialite suffisent (« 3eme annee BT electronique » : le controle qualite du 9 oct.
     # l'avait vu inscrit en BEPC a cause de « 3eme ») ; 1re, 2e, 3e annee = Seconde, Premiere, Terminale.
@@ -1595,6 +1611,25 @@ def appliquer_niveau_declare(phone, profile, niveau):
         ouvrir_choix_matiere(phone, profile)
 
 
+def envoyer_menu_eleve(phone, profile):
+    envoyer_choix(phone, "Que veux-tu faire ?", [
+        ("a", "Changer de matière", "Garder le même niveau"),
+        ("b", "Changer de niveau", "Niveau, série ou examen"),
+        ("c", "Changer de mode", f"Étude ou examen (aujourd'hui : {LIBELLES_MODES.get(profile.get('mode') or 'etude', 'mode étude')})"),
+    ])
+
+
+def ouvrir_choix_niveau(phone, profile):
+    """Liste des niveaux pour un eleve deja inscrit (menu, choix b, ou « je veux changer de classe »)."""
+    profile.pop("pending_question", None)
+    profile["onboarding_step"] = "exam"
+    profile.pop("profile_locked", None)
+    profile.pop("matiere_confirmed", None)
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    ask_exam(phone, deja_inscrit=True)
+
+
 def ouvrir_choix_matiere(phone, profile):
     """Liste des matieres du niveau de l'eleve (commande « changer de matiere » ou demande en clair)."""
     profile.pop("pending_question", None)
@@ -1635,6 +1670,8 @@ def nom_de_matiere_seul(phone, profile, text):
     """« Français », « l'anglais svp » : l'eleve nomme seulement une autre matiere (controle qualite du 9 oct. :
     Akili restait en maths). Pas si la derniere question d'Akili parlait de matieres ou citait celle-ci
     (« Quelle matiere pose probleme a Kadiatou ? » attend « Français » comme reponse)."""
+    # « b. Physique-Chimie » : ligne de la liste des matieres recopiee (controle qualite du 10 oct.).
+    text = re.sub(r"^\s*[A-Ma-m]\s*[.)\-:]\s*", "", text or "")
     msg = normalize_for_match(text)
     if not msg or len(msg.split()) > 4:
         return None
@@ -1909,7 +1946,7 @@ def mot_cle_vers_lettre(step, text, profile):
         },
         "menu_choice": {
             "a": ["MATIERE"],
-            "b": ["NIVEAU", "SERIE"],
+            "b": ["NIVEAU", "SERIE", "CLASSE"],
             "c": ["MODE", "ETUDE", "EXAMEN"],
         },
     }
@@ -1981,12 +2018,7 @@ def handle_onboarding_choice(phone, profile, text):
                 ask_matiere(phone, profile.get("serie", "TOUTES"))
             return True
         if key == "b":
-            profile["onboarding_step"] = "exam"
-            profile.pop("profile_locked", None)
-            profile.pop("matiere_confirmed", None)
-            user_profiles[phone] = profile
-            sauver_etat_whatsapp(phone, profile)
-            ask_exam(phone, deja_inscrit=True)
+            ouvrir_choix_niveau(phone, profile)
             return True
         if key == "c":
             profile["onboarding_step"] = "mode"
@@ -2116,7 +2148,8 @@ def handle_onboarding_choice(phone, profile, text):
 
 # Etapes ou seule une lettre de la liste est attendue. L'etape "exam" n'y est pas :
 # l'eleve peut y ecrire son profil en toutes lettres ("Je suis en Terminale D...").
-ETAPES_A_REPOSER = {"exam", "serie_general", "serie_technique", "classe_technique", "seconde", "classe_intermediaire", "matiere", "mode"}
+ETAPES_A_REPOSER = {"exam", "serie_general", "serie_technique", "classe_technique", "seconde", "classe_intermediaire", "matiere", "mode",
+                    "menu_choice"}
 MESSAGE_CHOIX_NON_COMPRIS = "Je n'ai pas compris ton choix. Touche ton choix dans la liste, ou réponds avec sa lettre."
 
 
@@ -2162,7 +2195,9 @@ def reposer_si_choix_attendu(phone, profile, text):
 def reposer_question_onboarding(phone, profile):
     """Renvoie la question de l'etape en cours. Faux si l'etape n'a pas de question a reposer."""
     step = profile.get("onboarding_step")
-    if step == "exam":
+    if step == "menu_choice":
+        envoyer_menu_eleve(phone, profile)
+    elif step == "exam":
         ask_exam(phone, deja_inscrit=bool(profile.get("onboarding_completed_at")))
     elif step == "ville":
         ask_ville(phone)
@@ -6374,12 +6409,20 @@ async def _receive_message_impl(request: Request):
             track_inbound("fin_session_au_revoir", profile)
             return {"status": "ok", "reason": "fin_session"}
 
-        niveau_annonce = (niveau_declare(text) if not onboarding_step and is_profile_ready(profile)
-                          and media_file is None and not est_enseignant_verifie(profile) else None)
+        # Aussi quand le menu est ouvert : « remettre ca en classe de premiere G2 » a la question du menu.
+        niveau_annonce = (niveau_declare(text) if (not onboarding_step or onboarding_step in ETAPES_DU_MENU)
+                          and is_profile_ready(profile) and media_file is None
+                          and not est_enseignant_verifie(profile) else None)
         if niveau_annonce and niveau_different(profile, niveau_annonce):
             appliquer_niveau_declare(phone, profile, niveau_annonce)
             track_inbound("niveau_corrige_par_eleve", profile)
             return {"status": "ok", "reason": "niveau_corrige"}
+
+        if (not onboarding_step and is_profile_ready(profile) and media_file is None
+                and not espace_enseignant_actif(profile) and est_demande_changement_niveau(text)):
+            ouvrir_choix_niveau(phone, profile)
+            track_inbound("niveau_change_requested_free_text", profile)
+            return {"status": "ok", "reason": "changement_niveau"}
 
         if (not onboarding_step and is_profile_ready(profile) and media_file is None
                 and not espace_enseignant_actif(profile)
@@ -6478,11 +6521,7 @@ async def _receive_message_impl(request: Request):
                 profile["onboarding_step"] = "menu_choice"
                 user_profiles[phone] = profile
                 sauver_etat_whatsapp(phone, profile)
-                envoyer_choix(phone, "Que veux-tu faire ?", [
-                    ("a", "Changer de matière", "Garder le même niveau"),
-                    ("b", "Changer de niveau", "Niveau, série ou examen"),
-                    ("c", "Changer de mode", f"Étude ou examen (aujourd'hui : {LIBELLES_MODES.get(profile.get('mode') or 'etude', 'mode étude')})"),
-                ])
+                envoyer_menu_eleve(phone, profile)
                 track_inbound("menu_opened", profile)
                 return {"status": "ok"}
             profile["onboarding_step"] = "exam"
