@@ -156,3 +156,17 @@ class TranscriptionLongueTests(unittest.TestCase):
         texte = cq.transcription([msg("2250100000009", "outbound", "y" * 2000, 1)])
         self.assertIn("[suite non recopiee pour la relecture]", texte)
         self.assertIn("[liste]", cq.GRILLE)
+
+
+class DepuisTests(unittest.TestCase):
+    """11 oct. : relire seulement les conversations d'apres le dernier deploiement."""
+
+    def test_debut_de_lecture(self):
+        from datetime import datetime, timezone
+        maintenant = datetime(2026, 10, 11, 12, 0, tzinfo=timezone.utc)
+        self.assertEqual(cq.debut_de_lecture(maintenant, 24), "2026-10-10T12:00:00+00:00")
+        self.assertEqual(cq.debut_de_lecture(maintenant, 24, "2026-10-11T08:30"), "2026-10-11T08:30:00+00:00")
+        self.assertEqual(cq.debut_de_lecture(maintenant, 2, "2026-10-11T08:30"), "2026-10-11T10:00:00+00:00")
+
+    def test_autre_matiere_attendue(self):
+        self.assertIn("ce n'est pas « mauvaise_matiere »", cq.GRILLE)

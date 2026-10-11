@@ -35,7 +35,8 @@ PREPARATION = "Je prépare tes 3 questions…"
 ECHEC = "Je n'arrive pas à préparer les questions maintenant. On continue ton travail !"
 PLUS_TARD_OK = "D'accord, on continue ton travail."
 INDISPONIBLE = "Ce petit test n'est plus disponible. On continue ton travail !"
-INTERROMPU = "(Petit test arrêté. On reprend.)"
+INTERROMPU = "D'accord, on laisse le petit test de côté. On reprend ton travail."
+RAPPEL_LETTRE = "Pour ce petit test, réponds par a, b ou c (ou écris fin pour l'arrêter)."
 
 
 def aujourd_hui(now=None):

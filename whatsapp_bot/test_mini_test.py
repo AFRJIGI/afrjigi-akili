@@ -245,6 +245,27 @@ class WebhookTests(unittest.TestCase):
         self.assertEqual(len(self.akili), 1)  # la question part chez Akili comme d'habitude
         self.assertNotIn("mini_test", self.etat_test)
 
+    def test_reponse_courte_qui_n_est_pas_une_lettre(self):
+        # Controle qualite du 11 oct. (…6812) : « 1 » arretait le test aussitot.
+        self.proposer()
+        self.envoyer(bouton=mini_test.OUI)
+        self.envoyer(texte="1")
+        self.assertIn(mini_test.RAPPEL_LETTRE, self.envoyes)
+        self.assertNotIn(mini_test.INTERROMPU, self.envoyes)
+        self.assertEqual(self.akili, [])
+        self.assertEqual(self.etat_test["mini_test"]["index"], 0)
+        self.envoyer(texte="b")
+        self.assertEqual(self.etat_test["mini_test"]["reponses"], ["b"])
+        self.envoyer(texte="ok")  # un seul rappel par test
+        self.assertEqual(self.envoyes[-1], mini_test.INTERROMPU)
+
+    def test_fin_arrete_le_test(self):
+        self.proposer()
+        self.envoyer(bouton=mini_test.OUI)
+        self.envoyer(texte="fin")
+        self.assertEqual(self.envoyes[-1], mini_test.INTERROMPU)
+        self.assertNotIn("mini_test", self.etat_test)
+
     def test_proposition_ignoree(self):
         self.proposer()
         self.envoyer(texte="Explique-moi la limite en l'infini")

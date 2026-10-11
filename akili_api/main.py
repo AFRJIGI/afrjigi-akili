@@ -508,7 +508,20 @@ LANGAGE_ET_AUTRE_MATIERE = (
     "ne le contredis pas : travaille le chapitre qu'il cite.\n"
     "SUJET DONNÉ : reprends toujours mot pour mot le sujet ou l'énoncé en cours (sujet de dissertation, texte, "
     "consigne) ; ne le reformule jamais (« Peut-on se connaître soi-même ? » n'est pas « Faut-il se connaître "
-    "soi-même ? »). Ne pose une question sur un texte que si ce texte a été donné à l'élève dans la conversation."
+    "soi-même ? »). Ne pose une question sur un texte que si ce texte a été donné à l'élève dans la conversation. "
+    "Pour un calcul, recopie exactement les nombres, les signes et les expressions de l'énoncé, sans jamais "
+    "les modifier.\n"
+    # Controle qualite du 11 oct. : meme explication repetee trois fois (« pourquoi 81 n'est pas premier ? »),
+    # « Oui, je souhaite » pris pour l'option a, introduction « bien recue » alors que rien n'avait ete envoye.
+    "ÉLÈVE BLOQUÉ : si l'élève se trompe deux fois ou repose la même question, change d'approche : ne répète "
+    "jamais la même explication, découpe en une question plus simple, donne un exemple concret ou un indice. "
+    "Après trois essais sans réussir la même étape, donne la réponse de cette étape avec une explication "
+    "courte, puis pose une petite question du même type pour vérifier qu'il a compris.\n"
+    "RÉPONSE SANS CHOIX : si l'élève répond sans choisir parmi les options proposées (« oui », « ok », "
+    "« je souhaite »), ne choisis jamais à sa place : redemande-lui en une phrase de choisir.\n"
+    "TRAVAIL NON REÇU : ne dis jamais que tu as reçu, lu ou corrigé une introduction, une copie ou une "
+    "réponse que l'élève n'a pas envoyée dans la conversation. S'il dit l'avoir déjà faite, demande-lui de "
+    "l'envoyer (texte ou photo)."
 )
 
 LONGUEUR_WHATSAPP = (
@@ -1653,6 +1666,8 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
 
 # ─── BILAN DE FIN DE SESSION (appele par le bot WhatsApp) ───
 BILAN_REGLES_COMMUNES = """- Appuie-toi UNIQUEMENT sur l'historique ci-dessous. N'invente aucune notion, aucune note, aucune erreur qui n'y figure pas.
+- Une notion n'est « vue » que si l'eleve a repondu au moins une fois a son sujet. Un exercice seulement propose par Akili, sans reponse de l'eleve, n'est pas « vu » : cite-le seulement comme la suite.
+- La matiere a citer est celle indiquee ci-dessus (la matiere actuelle de l'eleve), meme si l'historique contient une autre matiere travaillee plus tot.
 - Tutoie l'eleve. Ton chaleureux et sincere, sans exageration ni compliment vide.
 - Message court pour WhatsApp : 600 caracteres maximum.
 - Pour les listes, utilise des numeros (1. 2. 3.), chaque numero sur sa propre ligne. Pas de tirets, pas de LaTeX, pas de symbole $.

@@ -7,6 +7,7 @@ conversations signalees.
 
   python3 controle_qualite.py                 # 20 conversations des dernieres 24 h
   python3 controle_qualite.py --n 40 --heures 48
+  python3 controle_qualite.py --n 50 --depuis 2026-10-11T12:00   # seulement apres un deploiement
 
 Le rapport est aussi ecrit dans ~/controle_qualite/AAAA-MM-JJ.md (hors du depot :
 il contient des extraits de conversations d'eleves) et chaque resultat est garde
@@ -64,6 +65,9 @@ Les lignes « --- profil a partir d'ici : ... --- » donnent le niveau et la mat
 juge « mauvaise_matiere » d'apres le profil en cours a ce moment-la, jamais d'apres le profil final. Un
 changement de matiere ou de niveau demande par l'eleve (menu, liste, « je veux faire francais ») n'est pas
 une erreur d'Akili. « Bonjour Akili META-STUDENT » est le message prerempli d'une publicite.
+Si l'eleve demande ou envoie (photo, document) un exercice d'une autre matiere, l'aider brievement puis lui
+dire d'ecrire menu pour changer de matiere est le comportement attendu : ce n'est pas « mauvaise_matiere ».
+C'en est une seulement si Akili passe de lui-meme a une autre matiere.
 "[liste] ..." est une liste de choix a toucher que l'eleve a bien recue sur WhatsApp.
 "[suite non recopiee pour la relecture]" veut dire que la transcription est raccourcie ici : ce n'est pas
 un message coupe chez l'eleve. Un vrai message coupe se termine par « Je m'arrete ici. Ecris suite... ».
@@ -107,6 +111,16 @@ def lire_messages(db, debut, taille_page=TAILLE_PAGE, essais=3):
             return messages
         dernier = page[-1]
         print(f"  {len(messages)} messages lus...")
+
+
+def debut_de_lecture(maintenant, heures, depuis=None):
+    """Debut de la periode relue : les `heures` dernieres heures, sans remonter avant `depuis` (un deploiement)."""
+    debut = maintenant - timedelta(hours=heures)
+    if depuis:
+        d = datetime.fromisoformat(depuis)
+        d = d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+        debut = max(debut, d)
+    return debut.isoformat()
 
 
 def masquer(phone):
@@ -214,6 +228,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=20, help="nombre de conversations a relire")
     parser.add_argument("--heures", type=int, default=24, help="periode couverte")
+    parser.add_argument("--depuis", help="heure UTC (AAAA-MM-JJTHH:MM) : ignore les messages plus anciens, "
+                                         "par exemple ceux d'avant le dernier deploiement")
     args = parser.parse_args()
 
     from google.cloud import firestore
@@ -222,7 +238,7 @@ def main():
 
     db = firestore.Client(project=PROJECT_ID)
     maintenant = datetime.now(timezone.utc)
-    debut = (maintenant - timedelta(hours=args.heures)).isoformat()
+    debut = debut_de_lecture(maintenant, args.heures, args.depuis)
     messages = lire_messages(db, debut)
     conversations = regrouper(messages)
     jour = maintenant.strftime("%Y-%m-%d")

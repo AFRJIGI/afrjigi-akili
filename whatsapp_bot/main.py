@@ -1214,6 +1214,31 @@ MESSAGE_HORS_CHAMP = (
     "Le CAP, le BTS et l'université ne sont pas encore disponibles, ils arriveront plus tard. "
     "Si tu es dans l'une de ces classes, choisis ton niveau :"
 )
+# Controle qualite du 11 oct. : un etudiant de BTS recevait la liste des niveaux a chaque message.
+MESSAGE_HORS_CHAMP_RAPPEL = (
+    "Je ne peux pas encore t'aider pour le CAP, le BTS ou l'université, désolé. Si tu prépares le BEPC, "
+    "le BAC ou une classe de la 6e à la Terminale, réponds a, b, c ou d. Sinon, à bientôt sur Akili !"
+)
+
+
+def annoncer_hors_champ(phone, profile):
+    """Niveau non couvert : message et liste des niveaux la premiere fois, ensuite un rappel court sans liste."""
+    deja = profile.get("hors_champ_annonce")
+    profile["hors_champ_annonce"] = True
+    user_profiles[phone] = profile
+    if deja:
+        send_whatsapp(phone, MESSAGE_HORS_CHAMP_RAPPEL)
+        return
+    send_whatsapp(phone, MESSAGE_HORS_CHAMP)
+    ask_exam(phone)
+
+
+def rappel_hors_champ_si_deja_annonce(phone, profile):
+    """A la question du niveau, apres le message hors champ : rappel court au lieu de renvoyer la liste."""
+    if profile.get("hors_champ_annonce") and profile.get("onboarding_step") == "exam" and not is_profile_ready(profile):
+        send_whatsapp(phone, MESSAGE_HORS_CHAMP_RAPPEL)
+        return True
+    return False
 
 
 DEMANDES_EXPLICATION = [
@@ -2184,6 +2209,8 @@ def reposer_si_choix_attendu(phone, profile, text):
     if is_other_or_concours(text) and not is_profile_ready(profile):
         return False  # « j'suis en licence 1 » : message hors champ, pas « je n'ai pas compris ton choix »
     nb_mots = len(normalize_for_match(text).split())
+    if rappel_hors_champ_si_deja_annonce(phone, profile):
+        return True
     if profile.get("onboarding_step") == "exam" and not re.fullmatch(r"[A-Za-z]", (text or "").strip()):
         return False
     if nb_mots > 3 and (nb_mots > 6 or is_learning_request(text)):
@@ -2301,6 +2328,31 @@ def est_message_d_accueil(text):
         and not contient_une_demande(text) and len(msg.split()) <= 12
 
 
+# Controle qualite du 11 oct. : « Je veux cette application », « Au moment j'etais au premier » etaient
+# gardes pendant l'inscription puis « repris » (« Je reprends ta question : ... ») et Akili inventait un exercice.
+MARQUEURS_DE_QUESTION = (
+    "EXPLIQU", "CORRIG", "EXERCIC", "COURS", "CHAPITRE", "LECON", "DISSERT", "COMMENTAIRE", "CALCUL", "RESOU",
+    "DEMONTR", "DEFINI", "AIDE", "AIDER", "COMMENT", "POURQUOI", "QUEL", "PROPOS", "SUJET", "RESUM", "TRADUI",
+    "FACTORIS", "DEVELOPP", "SIMPLIFI", "DERIV", "INTEGR", "LIMITE", "EQUATION", "FONCTION", "THEOREME",
+    "FORMULE", "PROBLEME", "QUESTION", "DEVOIR", "INTERRO", "REVIS", "APPREN", "COMPREN", "ANALYS", "TEXTE",
+    "EXPOS", "METHODE", "NOTION", "CONJUG", "GRAMMAIRE", "REDIG", "PLAN", "INTRODUCTION", "CONCLUSION",
+    "ARGUMENT", "QCM", "EXAMEN", "COMPOSITION", "EPREUVE", "TRAITE", "TRAITER", "EXPLIQUE",
+)
+PRONOMS_PREMIERE_PERSONNE = {"JE", "J", "MOI", "MON", "MA", "MES", "M"}
+
+
+def ressemble_a_une_question(text):
+    """Vrai pour une demande de travail (question, exercice, notion) ; faux pour un message sur soi
+    sans demande (« Je veux cette application », « Mais je veux choisir plusieurs ça peut pas »)."""
+    brut = str(text or "")
+    if "?" in brut or re.search(r"[0-9=+×÷^√<>²³]", brut):
+        return True
+    mots = normalize_for_match(brut).split()
+    if any(m.startswith(MARQUEURS_DE_QUESTION) for m in mots) or "QU EST" in " ".join(mots):
+        return True
+    return len(mots) >= 12 or not (set(mots) & PRONOMS_PREMIERE_PERSONNE)
+
+
 def message_bon_retour(profile):
     return (f"Bon retour sur Akili ! Ton profil : {resume_profil(profile)}.\n\n"
             "Envoie ton exercice, une photo ou le chapitre à travailler. "
@@ -2312,9 +2364,7 @@ def needs_onboarding(phone, profile, text):
 
     if is_other_or_concours(text) and not is_profile_ready(profile):
         profile.update(repartir_premiere_question(profile))
-        user_profiles[phone] = profile
-        send_whatsapp(phone, MESSAGE_HORS_CHAMP)
-        ask_exam(phone)
+        annoncer_hors_champ(phone, profile)
         return True
 
     if has_expr(msg, "SECONDE") and profile.get("serie") in {"TOUTES", "", None}:
@@ -2481,8 +2531,8 @@ def veut_plusieurs_matieres(text):
     tokens = normalize_for_match(text).split()
     if not tokens:
         return False
-    if any(t in {"TOUT", "TOUTES", "TOUS"} for t in tokens):
-        return True
+    if any(t in {"TOUT", "TOUTES", "TOUS", "PLUSIEURS"} for t in tokens):
+        return True  # « Mais je veux choisir plusieurs ça peut pas » (11 oct.)
     choix = r"[A-M]|1[0-3]|[1-9]"
     lettres = {t for t in tokens if re.fullmatch(choix, t)}
     autres = [t for t in tokens if not re.fullmatch(choix, t) and t not in {"ET", "OU"}]
@@ -3730,6 +3780,7 @@ REPONSES_OUI_MINI_TEST = {"OUI", "OK", "OKAY", "D ACCORD", "DACCORD", "ON Y VA",
 REPONSES_NON_MINI_TEST = {"NON", "PLUS TARD", "PAS MAINTENANT", "NON MERCI", "APRES", "TOUT A L HEURE"}
 
 
+MOTS_ARRET_MINI_TEST = {"STOP", "ARRETE", "ARRETER", "ARRET", "FIN", "NON", "NON MERCI", "PLUS TARD"}
 def demander_avis_seance(phone):
     if not send_whatsapp_boutons(phone, QUESTION_AVIS, BOUTONS_AVIS):
         # Sans boutons (echec d'envoi), on garde l'ancienne ligne pour ne pas perdre l'avis.
@@ -6320,6 +6371,17 @@ async def _receive_message_impl(request: Request):
             if reponse_test and traiter_mini_test(phone, profile, reponse_test, etat_test):
                 track_inbound("mini_test", user_profiles.get(phone, profile))
                 return {"status": "ok", "reason": "mini_test"}
+            # Controle qualite du 11 oct. : « 1 » tape pendant le test l'arretait aussitot. Une reponse courte
+            # qui n'est pas a, b ou c recoit un rappel (une fois) ; « stop » ou un vrai message arrete le test.
+            if (media_file is None and test_en_cours.get("etat") == "en_cours" and not test_en_cours.get("rappel")
+                    and len(normalize_for_match(text).split()) <= 3 and "?" not in text
+                    and normalize_for_match(text) not in MOTS_ARRET_MINI_TEST):
+                test_en_cours["rappel"] = True
+                sauver_etat_mini_test(phone, etat_test)
+                send_whatsapp(phone, mini_test.RAPPEL_LETTRE, allow_audio=False)
+                envoyer_question_mini_test(phone, profile, etat_test)
+                track_inbound("mini_test_rappel", profile)
+                return {"status": "ok", "reason": "mini_test_rappel"}
             # L'eleve passe a autre chose : le test (ou la proposition) est abandonne.
             etat_test.pop("mini_test", None)
             sauver_etat_mini_test(phone, etat_test)
@@ -6680,9 +6742,7 @@ async def _receive_message_impl(request: Request):
             profile = repartir_premiere_question(profile)
             profile.pop("pending_question", None)
             profile.pop("pending_question_display", None)
-            user_profiles[phone] = profile
-            send_whatsapp(phone, MESSAGE_HORS_CHAMP)
-            ask_exam(phone)
+            annoncer_hors_champ(phone, profile)
             track_inbound("hors_champ_bts_universite", profile)
             return {"status": "ok"}
 
@@ -6707,7 +6767,8 @@ async def _receive_message_impl(request: Request):
             pas_une_question = not media_info and (
                 (len(normalize_for_match(original_text).split()) <= 3 and detect_matiere_from_text(original_text))
                 or est_demande_changement_matiere(original_text, profile.get("matiere"))
-                or est_message_d_accueil(original_text))
+                or est_message_d_accueil(original_text)
+                or not ressemble_a_une_question(original_text))
             if pas_une_question:
                 for cle_attente in ("pending_question", "pending_question_display"):
                     profile.pop(cle_attente, None)
@@ -6729,14 +6790,12 @@ async def _receive_message_impl(request: Request):
 
         if profile.get("serie") == "AUTRE" or profile.get("type_examen") == "AUTRE":
             profile = repartir_premiere_question(profile)
-            user_profiles[phone] = profile
-            send_whatsapp(phone, MESSAGE_HORS_CHAMP)
-            ask_exam(phone)
+            annoncer_hors_champ(phone, profile)
             track_inbound("unsupported_exam", profile)
             return {"status": "ok"}
 
         if needs_onboarding(phone, profile, texte_eleve):
-            if is_learning_request(text):
+            if is_learning_request(text) and (media_info or ressemble_a_une_question(original_text)):
                 profile_waiting = user_profiles.get(phone, profile)
                 profile_waiting["pending_question"] = text
                 profile_waiting["pending_question_display"] = original_text
@@ -6756,6 +6815,9 @@ async def _receive_message_impl(request: Request):
             if (profile.get("onboarding_step") in ETAPES_A_REPOSER and profile.get("matiere_confirmed")
                     and profile.get("serie") not in {"TOUTES", "", None}):
                 profile["onboarding_step"] = ""  # profil donne en toutes lettres (« Terminale D maths »)
+            if rappel_hors_champ_si_deja_annonce(phone, profile):
+                track_inbound("hors_champ_rappel", profile)
+                return {"status": "ok", "reason": "hors_champ_rappel"}
             if profile.get("onboarding_step") in ETAPES_A_REPOSER:
                 send_whatsapp(phone, MESSAGE_CHOIX_NON_COMPRIS)
                 reposer_question_onboarding(phone, profile)
