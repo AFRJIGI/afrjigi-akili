@@ -1,6 +1,7 @@
 """Le bilan de fin de session suit le mode (etude / examen) et la source (au revoir / pause)."""
 import ast
 import json
+import re
 import time
 import unittest
 from pathlib import Path
@@ -26,15 +27,18 @@ class TooManyRequests(Exception):
 
 def charger(modele):
     tree = ast.parse(Path(__file__).with_name("main.py").read_text(encoding="utf-8"))
-    noms = {"BILAN_REGLES_COMMUNES", "BILAN_ETUDE", "BILAN_EXAMEN", "BILAN_INACTIVITE"}
+    noms = {"BILAN_REGLES_COMMUNES", "BILAN_ETUDE", "BILAN_EXAMEN", "BILAN_INACTIVITE", "PHRASE_PAUSE",
+            "FORMULE_D_ACCUEIL"}
     noeuds = []
     for node in tree.body:
         if isinstance(node, ast.Assign) and {t.id for t in node.targets if isinstance(t, ast.Name)} & noms:
             noeuds.append(node)
+        elif isinstance(node, ast.FunctionDef) and node.name == "nettoyer_bilan":
+            noeuds.append(node)
         elif isinstance(node, ast.FunctionDef) and node.name == "bilan_session":
             node.decorator_list = []
             noeuds.append(node)
-    ns = {"json": json, "time": time, "Optional": Optional, "Form": lambda *a, **k: None,
+    ns = {"json": json, "time": time, "re": re, "Optional": Optional, "Form": lambda *a, **k: None,
           "model": modele, "TooManyRequests": TooManyRequests}
     exec(compile(ast.Module(body=noeuds, type_ignores=[]), "main.py", "exec"), ns)
     return ns["bilan_session"]

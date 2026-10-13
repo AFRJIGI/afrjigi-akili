@@ -498,7 +498,8 @@ LANGAGE_ET_AUTRE_MATIERE = (
     "CHOIX a, b, c : réponds seulement à ce que l'élève vient d'envoyer, jamais à une question qu'il n'a pas "
     "encore traitée. S'il choisit une mauvaise lettre, ne donne pas la bonne tout de suite : dis en une phrase "
     "pourquoi son choix ne convient pas, donne un indice et laisse-le choisir à nouveau. Donne la bonne "
-    "réponse, avec l'explication, seulement après un deuxième essai faux.\n"
+    "réponse, avec l'explication, seulement après un deuxième essai faux. S'il renvoie la même lettre, ne dis "
+    "jamais que tu n'as pas reçu sa réponse : réponds à cette lettre.\n"
     # Controle qualite du 10 oct. : « D'accord, le niveau est bien Premiere G2 maintenant » (rien n'avait change),
     # liste de niveaux inventee, « nous passons a la Physique-Chimie » alors que la matiere restait Maths.
     "PROFIL : tu ne peux pas changer toi-même la matière, la classe, la série ou le mode de l'élève. Ne dis "
@@ -519,6 +520,14 @@ LANGAGE_ET_AUTRE_MATIERE = (
     "courte, puis pose une petite question du même type pour vérifier qu'il a compris.\n"
     "RÉPONSE SANS CHOIX : si l'élève répond sans choisir parmi les options proposées (« oui », « ok », "
     "« je souhaite »), ne choisis jamais à sa place : redemande-lui en une phrase de choisir.\n"
+    # Controle qualite du 13 oct. : « Expliquer moi la lecon d'abord » -> Akili reposait sa question ;
+    # « je n'attends que l'introduction, tu me fais tourner en rond » -> Akili recommencait l'accroche.
+    "LEÇON D'ABORD : si l'élève demande d'abord une explication de la leçon, donne un court cours (la "
+    "définition, la règle ou la méthode, et un exemple résolu), puis pose une première question simple.\n"
+    "ÉLÈVE FRUSTRÉ : si l'élève dit qu'il tourne en rond, qu'il est perdu ou réclame plusieurs fois la "
+    "réponse, ne recommence jamais une étape déjà faite. Montre-lui un modèle sur un sujet voisin (par "
+    "exemple une introduction rédigée), explique-le en une phrase, puis demande-lui d'écrire la sienne en "
+    "s'en inspirant.\n"
     "TRAVAIL NON REÇU : ne dis jamais que tu as reçu, lu ou corrigé une introduction, une copie ou une "
     "réponse que l'élève n'a pas envoyée dans la conversation. S'il dit l'avoir déjà faite, demande-lui de "
     "l'envoyer (texte ou photo)."
@@ -1689,7 +1698,24 @@ Redige son message de fin d'entraînement, dans cet ordre :
 
 BILAN_INACTIVITE = """Contexte : l'eleve n'a plus ecrit depuis un moment, il a sans doute fait une pause.
 - La toute premiere phrase est exactement : "Tu as fait une pause, voici où tu en es." Ne la fais suivre d'aucune formule d'accueil (interdit : "C'est bien de te remettre a...", "Content de te revoir").
-- La toute derniere phrase est exactement : "Quand tu reviens, réponds simplement à ma dernière question pour reprendre." Elle remplace toute autre invitation a revenir ou formule d'au revoir : n'en ajoute aucune autre."""
+- La toute derniere phrase est exactement : "Quand tu reviens, réponds simplement à ma dernière question pour reprendre." Elle remplace toute autre invitation a revenir ou formule d'au revoir : n'en ajoute aucune autre.
+- Message court : 450 caracteres maximum, une ou deux notions seulement."""
+
+PHRASE_PAUSE = "Tu as fait une pause, voici où tu en es."
+# Controle qualite du 13 oct. : « C'est super de te remettre a la Physique-Chimie ! » malgre la consigne.
+FORMULE_D_ACCUEIL = re.compile(
+    r"(?:C'est|C’est|Content|Contente|Ravi|Ravie|Heureux|Heureuse|Super)[^.!?\n]*"
+    r"(?:remettre|revoir|retrouver|de retour)[^.!?\n]*[.!?]+\s*", re.I)
+
+
+def nettoyer_bilan(texte, source):
+    """Bilan apres une pause : sans formule d'accueil, et toujours ouvert par la phrase de pause."""
+    if source != "inactivite":
+        return texte
+    texte = FORMULE_D_ACCUEIL.sub("", texte).strip()
+    if not texte.startswith(PHRASE_PAUSE):
+        texte = PHRASE_PAUSE + "\n\n" + texte.replace(PHRASE_PAUSE, "").strip()
+    return texte
 
 
 @app.post("/bilan-session")
@@ -1753,6 +1779,7 @@ def bilan_session(
         texte = (texte or "").strip()
         if not texte:
             return {"error": "Bilan vide"}
+        texte = nettoyer_bilan(texte, source or "")
         print(f"BILAN_SESSION mode={mode_bilan} source={source} messages={len(lignes)}", flush=True)
         return {"reponse": texte, "mode": mode_bilan}
     except Exception as e:

@@ -3226,7 +3226,13 @@ EXPRESSIONS_AU_REVOIR = [
     # Controle qualite du 7 oct. : « stp j'ai sommeil » puis « laisse tomber » -> Akili relancait l'exercice.
     "J AI SOMMEIL", "J AI TROP SOMMEIL", "JE SUIS FATIGUE", "JE SUIS FATIGUEE", "JE SUIS TROP FATIGUE",
     "LAISSE TOMBER", "ON LAISSE TOMBER",
+    # Controle qualite du 13 oct. : « Ok demain » apres le bilan, « je te laisse » -> Akili relancait l'exercice.
+    "JE TE LAISSE", "JE VOUS LAISSE", "JE N AI PLUS BESOIN", "PLUS BESOIN DE TOI",
 ]
+# « Ok demain », « demain matin », « d'accord à demain » : seulement des mots de ce type autour de « demain »
+# (« exercice pour demain » reste une demande).
+MOTS_AUTOUR_DE_DEMAIN = {"OK", "OKAY", "D", "ACCORD", "DACCORD", "BON", "ALORS", "DEMAIN", "MATIN", "SOIR",
+                         "A", "ON", "CONTINUE", "CONTINUERA", "VERRA", "MERCI", "OUI", "BEN", "SVP", "STP", "ET"}
 # Ces fins de seance restent valables meme posees en question (« je peux aller dormir ? »).
 EXPRESSIONS_AU_REVOIR_QUESTION = ["ALLER DORMIR", "ME COUCHER", "ON CONTINUE DEMAIN", "ON REPREND DEMAIN"]
 
@@ -3239,6 +3245,9 @@ def est_message_au_revoir(text):
         return False
     if "?" in (text or ""):
         return any(has_expr(msg, expr) for expr in EXPRESSIONS_AU_REVOIR_QUESTION)
+    mots = msg.split()
+    if "DEMAIN" in mots and set(mots) <= MOTS_AUTOUR_DE_DEMAIN:
+        return True
     return any(has_expr(msg, expr) for expr in EXPRESSIONS_AU_REVOIR)
 
 
@@ -4133,7 +4142,12 @@ def envoyer_fin_de_session(phone, source="au_revoir"):
     # premier bilan), sinon la ville et l'ecole, sinon les boutons d'avis. Avant, l'invitation n'arrivait
     # qu'au deuxieme bilan : 216 invitations seulement pour pres de 4 000 eleves, et aucun ancien
     # utilisateur relancable (segmentation du 7 oct.).
-    if (not maybe_send_marketing_consent_prompt(phone) and not demander_ville_ecole_si_besoin(phone)
+    if source == "inactivite":
+        # Controle qualite du 13 oct. : apres « Tu as fait une pause », la question de la ville ou les boutons
+        # d'avis coupaient l'exercice que l'eleve allait reprendre. Seulement l'invitation (une fois) ou le test.
+        if not maybe_send_marketing_consent_prompt(phone):
+            proposer_mini_test_fin_de_seance(phone, profil, session)
+    elif (not maybe_send_marketing_consent_prompt(phone) and not demander_ville_ecole_si_besoin(phone)
             and not proposer_mini_test_fin_de_seance(phone, profil, session)):
         demander_avis_seance(phone)
     print(f"FIN_SESSION envoyee source={source} echanges={session.get('nb_echanges')}", flush=True)
@@ -4158,6 +4172,14 @@ def traiter_bilans_inactivite(now=None):
             or int(session.get("nb_echanges", 0)) < BILAN_MIN_ECHANGES_INACTIVITE
         ):
             fermer_session_bilan(phone, "fermee_sans_bilan")
+            fermees += 1
+            continue
+        # L'eleve a change de matiere depuis : pas de bilan d'une matiere qu'il a quittee (13 oct. :
+        # « C'est super de te remettre a la Physique-Chimie » juste apres le passage aux maths).
+        profil_actuel = charger_etat_whatsapp(phone) or {}
+        if (profil_actuel.get("matiere") and session.get("matiere")
+                and profil_actuel["matiere"] != session["matiere"]):
+            fermer_session_bilan(phone, "fermee_changement_matiere")
             fermees += 1
             continue
         if envoyer_fin_de_session(phone, source="inactivite"):
