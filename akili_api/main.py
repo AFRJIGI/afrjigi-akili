@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from google.cloud import storage, firestore
-from gemini_client import ModeleGemini, Part, MODELE, LOCATION
+from gemini_client import ModeleGemini, Part, MODELE, LOCATION, est_temporaire
 from typing import Optional
 from PIL import Image
 import io
@@ -1600,19 +1600,22 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
         # ─── 5. APPEL GEMINI 2.5 FLASH (avec retry sur quota 429) ───
         response = None
         last_error = None
+        debut_appel = time.time()
         for tentative in range(3):
             try:
                 response = model.generate_content(contents, generation_config=config_generation(matiere))
                 break
             except Exception as e:
-                # Un 429 peut arriver en TooManyRequests (classe parente) ou en
-                # ResourceExhausted selon le transport du SDK : on attrape les deux.
-                if not (isinstance(e, TooManyRequests) or "429" in str(e) or "resource exhausted" in str(e).lower()):
+                # Un 429 peut arriver en TooManyRequests (classe parente) ou en ResourceExhausted selon le
+                # transport du SDK ; un appel trop long aussi (12 oct.) : message d'attente plutot qu'une erreur.
+                if not (isinstance(e, TooManyRequests) or est_temporaire(e)):
                     raise
                 last_error = e
-                print(f"⚠️ Quota Vertex AI atteint (tentative {tentative + 1}/3), nouvelle tentative dans {2 * (tentative + 1)}s", flush=True)
-                if tentative < 2:
-                    time.sleep(2 * (tentative + 1))
+                print(f"⚠️ Vertex AI indisponible ({type(e).__name__}, tentative {tentative + 1}/3)", flush=True)
+                # Le bot n'attend que 90 s : pas de nouvel essai apres 20 s passees.
+                if tentative == 2 or time.time() - debut_appel > 20:
+                    break
+                time.sleep(2 * (tentative + 1))
         if response is None:
             print(f"❌ Echec apres 3 tentatives (quota Vertex AI): {last_error}", flush=True)
             return {

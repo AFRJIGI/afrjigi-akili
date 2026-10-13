@@ -82,7 +82,7 @@ class GeminiClientTests(unittest.TestCase):
 
         google.genai.Client = lambda **kw: _Objet(models=Modeles(kw["location"]))
         with mock.patch.object(gemini_client, "LOCATION", "global"), \
-                mock.patch.object(gemini_client, "LOCATION_SECOURS", "us-central1"), redirect_stdout(io.StringIO()) as sortie:
+                mock.patch.object(gemini_client, "LOCATIONS_SECOURS", ["us-central1"]), redirect_stdout(io.StringIO()) as sortie:
             reponse = gemini_client.ModeleGemini("gemini-2.5-flash").generate_content("q")
         self.assertEqual((reponse.text, lieux), ("ok", ["global", "us-central1"]))
         self.assertIn("GEMINI_SECOURS 429 sur global", sortie.getvalue())
@@ -110,8 +110,61 @@ class GeminiClientTests(unittest.TestCase):
         self.assertEqual(gemini_client.LOCATION, "global")
         self.assertEqual(gemini_client.MODELE, "gemini-2.5-flash")
         self.assertEqual(gemini_client.LOCATION_SECOURS, "us-central1")
+        self.assertEqual(gemini_client.LOCATIONS_SECOURS, ["us-central1", "europe-west1"])
         self.assertEqual(gemini_client.client().reglages,
-                         {"vertexai": True, "project": "astute-curve-307922", "location": "global"})
+                         {"vertexai": True, "project": "astute-curve-307922", "location": "global",
+                          "http_options": {"timeout": 40000}})
+
+    def _lieux_qui_echouent(self, echecs):
+        import google
+        lieux = []
+
+        class Modeles:
+            def __init__(self, lieu):
+                self.lieu = lieu
+
+            def generate_content(self, model, contents, config):
+                lieux.append(self.lieu)
+                if self.lieu in echecs:
+                    raise echecs[self.lieu]
+                return _Objet(text="ok " + self.lieu, candidates=[], usage_metadata=None)
+
+        google.genai.Client = lambda **kw: _Objet(models=Modeles(kw["location"]))
+        return lieux
+
+    def test_deuxieme_point_de_secours(self):
+        # 12 oct. : 28 refus 429 sur « global » en fin d'apres-midi.
+        lieux = self._lieux_qui_echouent({"global": RuntimeError("429 RESOURCE_EXHAUSTED"),
+                                          "us-central1": RuntimeError("429 RESOURCE_EXHAUSTED")})
+        with mock.patch.object(gemini_client, "LOCATIONS_SECOURS", ["us-central1", "europe-west1"]), \
+                redirect_stdout(io.StringIO()) as sortie:
+            reponse = gemini_client.ModeleGemini("gemini-2.5-flash").generate_content("q")
+        self.assertEqual((reponse.text, lieux), ("ok europe-west1", ["global", "us-central1", "europe-west1"]))
+        self.assertIn("GEMINI_SECOURS 429 sur us-central1, essai sur europe-west1", sortie.getvalue())
+
+    def test_appel_trop_long(self):
+        class ReadTimeout(Exception):
+            pass
+        lieux = self._lieux_qui_echouent({"global": ReadTimeout("The read operation timed out")})
+        with mock.patch.object(gemini_client, "LOCATIONS_SECOURS", ["us-central1"]), redirect_stdout(io.StringIO()) as sortie:
+            reponse = gemini_client.ModeleGemini("gemini-2.5-flash").generate_content("q")
+        self.assertEqual(lieux, ["global", "us-central1"])
+        self.assertIn("GEMINI_SECOURS delai sur global", sortie.getvalue())
+
+    def test_tous_refusent(self):
+        erreur = RuntimeError("429 RESOURCE_EXHAUSTED")
+        self._lieux_qui_echouent({"global": erreur, "us-central1": RuntimeError("503 UNAVAILABLE")})
+        with mock.patch.object(gemini_client, "LOCATIONS_SECOURS", ["us-central1"]), redirect_stdout(io.StringIO()), \
+                self.assertRaises(RuntimeError) as ctx:
+            gemini_client.ModeleGemini("gemini-2.5-flash").generate_content("q")
+        self.assertIs(ctx.exception, erreur)  # la premiere erreur, pour le message « Beaucoup d'eleves »
+
+    def test_pas_de_secours_apres_le_budget(self):
+        lieux = self._lieux_qui_echouent({"global": RuntimeError("429")})
+        with mock.patch.object(gemini_client, "LOCATIONS_SECOURS", ["us-central1"]), \
+                mock.patch.object(gemini_client, "BUDGET_SECOURS_S", -1), self.assertRaises(RuntimeError):
+            gemini_client.ModeleGemini("gemini-2.5-flash").generate_content("q")
+        self.assertEqual(lieux, ["global"])
 
 
 class SourceTests(unittest.TestCase):
