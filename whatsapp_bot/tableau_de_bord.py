@@ -40,10 +40,14 @@ def calculer_stats(messages, avis, maintenant, nb_jours=7):
     heure_actuelle = maintenant.astimezone(timezone.utc).time()
     actifs_hier_meme_heure, messages_hier_meme_heure = set(), 0
     derniere_matiere = {}
+    semaine_d_avant = aujourd_hui - timedelta(days=nb_jours)  # pour « revenus dans la semaine »
+    actifs_avant = set()
     for m in sorted(messages, key=lambda m: str(m.get("created_at", ""))):
         if m.get("direction") != "inbound" or not m.get("phone"):
             continue
         j = jour_de(m.get("created_at"))
+        if j == semaine_d_avant:
+            actifs_avant.add(m["phone"])
         if j not in jours:
             continue
         actifs[j].add(m["phone"])
@@ -61,6 +65,23 @@ def calculer_stats(messages, avis, maintenant, nb_jours=7):
         if veille:
             retour = round(100 * len(veille & actifs.get(j, set())) / len(veille), 1)
         serie.append({"jour": j, "actifs": len(actifs.get(j, set())), "messages": nb_messages[j], "retour": retour})
+
+    # Regularite (13 oct., pour MIT Solve) : eleves de la semaine venus au moins 3 jours differents, et eleves
+    # actifs il y a 7 jours revenus pendant la semaine.
+    jours_par_eleve = defaultdict(set)
+    for j, eleves in actifs.items():
+        for e in eleves:
+            jours_par_eleve[e].add(j)
+    actifs_semaine = set(jours_par_eleve)
+    reguliers = sum(1 for js in jours_par_eleve.values() if len(js) >= 3)
+    regularite = {
+        "actifs_semaine": len(actifs_semaine),
+        "reguliers": reguliers,
+        "pct_reguliers": round(100 * reguliers / len(actifs_semaine), 1) if actifs_semaine else None,
+        "base_retour_semaine": len(actifs_avant),
+        "pct_retour_semaine": (round(100 * len(actifs_avant & actifs_semaine) / len(actifs_avant), 1)
+                               if actifs_avant else None),
+    }
 
     notes = Counter()
     commentaires = []
@@ -83,6 +104,7 @@ def calculer_stats(messages, avis, maintenant, nb_jours=7):
         "hier_meme_heure": {"actifs": len(actifs_hier_meme_heure), "messages": messages_hier_meme_heure},
         "notes": notes,
         "commentaires": commentaires,
+        "regularite": regularite,
     }
 
 
@@ -125,6 +147,53 @@ def calculer_mini_tests(resultats, messages, maintenant, nb_jours=7):
                            key=lambda x: (-x[1], x[0])),
         "total": 3,
     }
+
+
+def calculer_revisions(resultats, maintenant, nb_jours=7):
+    """Defis de revision du lendemain (collection revisions_resultats) : envoyes, repondus, justes.
+    « juste » vient de la correction d'Akili a la premiere reponse (Exact, Bravo... ou Non, Presque...)."""
+    debut_fenetre = maintenant.astimezone(timezone.utc).date() - timedelta(days=nb_jours - 1)
+
+    def chiffres(liste):
+        repondus = [r for r in liste if r.get("repondu")]
+        classes = [r for r in repondus if r.get("juste") in (True, False)]
+        justes = sum(1 for r in classes if r.get("juste"))
+        return {"envoyes": len(liste), "repondus": len(repondus),
+                "pct_repondus": round(100 * len(repondus) / len(liste)) if liste else None,
+                "classes": len(classes), "justes": justes,
+                "pct_justes": round(100 * justes / len(classes)) if classes else None}
+
+    semaine = [r for r in resultats if (jour_de(r.get("envoyee_le")) or debut_fenetre - timedelta(days=1)) >= debut_fenetre]
+    return {"semaine": chiffres(semaine), "total": chiffres(resultats)}
+
+
+def _bloc_apprentissage(regularite, revisions):
+    """Regularite et retention : ce qui montre qu'Akili aide a apprendre, pas seulement qu'il est utilise."""
+    if not regularite and not revisions:
+        return ""
+    pct = lambda v: "—" if v is None else f"{v:g} %"
+    tuiles = []
+    if regularite:
+        tuiles += [
+            ("Élèves réguliers (7 j)", pct(regularite["pct_reguliers"]),
+             f'<span class="evol">{regularite["reguliers"]} sur {regularite["actifs_semaine"]} : au moins 3 jours</span>'),
+            ("Revenus dans la semaine", pct(regularite["pct_retour_semaine"]),
+             f'<span class="evol">élèves actifs il y a 7 jours ({regularite["base_retour_semaine"]})</span>'),
+        ]
+    if revisions:
+        s, t = revisions["semaine"], revisions["total"]
+        tuiles += [
+            ("Défis de révision répondus (7 j)", pct(s["pct_repondus"]),
+             f'<span class="evol">{s["repondus"]} sur {s["envoyes"]} envoyés</span>'),
+            ("Bonnes réponses au défi", pct(t["pct_justes"]),
+             f'<span class="evol">{t["justes"]} sur {t["classes"]} depuis le début · {pct(s["pct_justes"])} sur 7 j</span>'),
+        ]
+    html_tuiles = "".join(f'<div class="tuile"><div class="t">{_e(a)}</div><div class="v">{_e(b)}</div>{c}</div>'
+                          for a, b, c in tuiles)
+    return (f'<section><h2>Apprentissage : régularité et rétention</h2><div class="tuiles">{html_tuiles}</div>'
+            '<p class="petit">Défi de révision : une question, le lendemain d\'une séance, sur ce que l\'élève a '
+            'travaillé. Une bonne réponse montre qu\'il a retenu la notion d\'un jour à l\'autre (classement '
+            'automatique d\'après la correction d\'Akili).</p></section>')
 
 
 def _bloc_mini_tests(mt, libelle):
@@ -192,7 +261,7 @@ def _barres(serie, cle, suffixe=""):
 
 
 def rendre_html(stats, sante=None, echecs_jour=0, qualite=None, revisions_jour=0, genere_le=None, libelle=None,
-                utilisateurs=None, mini_tests=None):
+                utilisateurs=None, mini_tests=None, revisions=None):
     libelle = libelle or (lambda code: code)
     a = stats["aujourd_hui"]
     hm = stats.get("hier_meme_heure") or {}
@@ -277,6 +346,7 @@ ul {{ margin:0; padding-left:18px }} li {{ margin:4px 0 }} .sante {{ list-style:
 <section><h2>Matières travaillées aujourd'hui</h2><ul>{matieres}</ul></section>
 <section><h2>Avis des 7 derniers jours</h2><p>{repartition}</p><ul>{commentaires}</ul></section>
 </div>
+{_bloc_apprentissage(stats.get("regularite"), revisions)}
 {_bloc_mini_tests(mini_tests, libelle)}
 {bloc_qualite}
 </main></body></html>"""

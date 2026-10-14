@@ -4075,6 +4075,42 @@ def ajouter_a_historique(conversation_key, texte):
     sauver_historique_conv(conversation_key, conversations[conversation_key])
 
 
+# Resultats des defis de revision, sous identifiant pseudonyme (13 oct., pour mesurer la retention) : le
+# document de revision par eleve est remplace a chaque seance, il ne garde pas l'historique.
+REVISIONS_RESULTATS = "revisions_resultats"
+DEBUTS_CORRECTION_JUSTE = ("EXACT", "BRAVO", "CORRECT", "C EST JUSTE", "C EST CA", "TRES BIEN", "PARFAIT",
+                           "EXCELLENT", "BONNE REPONSE", "OUI C EST", "SUPER", "BIEN JOUE", "C EST EXACT")
+DEBUTS_CORRECTION_FAUSSE = ("NON", "PAS TOUT A FAIT", "PRESQUE", "PAS EXACTEMENT", "CE N EST PAS", "INCORRECT",
+                            "PAS TOUT", "PAS TOUJOURS", "ATTENTION", "PAS QUITE", "C EST PRESQUE", "PAS CA")
+
+
+def correction_est_juste(reponse_akili):
+    """True / False d'apres le debut de la correction d'Akili ; None si on ne peut pas trancher."""
+    debut = normalize_for_match(str(reponse_akili or "")[:80])
+    if debut.startswith(DEBUTS_CORRECTION_FAUSSE):
+        return False
+    if debut.startswith(DEBUTS_CORRECTION_JUSTE):
+        return True
+    return None
+
+
+def noter_reponse_revision(phone, profile, reponse_akili, now=None):
+    """Premiere reponse de l'eleve dans les 24 h apres un defi de revision : repondu, et juste ou non."""
+    attente = (profile or {}).get("revision_en_attente")
+    if not attente:
+        return
+    profile.pop("revision_en_attente", None)
+    now = now or datetime.now(timezone.utc)
+    envoyee = parse_datetime(attente.get("le"))
+    if not envoyee or now - envoyee > timedelta(hours=24):
+        return
+    try:
+        feedback_db.collection(REVISIONS_RESULTATS).document(attente["id"]).set(
+            {"repondu": True, "repondu_le": now.isoformat(), "juste": correction_est_juste(reponse_akili)}, merge=True)
+    except Exception as e:
+        print(f"Erreur noter_reponse_revision: {repr(e)}", flush=True)
+
+
 def traiter_revisions_lendemain(now=None):
     now = now or datetime.now(timezone.utc)
     if now.hour not in REVISION_HEURES_ENVOI:
@@ -4112,6 +4148,15 @@ def traiter_revisions_lendemain(now=None):
         send_whatsapp(phone, f"{texte}\n\n{MESSAGE_ARRET_REVISION}", allow_audio=False)
         ajouter_a_historique(revision.get("conversation_key"), texte)
         noter_revision(phone, {"statut": "envoyee"})
+        resultat_id = f"{consent_document_id(phone)}_{now:%Y%m%d}"
+        try:
+            feedback_db.collection(REVISIONS_RESULTATS).document(resultat_id).set({
+                "eleve": consent_document_id(phone), "matiere": revision.get("matiere"),
+                "type_examen": revision.get("type_examen"), "envoyee_le": now.isoformat(), "repondu": False})
+            profile["revision_en_attente"] = {"id": resultat_id, "le": now.isoformat()}
+            sauver_etat_whatsapp(phone, profile)
+        except Exception as e:
+            print(f"Erreur resultat revision: {repr(e)}", flush=True)
         envoyees += 1
         print(f"REVISION_LENDEMAIN envoyee matiere={revision.get('matiere')}", flush=True)
     print(f"REVISION_TACHE prevues={len(prevues)} dans_fenetre={dans_fenetre} envoyees={envoyees}", flush=True)
@@ -5203,6 +5248,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         print(f"ENONCE retenu (exercice propose par Akili, {len(exercice_akili)} car.)", flush=True)
     sauver_historique_conv(conversation_key, conversations[conversation_key])
     session = journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve, recu)
+    noter_reponse_revision(phone, profile, recu)
 
     send_whatsapp(phone, reponse, limit=send_limit, add_continuation=continuation)
     send_vector_formula_if_needed(phone, text + "\n" + reponse)
@@ -6057,12 +6103,14 @@ def construire_tableau(now=None):
     stats = tableau_de_bord.calculer_stats(messages, avis, now)
     resultats_tests = _flux(feedback_db.collection(mini_test.COLLECTION),
                             ["phase", "matiere", "score", "score_debut", "eleve", "cree_le"])
+    resultats_revisions = _flux(feedback_db.collection(REVISIONS_RESULTATS), ["envoyee_le", "repondu", "juste"])
     return tableau_de_bord.rendre_html(
         stats, sante=sante, echecs_jour=lire_echecs_jour(now), qualite=qualite,
         revisions_jour=sum(1 for r in revisions if r.get("statut") == "envoyee"),
         genere_le=now.strftime("%d/%m/%Y %H:%M"), libelle=libelle_matiere,
         utilisateurs=compter_utilisateurs(now),
         mini_tests=tableau_de_bord.calculer_mini_tests(resultats_tests, messages, now),
+        revisions=tableau_de_bord.calculer_revisions(resultats_revisions, now),
     )
 
 
