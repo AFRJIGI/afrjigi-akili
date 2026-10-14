@@ -86,6 +86,83 @@ def calculer_stats(messages, avis, maintenant, nb_jours=7):
     }
 
 
+# ─── Mini-tests de progression (13 oct. : mesurer si Akili fait progresser, pour MIT Solve) ───
+def _moyenne(valeurs):
+    valeurs = [v for v in valeurs if isinstance(v, (int, float))]
+    return round(sum(valeurs) / len(valeurs), 2) if valeurs else None
+
+
+def calculer_mini_tests(resultats, messages, maintenant, nb_jours=7):
+    """Resultats des mini-tests (collection mini_tests, identifiants pseudonymes) et propositions des
+    nb_jours derniers jours (messages « mini_test_propose_* »). Le test de fin compare le meme eleve,
+    dans la meme matiere, a son test de debut : c'est la mesure de progression."""
+    debut_fenetre = maintenant.astimezone(timezone.utc).date() - timedelta(days=nb_jours - 1)
+    recent = lambda iso: (jour_de(iso) or debut_fenetre - timedelta(days=1)) >= debut_fenetre
+    debuts = [r for r in resultats if r.get("phase") == "debut" and isinstance(r.get("score"), (int, float))]
+    fins = [r for r in resultats if r.get("phase") == "fin" and isinstance(r.get("score"), (int, float))]
+    paires = [(int(f["score_debut"]), int(f["score"])) for f in fins if isinstance(f.get("score_debut"), (int, float))]
+    proposes = Counter(str(m.get("processing_stage"))[len("mini_test_propose_"):] for m in messages
+                       if str(m.get("processing_stage") or "").startswith("mini_test_propose_"))
+    par_matiere = defaultdict(lambda: {"debuts": 0, "paires": []})
+    for r in debuts:
+        par_matiere[r.get("matiere") or "?"]["debuts"] += 1
+    for f in fins:
+        if isinstance(f.get("score_debut"), (int, float)):
+            par_matiere[f.get("matiere") or "?"]["paires"].append((int(f["score_debut"]), int(f["score"])))
+    return {
+        "proposes_7j": sum(proposes.values()),
+        "debuts_7j": sum(1 for r in debuts if recent(r.get("cree_le"))),
+        "debuts": len(debuts),
+        "eleves": len({r.get("eleve") for r in debuts if r.get("eleve")}),
+        "score_debut": _moyenne([r["score"] for r in debuts]),
+        "paires": len(paires),
+        "avant": _moyenne([a for a, _ in paires]),
+        "apres": _moyenne([b for _, b in paires]),
+        "progres": sum(1 for a, b in paires if b > a),
+        "stables": sum(1 for a, b in paires if b == a),
+        "baisses": sum(1 for a, b in paires if b < a),
+        "matieres": sorted(((m, v["debuts"], v["paires"]) for m, v in par_matiere.items()),
+                           key=lambda x: (-x[1], x[0])),
+        "total": 3,
+    }
+
+
+def _bloc_mini_tests(mt, libelle):
+    if not mt:
+        return ""
+    if not mt["debuts"]:
+        return ('<section><h2>Mini-tests de progression</h2><p class="petit">Aucun test terminé pour le moment. '
+                f'{mt["proposes_7j"]} proposition(s) ces 7 derniers jours.</p></section>')
+    t = mt["total"]
+    tuiles = [
+        ("Proposés (7 j)", mt["proposes_7j"], ""),
+        ("Tests de début terminés", mt["debuts"], f'<span class="evol">{mt["debuts_7j"]} ces 7 jours · {mt["eleves"]} élèves</span>'),
+        ("Score moyen au début", f'{mt["score_debut"]:g} / {t}', ""),
+        ("Tests de fin terminés", mt["paires"], '<span class="evol">même élève, même chapitre</span>'),
+    ]
+    html_tuiles = "".join(f'<div class="tuile"><div class="t">{_e(a)}</div><div class="v">{_e(b)}</div>{c}</div>'
+                          for a, b, c in tuiles)
+    if mt["paires"]:
+        n = mt["paires"]
+        ecart = round(mt["apres"] - mt["avant"], 2)
+        signe = "+" if ecart > 0 else ""
+        progression = (f'<p><b>{mt["avant"]:g} → {mt["apres"]:g} / {t}</b> ({signe}{ecart:g} point) sur {n} élève(s) '
+                       f'testé(s) au début puis à la fin du chapitre.</p>'
+                       f'<p>Progressent : <b>{mt["progres"]}</b> ({round(100 * mt["progres"] / n)} %) · '
+                       f'Stables : {mt["stables"]} · En baisse : {mt["baisses"]}</p>')
+        if n < 30:
+            progression += ('<p class="petit">Moins de 30 élèves : à confirmer avant de citer ce chiffre.</p>')
+    else:
+        progression = ('<p class="petit">Les tests de fin arrivent après 3 jours d\'activité dans la matière : '
+                       'la comparaison début → fin apparaîtra ici.</p>')
+    lignes = "".join(
+        f'<li>{_e(libelle(m))} : {d} début' + (f' · {len(p)} fin, {_moyenne([a for a, _ in p]):g} → {_moyenne([b for _, b in p]):g}'
+                                               if p else '') + '</li>'
+        for m, d, p in mt["matieres"][:8])
+    return (f'<section><h2>Mini-tests de progression</h2><div class="tuiles">{html_tuiles}</div>'
+            f'<div style="margin-top:10px">{progression}</div><ul class="petit">{lignes}</ul></section>')
+
+
 def _e(x):
     return html.escape(str(x if x is not None else "—"))
 
@@ -115,7 +192,7 @@ def _barres(serie, cle, suffixe=""):
 
 
 def rendre_html(stats, sante=None, echecs_jour=0, qualite=None, revisions_jour=0, genere_le=None, libelle=None,
-                utilisateurs=None):
+                utilisateurs=None, mini_tests=None):
     libelle = libelle or (lambda code: code)
     a = stats["aujourd_hui"]
     hm = stats.get("hier_meme_heure") or {}
@@ -200,6 +277,7 @@ ul {{ margin:0; padding-left:18px }} li {{ margin:4px 0 }} .sante {{ list-style:
 <section><h2>Matières travaillées aujourd'hui</h2><ul>{matieres}</ul></section>
 <section><h2>Avis des 7 derniers jours</h2><p>{repartition}</p><ul>{commentaires}</ul></section>
 </div>
+{_bloc_mini_tests(mini_tests, libelle)}
 {bloc_qualite}
 </main></body></html>"""
 

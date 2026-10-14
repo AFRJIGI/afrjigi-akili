@@ -6055,11 +6055,14 @@ def construire_tableau(now=None):
     except Exception:
         sante = None
     stats = tableau_de_bord.calculer_stats(messages, avis, now)
+    resultats_tests = _flux(feedback_db.collection(mini_test.COLLECTION),
+                            ["phase", "matiere", "score", "score_debut", "eleve", "cree_le"])
     return tableau_de_bord.rendre_html(
         stats, sante=sante, echecs_jour=lire_echecs_jour(now), qualite=qualite,
         revisions_jour=sum(1 for r in revisions if r.get("statut") == "envoyee"),
         genere_le=now.strftime("%d/%m/%Y %H:%M"), libelle=libelle_matiere,
         utilisateurs=compter_utilisateurs(now),
+        mini_tests=tableau_de_bord.calculer_mini_tests(resultats_tests, messages, now),
     )
 
 
