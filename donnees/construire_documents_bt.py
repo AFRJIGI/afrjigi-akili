@@ -1,7 +1,7 @@
 """Construit donnees/documents_bt.json : tous les documents BT (Brevet de Technicien) recus.
 
   python3 donnees/construire_documents_bt.py "dossier Mr Adia" "dossier Progression_Mr Coulibaly" donnees/documents_bt.json \
-      "dossier Progressions_Electroniques" "dossier CMC_Tertiare" "dossier Progressions_terminale_E"
+      "dossier Progressions_Electroniques" "dossier CMC_Tertiare" "dossier Progressions_terminale_E" "dossier Mr Adia"
 
 BT = BAC Technique (decision de Daouda, 9 oct. 2026). Le paquet garde l'origine des documents (BT_ELN :
 Electronique ; BT_ELN BT_IND : industriel ; BT_TER : tertiaire) ; injecter_documents_bt.py les rattache
@@ -24,6 +24,8 @@ Sources :
   - Dossier « Progressions_terminale_E » (10 oct.) : trois progressions METFPA de series du BAC Technique, des
     annees precedentes (ce ne sont pas des progressions du BT) : Physique appliquee Tle F3 (2023-2024),
     Philosophie Tle E (2022-2023), Francais / techniques d'expression Tles E, F et G2 (2024-2025).
+  - Dossier « Mr Adia » (14 oct.) : progressions 2026-2027 de Physique appliquee de la serie F2 (Seconde,
+    Premiere, Terminale ; modele IGETFPA, Groupe Scolaire Mallet). Les noms des formateurs ne sont pas repris.
 Les fichiers ne sont pas dans le depot : seul le texte extrait l'est.
 """
 import hashlib
@@ -248,24 +250,36 @@ def texte_pdf_brut(chemin):
     return SEMESTRE_VERTICAL.sub(lambda m: f"=== {m.group(1)} SEMESTRE ===\n", texte)
 
 
-def documents_series_techniques(dossier):
-    """Progressions METFPA des series du BAC Technique (annees precedentes), dossier Progressions_terminale_E."""
+# Dossier « Mr Adia » (14 oct.) : progressions 2026-2027 de Physique appliquee F2, Groupe Scolaire Mallet.
+PHYSIQUE_F2_2026 = {
+    "PROGRESSION  physique app 2nde.pdf": ("PHYSIQUE_APPLIQUEE", "F2", "SECONDE", "2026-2027", "Physique appliquée",
+                                           "Seconde F2"),
+    "PROGRESSION PHYS APP 1F2.pdf": ("PHYSIQUE_APPLIQUEE", "F2", "PREMIERE", "2026-2027", "Physique appliquée",
+                                     "Première F2"),
+    "PROGRESSION PHYS APP TF2 2026-2027.pdf": ("PHYSIQUE_APPLIQUEE", "F2", "TERMINALE", "2026-2027",
+                                               "Physique appliquée", "Terminale F2"),
+}
+
+
+def documents_series_techniques(dossier, fichiers=None, nom_dossier="Progressions_terminale_E",
+                                transmis="progressions transmises à AfrJigi (10 oct. 2026)"):
+    """Progressions METFPA des series du BAC Technique (dossiers Progressions_terminale_E et Mr Adia)."""
     sources = []
-    for fichier, (matiere, serie, niveau, annee, libelle, classes) in SERIES_TECHNIQUES_METFPA.items():
-        chemin = os.path.join(dossier, fichier)
+    noms = {unicodedata.normalize("NFC", n): n for n in os.listdir(dossier)}
+    for fichier, (matiere, serie, niveau, annee, libelle, classes) in (fichiers or SERIES_TECHNIQUES_METFPA).items():
+        chemin = os.path.join(dossier, noms.get(unicodedata.normalize("NFC", fichier), fichier))
         brut = texte_pdf_brut(chemin) if fichier.endswith(".pdf") else texte_word(chemin)
         lignes = [l.strip() for l in TELEPHONES.sub("", brut).replace("\f", "\n").split("\n")]
         texte = "\n".join(l for l in lignes if l and not BRUIT_METFPA.match(l))
         entete = f"PROGRESSION METFPA {annee} - {libelle}, {classes}\n"
-        sources.append(source(f"Progressions_terminale_E/{fichier}", open(chemin, "rb").read(),
+        sources.append(source(f"{nom_dossier}/{fichier}", open(chemin, "rb").read(),
                               "PROGRESSION_ANNUELLE", f"{libelle}, {classes} ({annee})", matiere, serie, niveau,
-                              [entete + texte], "progressions transmises à AfrJigi (10 oct. 2026)", "METFPA",
-                              annee=annee))
+                              [entete + texte], transmis, "METFPA", annee=annee))
     return sources
 
 
 def main(dossier_adia, dossier_coulibaly, sortie, dossier_eln_word=None, dossier_cmc_tertiaire=None,
-         dossier_terminale_e=None):
+         dossier_terminale_e=None, dossier_mr_adia=None):
     sources = documents_adia(dossier_adia) + documents_coulibaly(dossier_coulibaly)
     if dossier_eln_word:
         sources += documents_eln_word(dossier_eln_word)
@@ -273,6 +287,9 @@ def main(dossier_adia, dossier_coulibaly, sortie, dossier_eln_word=None, dossier
         sources += documents_eln_word(dossier_cmc_tertiaire, CMC_TERTIAIRE, "CMC_Tertiare")
     if dossier_terminale_e:
         sources += documents_series_techniques(dossier_terminale_e)
+    if dossier_mr_adia:
+        sources += documents_series_techniques(dossier_mr_adia, PHYSIQUE_F2_2026, "Mr Adia",
+                                               "progressions 2026-2027 transmises à AfrJigi (Groupe Scolaire Mallet)")
     for s in sources:
         print(f"{s['serie']:14} {s['niveau']:10} {s['matiere']:26} {len(s['morceaux']):3} extraits "
               f"{sum(map(len, s['morceaux'])):7} car. | {s['titre']}")
@@ -281,4 +298,4 @@ def main(dossier_adia, dossier_coulibaly, sortie, dossier_eln_word=None, dossier
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:7])
+    main(*sys.argv[1:8])

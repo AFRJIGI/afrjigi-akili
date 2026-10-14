@@ -10,6 +10,8 @@ francais / techniques d'expression -> toutes les series du BAC Technique ; CMC d
 CMC du BT tertiaire (dossier CMC_Tertiare, 1re a 3e annee) -> B, G1, G2.
 Dossier Progressions_terminale_E (10 oct.) : trois progressions METFPA de series du BAC Technique, d'annees
 precedentes (Physique appliquee Tle F3 2023-2024, Philosophie Tle E 2022-2023, Francais Tles E, F, G2 2024-2025).
+Dossier Mr Adia (14 oct.) : Physique appliquee F2 2026-2027, de la Seconde a la Terminale (priorite normale :
+c'est la progression de l'annee en cours).
 Ce sont des progressions de la serie : elles restent PROGRESSION_ANNUELLE (Akili s'en sert pour choisir la
 lecon du moment), avec la priorite -1 : une progression deja en base pour la meme classe passe avant. L'audit
 liste les progressions deja en base pour ces classes.
@@ -84,8 +86,10 @@ def rattachement(source):
     classe = CLASSES.get(source["niveau"], "")
     if est_progression_de_serie(source):
         return (source["serie"], source["matiere"], f"tech_prog_{source['matiere'].lower()}_{slug(source['serie'])}",
-                f"Progression officielle METFPA de l'année {source['annee']} (dernière version reçue) : les dates "
-                "changent d'une année à l'autre, suis l'ordre des leçons.")
+                ("Progression 2026-2027 de la série (modèle METFPA) : suis-la pour choisir la leçon du moment."
+                 if source["annee"] == "2026-2027" else
+                 f"Progression officielle METFPA de l'année {source['annee']} (dernière version reçue) : les dates "
+                 "changent d'une année à l'autre, suis l'ordre des leçons."))
     if source["serie"] == "BT_TOUS":
         return (SERIES_TECHNIQUES, source["matiere"], prefixe_id(source),
                 f"Progression du BT (toutes options), donnée à titre de cours pour la classe de {classe} : le "
@@ -146,7 +150,9 @@ def documents_paquet(paquet):
                 id=f"{prefixe}_{s['niveau'].lower()}", nom_fichier=s["fichier"], matiere=matiere,
                 discipline=matiere, examen="BAC_TECHNIQUE", serie=serie, niveau=s["niveau"],
                 type_doc="PROGRESSION_ANNUELLE", source="ENSEIGNANT", institution=s["institution"],
-                transmis_par=s["transmis_par"], titre=s["titre"], priorite=-1, annee=s["annee"],
+                transmis_par=s["transmis_par"], titre=s["titre"], annee=s["annee"],
+                # Progression de l'annee en cours (14 oct. : Physique appliquee F2) : priorite normale.
+                priorite=0 if s["annee"] == "2026-2027" else -1,
                 sha256=hashlib.sha256(texte.encode("utf-8")).hexdigest(), sha256_source=s["sha256"],
                 texte=texte, score=5,
                 resume=f"{s['titre']} (progression METFPA {s['annee']}), transmise à AfrJigi",

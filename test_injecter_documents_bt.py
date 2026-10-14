@@ -32,8 +32,10 @@ class DocumentsBTTests(unittest.TestCase):
         series = Counter(d["serie"] for d in self.docs)
         self.assertEqual(set(series), {"F2", "G1 G2", "E F1 F2 F3 F4 F7", "B G1 G2", "B G1 G2 E F1 F2 F3 F4 F7",
                                        "F3", "E", "E F1 F2 F3 F4 F7 G2"})
-        self.assertTrue(all(d["examen"] == "BAC_TECHNIQUE" and d["priorite"] == -1 for d in self.docs))
-        self.assertEqual({d["matiere"] for d in self.docs if d["serie"] == "F2"},
+        self.assertTrue(all(d["examen"] == "BAC_TECHNIQUE" for d in self.docs))
+        self.assertTrue(all(d["priorite"] == (0 if d.get("annee") == "2026-2027" and d["id"].startswith("tech_prog_")
+                                              else -1) for d in self.docs))
+        self.assertEqual({d["matiere"] for d in self.docs if d["serie"] == "F2" and d["id"].startswith("bt_")},
                          {"ELECTRONIQUE", "TECHNO_SCHEMAS", "DESSIN_INDUSTRIEL", "INFORMATIQUE_INDUSTRIELLE"})
 
     def test_progressions_word_du_10_octobre(self):
@@ -52,7 +54,7 @@ class DocumentsBTTests(unittest.TestCase):
     def test_plus_aucune_progression_officielle(self):
         # Les progressions BT (M. Adia, M. Coulibaly) sont des documents de cours, lus en entier (2 800 car.).
         bt = [d for d in self.docs if d["id"].startswith("bt_")]
-        self.assertEqual(len(bt), len(self.docs) - 3)
+        self.assertEqual(len(bt), len(self.docs) - 6)
         self.assertFalse(any(d["type_doc"].startswith("PROGRESSION") for d in bt))
         accompagnement = [d for d in self.docs if d["type_doc"] == "DOCUMENT_ACCOMPAGNEMENT"]
         self.assertEqual({d["type_source"] for d in accompagnement}, {"PROGRESSION_ANNUELLE"})
@@ -86,7 +88,19 @@ class ProgressionsDesSeriesTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         docs = inj.documents_paquet(json.loads(inj.DONNEES.read_text(encoding="utf-8")))
-        cls.progs = {d["id"]: d for d in docs if d["id"].startswith("tech_prog_")}
+        cls.progs = {d["id"]: d for d in docs if d["id"].startswith("tech_prog_") and d["annee"] != "2026-2027"}
+        cls.f2 = {d["id"]: d for d in docs if d["id"].startswith("tech_prog_") and d["annee"] == "2026-2027"}
+
+    def test_physique_appliquee_f2_2026(self):
+        # 14 oct. : progressions 2026-2027 de la Seconde a la Terminale F2, priorite normale, sans nom de formateur.
+        self.assertEqual({(d["serie"], d["matiere"], d["niveau"]) for d in self.f2.values()},
+                         {("F2", "PHYSIQUE_APPLIQUEE", n) for n in ("SECONDE", "PREMIERE", "TERMINALE")})
+        for d in self.f2.values():
+            self.assertEqual((d["type_doc"], d["priorite"]), ("PROGRESSION_ANNUELLE", 0))
+            self.assertNotIn("KOFFI", d["texte"].upper())
+            self.assertNotIn("TCHIE", d["texte"].upper())
+            self.assertLessEqual(len(d["texte"]), 7000)
+            self.assertIn("Progression 2026-2027 de la série", d["texte"])
 
     def test_trois_progressions_de_terminale(self):
         self.assertEqual({(d["serie"], d["matiere"], d["annee"]) for d in self.progs.values()},
