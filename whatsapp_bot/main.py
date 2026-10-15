@@ -1305,7 +1305,7 @@ def copier_historique(ancienne_cle, nouvelle_cle):
         return
     ancien = charger_historique_conv(ancienne_cle) or list(conversations.get(ancienne_cle) or [])
     if ancien:
-        conversations[nouvelle_cle] = list(ancien)[-10:]
+        conversations[nouvelle_cle] = list(ancien)[-HISTORIQUE_MAX:]
         sauver_historique_conv(nouvelle_cle, conversations[nouvelle_cle])
 
 
@@ -3144,6 +3144,12 @@ def is_teacher_request(message):
 
 
 
+# Controle qualite du 14 oct. : sur 4 echanges seulement, Akili oubliait les donnees donnees plus tot (masse
+# et g redemandees, sujet de dissertation perdu, exercice repris au debut : « on tourne en rond »).
+HISTORIQUE_MAX = 16      # messages gardes par conversation
+HISTORIQUE_ENVOYE = 12   # messages envoyes a Akili (6 echanges)
+
+
 def sauver_historique_conv(conversation_key, historique):
     """Persiste l'historique complet d'une conversation (survit au scale-to-zero)."""
     try:
@@ -3152,7 +3158,7 @@ def sauver_historique_conv(conversation_key, historique):
         doc_id = conversation_key.replace("/", "_")
         feedback_db.collection("whatsapp_historiques").document(doc_id).set({
             "conversation_key": conversation_key,
-            "historique": historique[-10:],
+            "historique": historique[-HISTORIQUE_MAX:],
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }, merge=True)
     except Exception as e:
@@ -3751,6 +3757,10 @@ def traiter_mini_test(phone, profile, entree, etat):
             if not (test and test.get("etat") == "en_cours"):  # deuxieme « Oui » : le test a deja commence
                 send_whatsapp(phone, mini_test.INDISPONIBLE, allow_audio=False)
             return True
+        # Controle qualite du 14 oct. : un « Oui » tape pendant la preparation lancait un second test (deux
+        # « Question 1/3 » differentes). Le test passe en preparation avant l'appel a l'API.
+        test.update({"etat": "preparation", "preparation_le": datetime.now(timezone.utc).isoformat()})
+        sauver()
         send_whatsapp(phone, mini_test.PREPARATION, allow_audio=False)
         donnees = generer_mini_test(phone, profile, test, etat)
         if not donnees:
@@ -3950,6 +3960,17 @@ COMMANDES_ARRET_REVISION = {"PAS DE REVISION", "PAS DE REVISIONS", "STOP REVISIO
 COMMANDES_REPRISE_REVISION = {"REVISIONS", "REPRENDRE LES REVISIONS", "OUI REVISION", "OUI REVISIONS"}
 
 
+def commande_de_revision(text):
+    """« arret », « reprise » ou None. « Pas de révisions stp » ou « non pas de révision merci » arretent aussi
+    (controle qualite du 14 oct. : le defi etait repose juste apres la demande d'arret)."""
+    msg = normalize_for_match(text)
+    if msg in COMMANDES_REPRISE_REVISION:
+        return "reprise"
+    if msg in COMMANDES_ARRET_REVISION or (len(msg.split()) <= 7 and any(has_expr(msg, c) for c in COMMANDES_ARRET_REVISION)):
+        return "arret"
+    return None
+
+
 def cle_conversation_profil(phone, profile):
     profile = profile or {}
     return (f"{phone}:{profile.get('type_examen')}:{profile.get('serie', 'TOUTES')}:"
@@ -4071,7 +4092,7 @@ def ajouter_a_historique(conversation_key, texte):
     if historique is None:
         historique = list(conversations.get(conversation_key) or [])
     historique = list(historique) + [{"role": "assistant", "content": texte}]
-    conversations[conversation_key] = historique[-10:]
+    conversations[conversation_key] = historique[-HISTORIQUE_MAX:]
     sauver_historique_conv(conversation_key, conversations[conversation_key])
 
 
@@ -4298,7 +4319,7 @@ def envoyer_suite_en_attente(phone, profile, texte_eleve):
     hist = charger_historique_conv(conversation_key)
     historique = list(hist if hist is not None else conversations.get(conversation_key, []))
     historique += [{"role": "user", "content": texte_eleve}, {"role": "assistant", "content": envoye}]
-    conversations[conversation_key] = historique[-10:]
+    conversations[conversation_key] = historique[-HISTORIQUE_MAX:]
     sauver_historique_conv(conversation_key, conversations[conversation_key])
     journal_session_ajouter(phone, profile, conversation_key, profile.get("mode"), texte_eleve, envoye)
     print(f"SUITE_ENVOYEE len={len(envoye)} reste={len(suite) - len(envoye)}", flush=True)
@@ -4623,6 +4644,8 @@ def enforce_teacher_whatsapp_limit(text, limit=900):
     return shortened
 
 
+MESSAGE_SATURATION_API = "Beaucoup d'eleves utilisent Akili en ce moment"
+
 MESSAGE_SUJET_INDISPONIBLE = (
     "Je n'ai plus le sujet de cet exercice. Renvoie-moi la photo du sujet ou recopie l'énoncé, "
     "et je continue avec toi."
@@ -4643,7 +4666,9 @@ def mentions_user_document_without_content(text):
         "CORRIGE CA", "TRAITE CA", "EXPLIQUE CA",
     ]
 
-    if any(marker in compact for marker in document_markers):
+    # Un long message (une introduction, une reponse redigee) peut contenir « image » ou « document » sans
+    # parler d'un fichier : seul un message court renvoie a un fichier (controle qualite du 14 oct.).
+    if any(marker in compact for marker in document_markers) and len(compact.split()) <= 25:
         return True
 
     # Un énoncé recopié peut lui-même commencer par « EXERCICE 1 ». Une
@@ -5021,7 +5046,7 @@ def retenir_document_comme_enonce(phone, profile, conversation_key, media_file, 
             profile["matiere_confirmed"] = True
             cle = f"{phone}:{type_examen}:{serie}:{code}:{mode}"
             echange = list(conversations.get(conversation_key) or [])[-2:]
-            conversations[cle] = (list(charger_historique_conv(cle) or []) + echange)[-10:]
+            conversations[cle] = (list(charger_historique_conv(cle) or []) + echange)[-HISTORIQUE_MAX:]
             sauver_historique_conv(cle, conversations[cle])
             send_whatsapp(phone, f"Ton document est un exercice {de_matiere(libelle_matiere(code))} : je continue en "
                                  f"{libelle_matiere(code)}. Écris menu pour revenir en {ancienne}.", allow_audio=False)
@@ -5119,7 +5144,8 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
             media_file = last_media
             print(f"DOCUMENT_CONTEXT reused last media file: {last_media}", flush=True)
 
-    if mentions_user_document_without_content(texte_eleve) and media_file is None and not profile.get("last_document_text"):
+    if (mentions_user_document_without_content(texte_eleve) and media_file is None
+            and not profile.get("last_document_text") and not enonce_en_cours(profile, conversation_key)):
         send_whatsapp(
             phone,
             MESSAGE_SUJET_INDISPONIBLE
@@ -5139,23 +5165,33 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         print(f"ENONCE retenu ({len(texte_eleve)} car.)", flush=True)
 
     try:
-        akili_result = get_akili_response(
-            text,
-            matiere,
-            serie,
-            conversations[conversation_key],
-            phone,
-            type_examen,
-            mode,
-            media_file=media_file,
-            enonce=enonce_en_cours(profile, conversation_key) if media_file is None else "",
-            user_type=type_utilisateur_akili(profile),
-            espace_enseignant=espace_enseignant_actif(profile),
-            active_session=prepared_active_session if p0_enabled() else None,
-            raise_on_error=p0_enabled(),
-            return_details=p0_enabled(),
-            classe=profile.get("classe"),
-        )
+        def demander_a_akili():
+            return get_akili_response(
+                text,
+                matiere,
+                serie,
+                conversations[conversation_key],
+                phone,
+                type_examen,
+                mode,
+                media_file=media_file,
+                enonce=enonce_en_cours(profile, conversation_key) if media_file is None else "",
+                user_type=type_utilisateur_akili(profile),
+                espace_enseignant=espace_enseignant_actif(profile),
+                active_session=prepared_active_session if p0_enabled() else None,
+                raise_on_error=p0_enabled(),
+                return_details=p0_enabled(),
+                classe=profile.get("classe"),
+            )
+
+        akili_result = demander_a_akili()
+        # Controle qualite du 14 oct. : « Beaucoup d'eleves utilisent Akili en ce moment » laissait l'eleve
+        # renvoyer son message lui-meme. Une seule nouvelle demande, quelques secondes plus tard.
+        texte_resultat = akili_result.get("text", "") if isinstance(akili_result, dict) else str(akili_result or "")
+        if texte_resultat.startswith(MESSAGE_SATURATION_API):
+            print("AKILI_API saturee : nouvel essai dans 8 s", flush=True)
+            time.sleep(8)
+            akili_result = demander_a_akili()
         if p0_enabled():
             reponse, transition_details = normalize_p0_response(akili_result)
             if document_context:
@@ -5240,7 +5276,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     recu = texte_envoye(reponse, limit=send_limit, add_continuation=continuation) or reponse
     conversations[conversation_key].append({"role": "user", "content": texte_eleve})
     conversations[conversation_key].append({"role": "assistant", "content": recu})
-    conversations[conversation_key] = conversations[conversation_key][-10:]
+    conversations[conversation_key] = conversations[conversation_key][-HISTORIQUE_MAX:]
     exercice_akili = exercice_propose_par_akili(recu)
     if exercice_akili:
         profile["enonce_en_cours"] = {"cle": conversation_key, "texte": "Exercice proposé par Akili : " + exercice_akili}
@@ -5630,7 +5666,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
 
         contexte = "\n".join([
             f"{'Élève' if m['role'] == 'user' else 'Akili'}: {m['content']}"
-            for m in history[-8:]
+            for m in history[-HISTORIQUE_ENVOYE:]
         ])
         enonce = (enonce or "").strip()
         enonce_instruction = (
@@ -5799,7 +5835,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             "mode": mode,
             # L'API Akili attend un tableau JSON et ignorait auparavant ce champ
             # parce qu'elle recevait une chaîne déjà mise en forme.
-            "history": json.dumps(history[-8:], ensure_ascii=False),
+            "history": json.dumps(history[-HISTORIQUE_ENVOYE:], ensure_ascii=False),
             # L'API ne passe en assistant enseignant (corriges complets) que pour un enseignant
             # verifie par code : "je suis prof" seul reste un profil declare.
             "user_type": "ENSEIGNANT" if espace_enseignant else (
@@ -6432,6 +6468,18 @@ async def _receive_message_impl(request: Request):
             for ancienne_cle in ("mini_test", "mini_tests"):  # gardes a part depuis le 9 oct.
                 profile.pop(ancienne_cle, None)
         test_en_cours = (etat_test or {}).get("mini_test")
+        if test_en_cours and test_en_cours.get("etat") == "preparation":
+            debut_prep = parse_datetime(test_en_cours.get("preparation_le"))
+            if debut_prep and datetime.now(timezone.utc) - debut_prep < timedelta(minutes=3):
+                if media_file is None and (normalize_for_match(text) in REPONSES_OUI_MINI_TEST
+                                           or text == mini_test.OUI or mini_test.lettre_de(text)):
+                    print("MINI_TEST en preparation : message ignore", flush=True)
+                    return {"status": "ok", "reason": "mini_test_en_preparation"}
+                test_en_cours = None  # vraie question : elle passe, le test continue de se preparer
+            else:
+                etat_test.pop("mini_test", None)  # preparation interrompue (redemarrage) : on oublie le test
+                sauver_etat_mini_test(phone, etat_test)
+                test_en_cours = None
         if test_en_cours:
             reponse_test = None
             if media_file is None and test_en_cours.get("etat") == "en_cours" and mini_test.lettre_de(text):
@@ -6475,8 +6523,9 @@ async def _receive_message_impl(request: Request):
             track_inbound("choix_annule", profile)
             return {"status": "ok", "reason": "choix_annule"}
 
-        if normalize_for_match(text) in COMMANDES_ARRET_REVISION | COMMANDES_REPRISE_REVISION:
-            arret = normalize_for_match(text) in COMMANDES_ARRET_REVISION
+        commande_revision = commande_de_revision(text)
+        if commande_revision:
+            arret = commande_revision == "arret"
             profile["revisions_off"] = arret
             user_profiles[phone] = profile
             send_whatsapp(phone, (

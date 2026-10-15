@@ -224,6 +224,23 @@ class WebhookTests(unittest.TestCase):
         self.assertEqual(self.envoyes, [mini_test.PREPARATION])
         self.assertEqual(self.etat_test["mini_test"]["etat"], "en_cours")
 
+    def test_oui_pendant_la_preparation(self):
+        # Controle qualite du 14 oct. : deux « Question 1/3 » differentes apres un « Oui » double.
+        self.proposer()
+        self.etat_test["mini_test"].update({"etat": "preparation",
+                                            "preparation_le": main.datetime.now(main.timezone.utc).isoformat()})
+        resultat = self.envoyer(texte="Oui")
+        self.assertEqual(resultat.get("reason"), "mini_test_en_preparation")
+        self.assertEqual(self.envoyes, [])
+        self.assertEqual(self.akili, [])
+
+    def test_preparation_abandonnee(self):
+        self.proposer()
+        self.etat_test["mini_test"].update({"etat": "preparation", "preparation_le": "2026-01-01T00:00:00+00:00"})
+        self.envoyer(texte="Explique-moi les limites")
+        self.assertNotIn("mini_test", self.etat_test)
+        self.assertEqual(len(self.akili), 1)
+
     def test_deuxieme_oui_pendant_le_test(self):
         self.proposer()
         self.envoyer(bouton=mini_test.OUI)

@@ -1551,7 +1551,7 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
                 history_data = json.loads(history)
                 history_text = "\n".join([
                     f"{'Élève' if m['role'] == 'user' else 'Akili'}: {m['content'][:2000]}"
-                    for m in history_data[-8:]
+                    for m in history_data[-12:]  # 6 echanges (controle qualite du 14 oct.)
                 ])
                 contents.append(f"HISTORIQUE DE LA CONVERSATION (reste COHERENT avec ce qui a deja ete dit — si un sujet/exercice precis a deja ete presente ou choisi, continue sur CE MEME sujet/exercice, ne le remplace jamais par un autre sans demande explicite de l'eleve) :\n{history_text}")
             except:
@@ -1679,7 +1679,7 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
 # ─── BILAN DE FIN DE SESSION (appele par le bot WhatsApp) ───
 BILAN_REGLES_COMMUNES = """- Appuie-toi UNIQUEMENT sur l'historique ci-dessous. N'invente aucune notion, aucune note, aucune erreur qui n'y figure pas.
 - Une notion n'est « vue » que si l'eleve a repondu au moins une fois a son sujet. Un exercice seulement propose par Akili, sans reponse de l'eleve, n'est pas « vu » : cite-le seulement comme la suite.
-- La matiere a citer est celle indiquee ci-dessus (la matiere actuelle de l'eleve), meme si l'historique contient une autre matiere travaillee plus tot.
+- La matiere a citer est celle reellement travaillee dans l'historique (si l'eleve a change de matiere, la derniere travaillee), meme si elle differe de la matiere indiquee ci-dessus : ne dis jamais « en philosophie » pour un exercice de vecteurs.
 - Tutoie l'eleve. Ton chaleureux et sincere, sans exageration ni compliment vide.
 - Message court pour WhatsApp : 600 caracteres maximum.
 - Pour les listes, utilise des numeros (1. 2. 3.), chaque numero sur sa propre ligne. Pas de tirets, pas de LaTeX, pas de symbole $.

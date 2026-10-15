@@ -25,7 +25,7 @@ class ReglesTests(unittest.TestCase):
     def test_regles_du_bilan(self):
         texte = ns["BILAN_REGLES_COMMUNES"]
         self.assertIn("n'est pas « vu »", texte)
-        self.assertIn("la matiere actuelle de l'eleve", texte)
+        self.assertIn("reellement travaillee dans l'historique", texte)
 
 
 if __name__ == "__main__":

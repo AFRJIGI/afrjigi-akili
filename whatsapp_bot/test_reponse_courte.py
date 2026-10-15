@@ -41,8 +41,8 @@ class ReponseCourteTests(unittest.TestCase):
 
     def test_lettre_seule_appelle_akili_et_garde_b_dans_historique(self):
         texte = main.build_short_answer_prompt(self.phone, "B")
-        self.assertTrue(main.mentions_user_document_without_content(texte),
-                        "le prompt reecrit contient bien des mots 'document' (condition du bug)")
+        # Depuis le 14 oct., un long texte avec le mot « document » n'est plus pris pour un renvoi a un fichier.
+        self.assertFalse(main.mentions_user_document_without_content(texte))
         main.answer_learning_request(self.phone, dict(self.profile), texte)
         self.assertTrue(self.akili_mock.called, "Akili doit etre appele")
         self.assertNotIn(main.MESSAGE_SUJET_INDISPONIBLE, self.envoyes)
