@@ -14,6 +14,9 @@ Reglages par variables d'environnement du service Cloud Run (aucun nouveau code 
                    « global » partage sa capacite : les 9 et 10 oct., 3 refus 429 de suite ont donne « Beaucoup
                    d'eleves utilisent Akili en ce moment » ; le 12 oct., 28 refus en fin d'apres-midi et deux
                    reponses de plus de 90 s (le bot abandonne a 90 s : « petite difficulte technique »).
+  AKILI_MODELE_SECOURS  modele utilise sur les points d'acces de secours (par defaut le meme que AKILI_MODELE).
+                   Gemini 3.6 Flash n'existe que sur « global » (404 sur us-central1 et europe-west1, 15 oct.) :
+                   avec AKILI_MODELE=gemini-3.6-flash, mettre AKILI_MODELE_SECOURS=gemini-2.5-flash.
   GEMINI_DELAI_S   temps maximal d'un appel a Gemini avant de passer au point d'acces suivant (40 s).
 """
 import os
@@ -22,6 +25,7 @@ import time
 PROJECT_ID = "astute-curve-307922"
 MODELE = os.environ.get("AKILI_MODELE", "gemini-2.5-flash").strip()
 LOCATION = os.environ.get("VERTEX_LOCATION", "global").strip()
+MODELE_SECOURS = os.environ.get("AKILI_MODELE_SECOURS", "").strip()
 REFLEXION = os.environ.get("AKILI_REFLEXION", "").strip().lower()
 LOCATIONS_SECOURS = [l.strip() for l in os.environ.get("VERTEX_LOCATION_SECOURS", "us-central1,europe-west1").split(",")
                      if l.strip() and l.strip() != LOCATION]
@@ -104,14 +108,16 @@ class ModeleGemini:
 
     def generate_content(self, contents, generation_config=None):
         debut = time.time()
-        demande = dict(model=self.nom_modele,
-                       contents=list(contents) if isinstance(contents, (list, tuple)) else contents,
-                       config=construire_config(generation_config, self.nom_modele))
+        contenus = list(contents) if isinstance(contents, (list, tuple)) else contents
         lieux = [LOCATION] + [l for l in LOCATIONS_SECOURS if l != LOCATION]
-        premiere_erreur, reponse = None, None
+        premiere_erreur, reponse, modele = None, None, self.nom_modele
         for i, lieu in enumerate(lieux):
+            # Sur un point d'acces de secours, le modele de secours s'il est regle (le modele principal
+            # peut n'exister que sur « global »).
+            modele = self.nom_modele if i == 0 else (MODELE_SECOURS or self.nom_modele)
             try:
-                reponse = client(lieu).models.generate_content(**demande)
+                reponse = client(lieu).models.generate_content(
+                    model=modele, contents=contenus, config=construire_config(generation_config, modele))
                 break
             except Exception as erreur:
                 premiere_erreur = premiere_erreur or erreur
@@ -121,5 +127,5 @@ class ModeleGemini:
                 # Capacite partagee saturee ou reponse trop lente : essai tout de suite sur le point suivant.
                 raison = "429" if est_refus_de_quota(erreur) else "delai"
                 print(f"GEMINI_SECOURS {raison} sur {lieu}, essai sur {suivant}", flush=True)
-        print(ligne_consommation(reponse, time.time() - debut, self.nom_modele), flush=True)
+        print(ligne_consommation(reponse, time.time() - debut, modele), flush=True)
         return reponse

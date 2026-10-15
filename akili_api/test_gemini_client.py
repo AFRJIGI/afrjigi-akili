@@ -142,6 +142,40 @@ class GeminiClientTests(unittest.TestCase):
         self.assertEqual((reponse.text, lieux), ("ok europe-west1", ["global", "us-central1", "europe-west1"]))
         self.assertIn("GEMINI_SECOURS 429 sur us-central1, essai sur europe-west1", sortie.getvalue())
 
+    def _modeles_par_lieu(self, echecs):
+        import google
+        appels = []
+
+        class Modeles:
+            def __init__(self, lieu):
+                self.lieu = lieu
+
+            def generate_content(self, model, contents, config):
+                appels.append((self.lieu, model))
+                if self.lieu in echecs:
+                    raise echecs[self.lieu]
+                return _Objet(text="ok", candidates=[], usage_metadata=None)
+
+        google.genai.Client = lambda **kw: _Objet(models=Modeles(kw["location"]))
+        return appels
+
+    def test_modele_de_secours_sur_les_points_regionaux(self):
+        # 15 oct. : gemini-3.6-flash n'existe que sur « global » (404 sur us-central1 et europe-west1).
+        appels = self._modeles_par_lieu({"global": RuntimeError("429 RESOURCE_EXHAUSTED")})
+        with mock.patch.object(gemini_client, "LOCATIONS_SECOURS", ["us-central1"]), \
+                mock.patch.object(gemini_client, "MODELE_SECOURS", "gemini-2.5-flash"), \
+                redirect_stdout(io.StringIO()) as sortie:
+            gemini_client.ModeleGemini("gemini-3.6-flash").generate_content("q")
+        self.assertEqual(appels, [("global", "gemini-3.6-flash"), ("us-central1", "gemini-2.5-flash")])
+        self.assertIn("GEMINI_USAGE modele=gemini-2.5-flash", sortie.getvalue())
+
+    def test_sans_modele_de_secours_meme_modele_partout(self):
+        appels = self._modeles_par_lieu({"global": RuntimeError("429 RESOURCE_EXHAUSTED")})
+        with mock.patch.object(gemini_client, "LOCATIONS_SECOURS", ["us-central1"]), \
+                mock.patch.object(gemini_client, "MODELE_SECOURS", ""), redirect_stdout(io.StringIO()):
+            gemini_client.ModeleGemini("gemini-2.5-flash").generate_content("q")
+        self.assertEqual(appels, [("global", "gemini-2.5-flash"), ("us-central1", "gemini-2.5-flash")])
+
     def test_appel_trop_long(self):
         class ReadTimeout(Exception):
             pass
