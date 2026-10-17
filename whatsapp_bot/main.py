@@ -2359,6 +2359,42 @@ def message_bon_retour(profile):
             "Pour changer de matière ou de niveau, écris menu.")
 
 
+# Controle qualite du 17 oct. : « Cc » apres une pause relancait « Bon retour… envoie ton exercice » alors
+# qu'Akili attendait la reponse a sa question (choix d'un exemple pour l'argument).
+REPRISE_SALUTATION_HEURES = 12
+QUESTION_REPRISE_MAX = 350
+
+
+def question_en_attente(phone, profile, now=None):
+    """Derniere question d'Akili dans la seance en cours (meme matiere, moins de 12 h), sinon ""."""
+    try:
+        session = charger_session_bilan(phone) or {}
+    except Exception:
+        return ""
+    now = now or datetime.now(timezone.utc)
+    derniere = parse_datetime(session.get("derniere_activite"))
+    if (session.get("conversation_key") != cle_conversation_profil(phone, profile) or not derniere
+            or now - derniere > timedelta(hours=REPRISE_SALUTATION_HEURES)):
+        return ""
+    reponses = [m.get("content", "") for m in session.get("messages") or [] if m.get("role") == "assistant"]
+    if not reponses:
+        return ""
+    lignes = [l.strip() for l in str(reponses[-1]).splitlines() if "?" in l]
+    if not lignes:
+        return ""
+    question = lignes[-1]
+    if len(question) > QUESTION_REPRISE_MAX:
+        phrases = re.split(r"(?<=[.!:])\s+", question)
+        question = phrases[-1] if len(phrases[-1]) <= QUESTION_REPRISE_MAX else question[-QUESTION_REPRISE_MAX:]
+    return question
+
+
+def message_reprise(question):
+    return (f"Re-bonjour ! On en était là :\n\n« {question} »\n\n"
+            "Réponds-moi pour continuer, ou envoie un nouvel exercice. "
+            "Pour changer de matière ou de niveau, écris menu.")
+
+
 def needs_onboarding(phone, profile, text):
     msg = normalize_for_match(text)
 
@@ -4961,6 +4997,17 @@ def doit_retenir_enonce(texte, historique_vide, enonce_actuel=""):
     return _a_des_donnees_chiffrees(texte) and not _a_des_donnees_chiffrees(enonce_actuel)
 
 
+DEMANDES_NOUVEL_EXERCICE = ("NOUVEL EXERCICE", "NOUVEAU EXERCICE", "AUTRE EXERCICE", "EXERCICE SUIVANT",
+                            "UN AUTRE SUJET", "NOUVEAU SUJET", "AUTRE SUJET", "CHANGE D EXERCICE",
+                            "CHANGER D EXERCICE", "PASSE A UN AUTRE", "PASSONS A UN AUTRE")
+
+
+def demande_nouvel_exercice(texte):
+    """« Donne-moi un autre exercice », « nouvel exercice stp », « je veux autre chose »."""
+    msg = " " + normalize_for_match(texte) + " "
+    return len(msg.split()) <= 25 and any(f" {m} " in msg for m in DEMANDES_NOUVEL_EXERCICE)
+
+
 MARQUEURS_EXERCICE_AKILI = ("NOUVEL EXERCICE", "EXERCICE SUIVANT", "AUTRE EXERCICE", "PASSONS A UN",
                             "VOICI UN EXERCICE", "VOICI L EXERCICE", "VOICI TON EXERCICE")
 
@@ -5151,6 +5198,11 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
             MESSAGE_SUJET_INDISPONIBLE
         )
         return
+
+    if media_file is None and demande_nouvel_exercice(texte_eleve) and profile.pop("enonce_en_cours", None):
+        # Controle qualite du 17 oct. : l'eleve reclamait un nouvel exercice et Akili insistait sur l'ancien.
+        sauver_etat_whatsapp(phone, profile)
+        print("ENONCE oublie : l'eleve demande un nouvel exercice", flush=True)
 
     if media_file is not None and profile.pop("enonce_en_cours", None):
         # Nouvelle photo ou nouveau document = nouvel enonce. Avant, l'ancien enonce retenu revenait au
@@ -6686,6 +6738,11 @@ async def _receive_message_impl(request: Request):
             # publicites (« Bonjour Akili META-STUDENT ») relancait toute l'inscription en pleine seance, et
             # l'eleve tapait b, b, d sans lire (Terminale D -> A2, Mathematiques -> Francais).
             if is_profile_ready(profile) and profile.get("user_type") != "ENSEIGNANT":
+                question = question_en_attente(phone, profile)
+                if question:
+                    send_whatsapp(phone, message_reprise(question), allow_audio=False)
+                    track_inbound("welcome_back_resume", profile)
+                    return {"status": "ok", "reason": "welcome_back_resume"}
                 send_whatsapp(phone, message_bon_retour(profile), allow_audio=False)
                 track_inbound("welcome_back", profile)
                 return {"status": "ok", "reason": "welcome_back"}
