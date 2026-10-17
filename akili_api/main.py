@@ -533,6 +533,12 @@ LANGAGE_ET_AUTRE_MATIERE = (
     "l'envoyer (texte ou photo)."
 )
 
+REGLE_FINALE_UNE_QUESTION = (
+    "RÈGLE FINALE (prioritaire sur tout le reste) : si l'élève vient de répondre à ta question, vérifie "
+    "d'abord sa réponse et dis clairement si elle est juste ou fausse. Ensuite, pose AU PLUS UNE seule "
+    "question dans ton message. Jamais deux questions dans le même message."
+)
+
 LONGUEUR_WHATSAPP = (
     "LONGUEUR SUR WHATSAPP (impératif, prioritaire sur les étapes décrites plus haut) : toute ta réponse "
     "doit tenir en 700 caractères au maximum, c'est la taille d'un message WhatsApp. Si une étape demande "
@@ -1542,6 +1548,9 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
         if progression:
             consigne = consigne_progression_enseignant if enseignant else consigne_progression
             system_prompt = system_prompt + "\n\n" + consigne(progression)
+        if not enseignant:
+            # En dernier : la fin du prompt pese le plus (conseil Google for Startups, 17 oct.).
+            system_prompt = system_prompt + "\n\n" + REGLE_FINALE_UNE_QUESTION
 
         # ─── 4. PRÉPARATION DU CONTENU MULTIMODAL POUR VERTEX AI ───
         contents = [system_prompt]
