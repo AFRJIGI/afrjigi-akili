@@ -3520,7 +3520,8 @@ def consigne_matiere_choisie(matiere, serie=None, type_examen=None, classe=None)
         "doit porter sur cette matière, jamais sur une autre. Si l'élève envoie un sujet d'une autre matière, "
         "aide-le quand même sur ce sujet. Ne dis JAMAIS que tu ne peux aider que dans cette matière et ne te "
         "présente pas comme « professeur de » cette seule matière. Si l'élève demande une autre matière, "
-        "réponds-lui d'écrire menu pour la choisir.\n"
+        "suis la consigne QUESTION D'UNE AUTRE MATIERE si elle figure ci-dessous ; sinon, réponds-lui "
+        "d'écrire menu pour la choisir.\n"
     )
 
 
@@ -3537,7 +3538,8 @@ CONSIGNE_QUESTION_AUTRE_MATIERE = (
     "QUESTION D'UNE AUTRE MATIERE : si la nouvelle demande de l'élève relève clairement et entièrement d'une autre "
     "matière que la matière choisie (par exemple une question de philosophie alors que l'élève a choisi "
     "l'espagnol), écris en toute première ligne, seule : [AUTRE_MATIERE: nom de la matière], puis aide l'élève "
-    "comme d'habitude. N'écris jamais cette ligne quand l'élève répond à ta question, ni quand sa demande "
+    "comme d'habitude, une étape à la fois : l'application change alors la matière toute seule, ne lui dis donc "
+    "pas d'écrire menu. N'écris jamais cette ligne quand l'élève répond à ta question, ni quand sa demande "
     "concerne aussi la matière choisie.\n"
 )
 BALISE_AUTRE_MATIERE = re.compile(r"\[\s*AUTRE[ _]MATI[EÈ]RE\s*:\s*([^\]\n]{1,60})\]\s*", re.I)
@@ -5269,7 +5271,12 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     # Akili aidait en maths mais le profil et le bilan restaient en anglais).
     reponse, autre_matiere = extraire_autre_matiere(reponse)
     # Sans document, seulement pour une vraie demande (pas une reponse courte) et pas entre matieres proches.
-    question_autre_matiere = (media_file is None and len(normalize_for_match(texte_eleve).split()) >= 4)
+    # Controle qualite du 19 oct. : « factorise 4x + 8 » en SVT restait en SVT (3 mots une fois normalise) ;
+    # un calcul court compte comme une demande, pas une reponse a, b, c ou « c'est b ».
+    mots = normalize_for_match(texte_eleve).split()
+    question_autre_matiere = (media_file is None and (len(mots) >= 4 or (
+        len(str(texte_eleve or "").split()) >= 3 and any(ch.isdigit() for ch in str(texte_eleve or ""))
+        and any(len(m) >= 5 and m.isalpha() for m in mots))))
     nouvelle_matiere = (code_matiere_pour_eleve(profile, autre_matiere)
                         if autre_matiere and (media_file or question_autre_matiere) else None)
     if (nouvelle_matiere and media_file is None

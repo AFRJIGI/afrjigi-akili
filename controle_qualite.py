@@ -67,7 +67,12 @@ changement de matiere ou de niveau demande par l'eleve (menu, liste, « je veux 
 une erreur d'Akili. « Bonjour Akili META-STUDENT » est le message prerempli d'une publicite.
 Si l'eleve demande ou envoie (photo, document) un exercice d'une autre matiere, l'aider brievement puis lui
 dire d'ecrire menu pour changer de matiere est le comportement attendu : ce n'est pas « mauvaise_matiere ».
-C'en est une seulement si Akili passe de lui-meme a une autre matiere.
+C'en est une seulement si Akili passe de lui-meme a une autre matiere. « Ta question relève de X : je passe
+en X » ou « Ta photo est un exercice de X : je passe en X » est un changement fait par l'application : ce
+n'est pas une erreur, juge la suite d'apres la nouvelle matiere.
+Les lignes « [mini_test] » sont un test de 3 questions qui mesure les progres : il ne corrige pas entre les
+questions (« Réponse b notée ») et donne toutes les corrections dans son dernier message. Ce n'est pas une
+erreur, sauf si ces corrections finales manquent ou sont fausses.
 "[liste] ..." est une liste de choix a toucher que l'eleve a bien recue sur WhatsApp.
 "[suite non recopiee pour la relecture]" veut dire que la transcription est raccourcie ici : ce n'est pas
 un message coupe chez l'eleve. Un vrai message coupe se termine par « Je m'arrete ici. Ecris suite... ».
