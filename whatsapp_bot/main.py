@@ -6167,7 +6167,8 @@ def _flux(requete, champs):
 
 def construire_tableau(now=None):
     now = now or datetime.now(timezone.utc)
-    debut = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    # 8 jours lus : la moyenne du retour sur 7 jours complets a besoin de la veille du plus ancien.
+    debut = (now - timedelta(days=8)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     aujourd_hui = now.strftime("%Y-%m-%d")
     messages = _flux(feedback_db.collection("whatsapp_messages").where("created_at", ">=", debut),
                      ["phone", "direction", "created_at", "matiere", "processing_stage"])

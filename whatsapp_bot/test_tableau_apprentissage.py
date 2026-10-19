@@ -72,3 +72,23 @@ class CorrectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RetourMoyenTests(unittest.TestCase):
+    def test_moyenne_ponderee_sur_jours_complets(self):
+        # veille J-2 : a, b ; J-1 : a revient -> 1/2. veille J-1 : a, c ; J-0 (aujourd'hui) exclu.
+        msgs = [m("a", 2), m("b", 2), m("a", 1), m("c", 1), m("a", 0), m("c", 0)]
+        rm = tdb.calculer_stats(msgs, [], NOW)["retour_moyen"]
+        self.assertEqual(rm, {"pct": 50.0, "jours": 1})
+
+    def test_plusieurs_jours(self):
+        # J-3 : a,b,c,d ; J-2 : a,b (2/4) ; J-1 : a (1/2) -> (2+1)/(4+2) = 50 %
+        msgs = [m(x, 3) for x in "abcd"] + [m("a", 2), m("b", 2), m("a", 1)]
+        rm = tdb.calculer_stats(msgs, [], NOW)["retour_moyen"]
+        self.assertEqual(rm, {"pct": 50.0, "jours": 2})
+
+    def test_page(self):
+        msgs = [m("a", 2), m("b", 2), m("a", 1)]
+        page = tdb.rendre_html(tdb.calculer_stats(msgs, [], NOW))
+        self.assertIn("Retour le lendemain (moy.)", page)
+        self.assertIn("derniers jours complets", page)

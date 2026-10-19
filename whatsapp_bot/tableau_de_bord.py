@@ -42,10 +42,13 @@ def calculer_stats(messages, avis, maintenant, nb_jours=7):
     derniere_matiere = {}
     semaine_d_avant = aujourd_hui - timedelta(days=nb_jours)  # pour « revenus dans la semaine »
     actifs_avant = set()
+    actifs_par_jour = defaultdict(set)   # tous les jours lus (aussi avant la fenetre), pour la moyenne du retour
     for m in sorted(messages, key=lambda m: str(m.get("created_at", ""))):
         if m.get("direction") != "inbound" or not m.get("phone"):
             continue
         j = jour_de(m.get("created_at"))
+        if j:
+            actifs_par_jour[j].add(m["phone"])
         if j == semaine_d_avant:
             actifs_avant.add(m["phone"])
         if j not in jours:
@@ -65,6 +68,18 @@ def calculer_stats(messages, avis, maintenant, nb_jours=7):
         if veille:
             retour = round(100 * len(veille & actifs.get(j, set())) / len(veille), 1)
         serie.append({"jour": j, "actifs": len(actifs.get(j, set())), "messages": nb_messages[j], "retour": retour})
+
+    # Retour le lendemain, moyenne des nb_jours derniers jours COMPLETS (18 oct.) : le chiffre du jour varie
+    # beaucoup (24 a 34 %) et celui d'aujourd'hui n'est pas fini. Moyenne ponderee : eleves revenus / eleves de la veille.
+    revenus = base = jours_comptes = 0
+    for i in range(1, nb_jours + 1):
+        j = aujourd_hui - timedelta(days=i)
+        veille = actifs_par_jour.get(j - timedelta(days=1), set())
+        if veille:
+            revenus += len(veille & actifs_par_jour.get(j, set()))
+            base += len(veille)
+            jours_comptes += 1
+    retour_moyen = {"pct": round(100 * revenus / base, 1) if base else None, "jours": jours_comptes}
 
     # Regularite (13 oct., pour MIT Solve) : eleves de la semaine venus au moins 3 jours differents, et eleves
     # actifs il y a 7 jours revenus pendant la semaine.
@@ -105,6 +120,7 @@ def calculer_stats(messages, avis, maintenant, nb_jours=7):
         "notes": notes,
         "commentaires": commentaires,
         "regularite": regularite,
+        "retour_moyen": retour_moyen,
     }
 
 
@@ -271,6 +287,7 @@ def rendre_html(stats, sante=None, echecs_jour=0, qualite=None, revisions_jour=0
 
     utilisateurs = utilisateurs or {}
     hier = stats.get("hier") or {}
+    rm = stats.get("retour_moyen") or {}
     tuiles = [
         ("Élèves WhatsApp (total)", _nombre(utilisateurs.get("total")), '<span class="evol">depuis le lancement</span>'),
         ("Nouveaux élèves hier", _nombre(utilisateurs.get("nouveaux_hier")),
@@ -279,6 +296,8 @@ def rendre_html(stats, sante=None, echecs_jour=0, qualite=None, revisions_jour=0
         ("Élèves actifs aujourd'hui", a["actifs"], _evolution(a["actifs"], hm.get("actifs"))),
         ("Messages d'élèves", a["messages"], _evolution(a["messages"], hm.get("messages"))),
         ("Revenus depuis hier", "—" if a["retour"] is None else f"{a['retour']:g} %", ""),
+        ("Retour le lendemain (moy.)", "—" if rm.get("pct") is None else f"{rm['pct']:g} %",
+         f'<span class="evol">{rm.get("jours", 0)} derniers jours complets</span>'),
         ("Révisions envoyées", revisions_jour, ""),
         ("Avis « Oui » (7 j)", "—" if satisfaits is None else f"{satisfaits} %", f'<span class="evol">{total_notes} avis</span>'),
         ("Messages non livrés", echecs_jour, ""),
@@ -341,7 +360,9 @@ ul {{ margin:0; padding-left:18px }} li {{ margin:4px 0 }} .sante {{ list-style:
 <div class="tuiles">{html_tuiles}</div>
 {bloc_sante}
 <section><h2>Élèves actifs, 7 derniers jours</h2>{_barres(stats["serie"], "actifs")}</section>
-<section><h2>Élèves revenus le lendemain</h2>{_barres(stats["serie"], "retour", "%")}</section>
+<section><h2>Élèves revenus le lendemain</h2>{_barres(stats["serie"], "retour", "%")}
+<p class="petit">Moyenne sur les {rm.get("jours", 0)} derniers jours complets : <b>{"—" if rm.get("pct") is None else f"{rm['pct']:g} %"}</b>
+(élèves revenus / élèves actifs la veille). Le chiffre d'aujourd'hui n'est pas définitif.</p></section>
 <div class="deux" style="margin-top:12px">
 <section><h2>Matières travaillées aujourd'hui</h2><ul>{matieres}</ul></section>
 <section><h2>Avis des 7 derniers jours</h2><p>{repartition}</p><ul>{commentaires}</ul></section>
