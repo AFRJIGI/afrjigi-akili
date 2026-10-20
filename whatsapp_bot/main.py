@@ -21,6 +21,7 @@ import pedagogical_consent as pedagogical
 import espace_enseignant as prof
 import notation
 import mini_test
+import verrou_eleve
 from marketing_consent import (
     OPTED_IN,
     consent_document_id,
@@ -6260,19 +6261,50 @@ def journaliser_statuts_whatsapp(statuts):
 
 
 @app.post("/whatsapp/webhook")
+def expediteur_du_message(body):
+    """Numero de l'eleve qui a envoye un message ; None pour un accuse de lecture ou un corps inattendu."""
+    try:
+        messages = body["entry"][0]["changes"][0]["value"].get("messages") or []
+        return str(messages[0]["from"]) if messages else None
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return None
+
+
+async def prendre_verrou_eleve(phone):
+    if isinstance(feedback_db, _FirestoreDeTest):
+        return None
+    return await verrou_eleve.attendre(feedback_db, phone)
+
+
+def liberer_verrou_eleve(phone, jeton):
+    if jeton:
+        verrou_eleve.liberer(feedback_db, phone, jeton)
+
+
 async def receive_message(request: Request):
     """Traite le message puis sauve le profil complet dans Firestore : la copie Cloud Run
-    qui recevra le message suivant repartira de cet etat, pas d'une memoire perimee."""
+    qui recevra le message suivant repartira de cet etat, pas d'une memoire perimee.
+    Les messages d'un meme eleve passent un par un (verrou_eleve.py, 19 oct.)."""
+    phone_verrou, jeton_verrou = None, None
+    try:
+        phone_verrou = expediteur_du_message(await request.json())
+        if phone_verrou:
+            jeton_verrou = await prendre_verrou_eleve(phone_verrou)
+    except Exception as exc:
+        print(f"VERROU non pris : {exc!r}", flush=True)
     jeton = _profil_charge_requete.set(None)
     try:
         return await _receive_message_impl(request)
     finally:
         phone = _profil_charge_requete.get()
         _profil_charge_requete.reset(jeton)
-        if phone:
-            profil = user_profiles.get(phone)
-            if profil:  # vide apres un reset : rien a sauver
-                sauver_etat_whatsapp(phone, profil)
+        try:
+            if phone:
+                profil = user_profiles.get(phone)
+                if profil:  # vide apres un reset : rien a sauver
+                    sauver_etat_whatsapp(phone, profil)
+        finally:
+            liberer_verrou_eleve(phone_verrou, jeton_verrou)
 
 
 async def _receive_message_impl(request: Request):
