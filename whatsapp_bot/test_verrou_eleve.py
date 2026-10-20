@@ -166,3 +166,20 @@ class ReceptionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RouteTests(unittest.TestCase):
+    """0102 avait glisse expediteur_du_message() sous le decorateur de la route : FastAPI attendait un
+    parametre « body » et repondait 422 a chaque message WhatsApp (Akili muet 9 minutes, 20 oct.)."""
+    def test_la_route_du_webhook_est_receive_message(self):
+        import main
+        routes = [r for r in main.app.routes if getattr(r, "path", "") == "/whatsapp/webhook"
+                  and "POST" in getattr(r, "methods", set())]
+        self.assertEqual([r.endpoint.__name__ for r in routes], ["receive_message"])
+
+    def test_un_vrai_message_n_est_pas_rejete(self):
+        import main
+        from fastapi.testclient import TestClient
+        corps = {"entry": [{"changes": [{"value": {"statuses": []}}]}]}
+        reponse = TestClient(main.app).post("/whatsapp/webhook", json=corps)
+        self.assertEqual(reponse.status_code, 200)

@@ -6260,7 +6260,6 @@ def journaliser_statuts_whatsapp(statuts):
             print(f"Erreur journaliser_statuts_whatsapp: {repr(e)}", flush=True)
 
 
-@app.post("/whatsapp/webhook")
 def expediteur_du_message(body):
     """Numero de l'eleve qui a envoye un message ; None pour un accuse de lecture ou un corps inattendu."""
     try:
@@ -6281,6 +6280,7 @@ def liberer_verrou_eleve(phone, jeton):
         verrou_eleve.liberer(feedback_db, phone, jeton)
 
 
+@app.post("/whatsapp/webhook")
 async def receive_message(request: Request):
     """Traite le message puis sauve le profil complet dans Firestore : la copie Cloud Run
     qui recevra le message suivant repartira de cet etat, pas d'une memoire perimee.
