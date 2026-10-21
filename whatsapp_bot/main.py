@@ -1798,7 +1798,14 @@ def inscrire_niveau_donne(phone, profile, texte):
     on l'enregistre et on passe a la matiere. Avant, « Terminale D » etait gardee comme une question et
     l'inscription repartait du debut (controle qualite du 8 oct.). Vrai si le message a ete traite."""
     niveau = niveau_declare(texte)
-    if not niveau or len(normalize_for_match(texte).split()) > 8:
+    if not niveau:
+        return False
+    # Controle qualite du 21 oct. : inscrit par erreur en BAC General, l'eleve ecrivait « Non je suis en
+    # classe de 3eme je cherche bpc » (10 mots) et la question de la serie revenait pendant 6 heures. Une
+    # correction du niveau deja choisi est acceptee jusqu'a 14 mots ; sinon 8 (une vraie question plus
+    # longue reste gardee pour apres l'inscription).
+    correction = bool(profile.get("type_examen")) and niveau_different(profile, niveau)
+    if len(normalize_for_match(texte).split()) > (14 if correction else 8):
         return False
     profile["type_examen"], profile["serie"] = niveau["type_examen"], niveau["serie"]
     if niveau["classe"]:
@@ -6269,8 +6276,15 @@ def expediteur_du_message(body):
         return None
 
 
+def verrou_actif():
+    """Sur Cloud Run seulement (K_SERVICE) : les tests unitaires n'ecrivent jamais de verrou dans la base.
+    21 oct. : la version precedente testait une classe de fausse base absente de ce depot ; l'erreur
+    (NameError) etait rattrapee et le verrou n'etait jamais pris (66 conflits en 24 h, 0 attente)."""
+    return bool(os.environ.get("K_SERVICE")) or os.environ.get("WHATSAPP_VERROU_ELEVE") == "1"
+
+
 async def prendre_verrou_eleve(phone):
-    if isinstance(feedback_db, _FirestoreDeTest):
+    if not verrou_actif():
         return None
     return await verrou_eleve.attendre(feedback_db, phone)
 
