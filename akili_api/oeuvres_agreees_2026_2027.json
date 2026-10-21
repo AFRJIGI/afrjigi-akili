@@ -1,0 +1,174 @@
+{
+  "source": "Circulaire n° 3272/MENAET/CAB/DPFC du 21 septembre 2026 – Liste des œuvres littéraires agréées au titre de l'année scolaire 2026-2027 (seules ces œuvres peuvent être imposées aux élèves)",
+  "annee_scolaire": "2026-2027",
+  "niveaux": {
+    "6E": {
+      "auteurs_africains": [
+        ["Les larmes de Carène", "Elodie YEBOUA", "JD Éditions"],
+        ["Les contes d'Ahoko Kouah'in", "KOFFI Koffi", "Koffi Koffi Editions"],
+        ["Sur les routes de l'Afrique", "Eliane Ayétcho KODJO", "NEI/CEDA"],
+        ["Le sublime sacrifice", "François D'ASSISE N'DAH", "Vallesse Éditions"],
+        ["Le royaume du cœur", "Josette Abondio DESCLERS", "Les Classiques Ivoiriens"],
+        ["Djomoya ou la folle promesse", "KONE Abou", "Africa Reflets Éditions"],
+        ["Pokou, ange gardien", "Franck KONE", "NEI/CEDA"],
+        ["Pokou, la lagune en danger", "Franck KONE", "NEI/CEDA"],
+        ["La Légende de Kinafo", "Stella SANOGO", "Voyelles Éditions"],
+        ["La convocation", "Christian YAO", "JD Éditions"],
+        ["La petite mangue rebelle", "Christian Jacob YANKEY", "Les Classiques Ivoiriens"],
+        ["Princesse Ebla", "CAMARA Nangala", "Africa Reflets Éditions"],
+        ["Talouablé", "Macaire ETTY", "Les Classiques Ivoiriens"],
+        ["Bienvenue en 6e", "Stéphane GANDO", "FP Éditions"],
+        ["La lettre", "Gina Dick BOGUIFO", "Éditions Eburnie"],
+        ["Momie et Doudou", "Bepha F. N'DRY", "Vallesse Éditions"],
+        ["Les triplets de Kodar", "SORO Guéfala", "Sud Éditions"],
+        ["La poupée", "Camara NANGALA", "Africa Reflets Éditions"],
+        ["Bley et sa bande", "Jeanne de Cavally", "EDILIS"],
+        ["Le messager (2e édition)", "CAMARA Nangala", "Africa Reflets Éditions"],
+        ["Le Cahier Noir", "CAMARA Nangala", "CEDA/HMH"]
+      ],
+      "autres_auteurs": [
+        ["La Tulipe noire", "A. DUMAS", "Gallimard Folio J"],
+        ["Sans famille", "H. MALOT", "Hachette"]
+      ]
+    },
+    "5E": {
+      "auteurs_africains": [
+        ["La Légende du fils de la lumière", "Cédric Marshall KISSY", "Vallesse Éditions"],
+        ["La houe magique", "Boudou KONÉ", "EDILIS"],
+        ["Le retour de l'enfant soldat", "François d'Assise N'DAH", "Vallesse Éditions"],
+        ["Le secret", "TIDOU Christian", "Africa Reflets Éditions"],
+        ["La Reine Condy (conte)", "Séverin BOUATINI", "Les Éditions E'stars"],
+        ["Destins de clandestins", "José GUÉBO", "Vallesse Éditions"],
+        ["Le prince d'Akoua", "GUIAMPHY Blaise", "Africa Reflets Éditions"],
+        ["Un papy sympa", "CAMARA Nangala", "Africa Reflets Éditions"],
+        ["Caprices d'adolescents", "Maimouna KONE", "Vallesse Éditions"],
+        ["Djiriankpa comme un enfant perdu", "Clément K. Aboya", "Éditions EDIX"],
+        ["Les contes de Korotoum", "Amadou KONE", "Vallesse Éditions"],
+        ["Wakoubo, l'albinos", "Abraham GBOGOU", "JD Éditions"],
+        ["L'affaire du Silure", "G. MENGA", "NEA/EDICEF Jeunesse"],
+        ["La source interdite", "F. OGOCHUKWU", "NEA/EDICEF"],
+        ["Les confidences de Médor", "M. COULIBALY", "EDILIS"],
+        ["La force de l'ambition", "TRA BI Irié Arnaud", "FP Éditions"]
+      ],
+      "autres_auteurs": [
+        ["Cinq contes", "G. De Maupassant", "Hachette/Fr. Facile"],
+        ["Au pays du grand condor", "N. Garel", "Gallimard Folio J."]
+      ]
+    },
+    "4E": {
+      "auteurs_africains": [
+        ["Alimatou le Triomphe de l'amour", "Jean-Pierre MUKENDI", "Éditions Eburnie"],
+        ["Cri de douleur", "Claire PORQUET", "NEI/CEDA"],
+        ["Les Frasques d'Ebinto", "A. KONÉ", "CEDA"],
+        ["Contes et Légendes de la savane", "SILUE Nanzouan Patrice", "NEI/CEDA"],
+        ["ELODIE", "Sylvestre OUREGA", "Editions Balafons"],
+        ["La voix de ma rue", "Sylvain Kéan Zoh", "Editions NEI"],
+        ["Légendes africaines", "Bernard B. DADIÉ", "Editions NEI"],
+        ["On se chamaille pour un siège", "Hyacinthe KAKOU", "Vallesse Éditions"],
+        ["L'héritier de M'BOULA", "Robert ZOTOUMBAT", "Vallesse Éditions"],
+        ["L'espoir est au sud", "Jean-Pierre MUKENDI", "Nouvelles Editions Balafons"],
+        ["Destins hypothéqués", "François D'Assise N'DAH", "CERCLE Editions- Vallesse Editions"],
+        ["Le congrès universel des arbres", "Yaro KOU", "Nouvelles Editions Balafons"],
+        ["Les années collège", "Sylvestre OUREGA", "JD Éditions"],
+        ["La fillette aux camélias", "Alexis N'GUETTA", "Vallesse Éditions"],
+        ["Merveille la vertueuse", "Emmanuelle DJE LOU", "JD Éditions"],
+        ["Sékou, le petit bossu", "Séverin BOUATINI", "Les Editions E'Stars"],
+        ["A ma mère", "Kapa SANOGO", "Vallesse Éditions"],
+        ["La Reine et la Montagne", "Maurice BANDAMAN", "Éditions Eburnie"],
+        ["Ma part de rêve", "Mathurin GOLI BI", "FP Éditions"],
+        ["Le regret", "TRA Bi Irié Arnaud", "SAREPTA Éditions"],
+        ["La guerre de Kong", "Gnon Bêh OUATTARA", "Vallesse Éditions"],
+        ["L'appel des arènes", "A. Sow FALL", "CEDA"]
+      ],
+      "autres_auteurs": [
+        ["Le Petit prince", "Antoine de Saint-Exupéry", "Gallimard Folio J."],
+        ["Le Cid", "Corneille", "Class. Hachette (Bibliothèque)"]
+      ]
+    },
+    "3E": {
+      "auteurs_africains": [
+        ["Conviction", "Christian YAO", "Le Papyrus"],
+        ["Eky ou le Secret de la Réussite", "Euphrasie YAO", "Égalité des Chances"],
+        ["Jours d'angoisse", "KONE Joël", "Vallesse Éditions"],
+        ["Sous le pouvoir des blakoros", "AMADOU Koné", "JD Éditions"],
+        ["Une si longue lettre", "Mariama Bâ", "NEA"],
+        ["Le Prix du pardon", "M'Bissame NGOM", "NEA/EDICEF"],
+        ["L'Ordonnance", "SORO Guéfala", "Vallesse Éditions"],
+        ["Lettre à Tita (volume 2)", "J.M. Rosette ABOU'OU", "JD Éditions"],
+        ["Une eau dormante", "Sylvain BEMBA", "Sud Éditions"],
+        ["Le Respect des morts", "AMADOU KONÉ", "CEDA"],
+        ["Climbié", "Bernard B. DADIE", "NEI"],
+        ["Les nuages du passé", "Fatou FANNY-CISSE", "Cercle Média"],
+        ["Maeva", "FATOU Fanny CISSE", "NEI/CEDA"],
+        ["Souvenirs pointilleux", "ADAYE Tano Yao", "Éditions Mouna"],
+        ["Taloua", "GNAHORE Zady", "EDILIS"]
+      ],
+      "autres_auteurs": [
+        ["La Perle", "Joseph Steinbeck", "Gallimard Folio J."],
+        ["Le Vieil homme et la mer", "Ernest Hemingway", "Gallimard Folio J."]
+      ]
+    },
+    "SECONDE": {
+      "auteurs_africains": [
+        ["La Chute d'une Étoile", "Macaire ETTY", "Sud Éditions"],
+        ["Marie-José, la métisse", "ZAMBLÉ Bi Germain", "Éditions Matrice"],
+        ["Soundjata", "Djibril Tamsir NIANE", "Présence Africaine"],
+        ["Petit Bodiel", "Amadou Hampâté Bâ", "Présence Africaine"],
+        ["Contes et légendes", "A. DIOP", "Présence Africaine"],
+        ["Rebelle", "Fatou KÉITA", "NEI"],
+        ["Le village de la honte", "SORO Guefala", "Sud Éditions"],
+        ["La légende de Manié", "Félicité A. FOUNGBE", "Nouvelles Editions Balafon"],
+        ["BONI", "Serge BILÉ", "Cercle Média"],
+        ["Le Monde s'effondre", "Chinua ACHEBE", "Présence Africaine"],
+        ["Zaouli, virtuose de la danse", "CAMARA Nangala", "Africa Reflets Éditions"],
+        ["Les affres de l'existence (ya-koi)", "Charles Zégoua NOKAN", "FP Éditions"],
+        ["Le geste de bréké", "Macaire ETTY", "Le Papyrus"],
+        ["La belle au sac en croco", "CAMARA Nangala", "Africa Reflets Éditions"],
+        ["Sous le pouvoir des Blakoros II. Courses", "Amadou KONE", "Vallesse Éditions"],
+        ["Djêla le pacte d'amour et de raison", "Macaire ETTY", "JD Éditions"],
+        ["Sacerdoce", "Darus KOUADIO", "Éditions FABS"],
+        ["Au-delà des tourments", "Mathurin Goli Bi", "FP Éditions"]
+      ],
+      "autres_auteurs": [
+        ["Candide", "Voltaire", "Classique/Hachette"],
+        ["Le Mariage de Figaro", "Beaumarchais", "Éditions Bordas"]
+      ]
+    },
+    "PREMIERE": {
+      "auteurs_africains": [
+        ["Le glas de l'infortune", "Régina YAOU", "NEI/CEDA"],
+        ["La Sentinelle (Recueil de Poèmes)", "Roc Césaire DOUKA", "Éditions Dédago"],
+        ["Chants d'Ombre", "L. S. SENGHOR", "NEI/CEDA"],
+        ["La ronde des jours", "Bernard DADIÉ", "Éditions du Seuil"],
+        ["Aux chemins de Babo Naki", "Josué GUÉBO", "JD Éditions"],
+        ["Les confidences du silence", "KONÉ K. Enok", "Deltaka Éditions"],
+        ["Souffle", "Brice KONINK", "JD Éditions"],
+        ["Le testament", "Mathurin GOLI BI Irié", "FP Éditions"],
+        ["Le printemps de la fleur fanée", "Sylvain KEAN ZOH", "CEDA"],
+        ["Ramsès II, le nègre", "THIAM Abdul Karim", "JD Éditions"],
+        ["Les affres de l'existence (Les voix divergentes)", "Charles Zégoua NOKAN", "FP Éditions"]
+      ],
+      "autres_auteurs": [
+        ["Antigone", "J. ANOUILH", "BORDAS"]
+      ]
+    },
+    "TERMINALE": {
+      "auteurs_africains": [
+        ["Sous le voile de la mariée", "Mathurin GOLI BI Irié", "Sud Éditions"],
+        ["Pour le bonheur des miens", "ETTY Macaire", "Vallesse Éditions"],
+        ["L'aventure ambiguë", "A. H. KANE", "Éditions 10/18"],
+        ["Les Soleils des indépendances", "Ahmadou KOUROUMA", "Editions du Seuil"],
+        ["La Rose des vents", "Georges I. ZREIK", "CEDA"],
+        ["Trous de cœurs", "Gabriel GUEI-MONIN", "Xlibris"],
+        ["Dialogue", "CAMARA Nangala", "Les Editions E'Stars"]
+      ],
+      "autres_auteurs": [
+        ["L'étranger", "Albert CAMUS", "Gallimard folio"],
+        ["Les Fleurs du mal", "Charles BAUDELAIRE", "Livre de Poche"],
+        ["Les rayons et les ombres", "Victor HUGO", "Hachette Livre"],
+        ["Cahier d'un retour au pays natal", "Aimé CÉSAIRE", "Présence Africaine"],
+        ["Pigments", "L. G. DAMAS", "Présence Africaine"]
+      ]
+    }
+  }
+}

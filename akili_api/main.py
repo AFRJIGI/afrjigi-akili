@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from google.cloud import storage, firestore
 from gemini_client import ModeleGemini, Part, MODELE, LOCATION, est_temporaire
+from oeuvres import consigne_oeuvres
 from typing import Optional
 from PIL import Image
 import io
@@ -1551,6 +1552,11 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
             or matiere_propre.startswith("FRANCAIS")
         ):
             system_prompt = system_prompt + "\n\n" + FRENCH_PEDAGOGY_GUIDANCE
+            # Circulaire du 21 sept. 2026 : liste nationale des oeuvres agreees (21 oct.).
+            classe_francais = classe_generale(serie, examen_registre) if examen_registre != "BAC_TECHNIQUE" else None
+            bloc_oeuvres = consigne_oeuvres(classe_francais[0] if classe_francais else None, enseignant=enseignant)
+            if bloc_oeuvres:
+                system_prompt = system_prompt + "\n\n" + bloc_oeuvres
 
         if not enseignant:
             system_prompt = system_prompt + "\n\n" + instructions_mode(mode_registre, examen_registre)
