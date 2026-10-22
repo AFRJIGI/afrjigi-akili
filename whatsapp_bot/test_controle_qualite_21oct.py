@@ -67,3 +67,28 @@ class VerrouSurCloudRunTests(unittest.TestCase):
         import pathlib
         source = pathlib.Path(main.__file__).read_text(encoding="utf-8")
         self.assertNotIn("_Firestore" + "DeTest", source)
+
+
+class ReprisePlusClaireTests(unittest.TestCase):
+    """Essai du 21 oct. : « On en était là : « Que préfères-tu faire? » » sans le choix proposé."""
+    def test_question_courte_avec_la_phrase_d_avant(self):
+        texte = ("*Germinal* n'est pas sur la liste officielle des œuvres narratives pour ta classe cette année.\n\n"
+                 "Je peux t'aider sur ce roman si tu le souhaites. Sinon, nous pouvons travailler sur un roman de la "
+                 "liste, comme *L'Étranger* d'Albert Camus par exemple.\n\nQue préfères-tu faire?")
+        extrait = main.extrait_reprise(texte)
+        self.assertTrue(extrait.startswith("Je peux t'aider sur ce roman"))
+        self.assertTrue(extrait.endswith("Que préfères-tu faire?"))
+
+    def test_choix_a_b_c_gardes(self):
+        texte = ("Commençons par l'ensemble de validité. Pour que ln x et ln(-y) existent, quels doivent être les "
+                 "signes de x et de y?\n\na) x > 0 et y < 0\nb) x < 0 et y > 0\nc) x > 0 et y > 0")
+        extrait = main.extrait_reprise(texte)
+        self.assertIn("quels doivent être les signes de x et de y?", extrait)
+        self.assertTrue(extrait.endswith("a) x > 0 et y < 0\nb) x < 0 et y > 0\nc) x > 0 et y > 0"))
+
+    def test_question_longue_seule(self):
+        q = "Quel exemple choisis-tu pour illustrer ton premier argument : a, b ou c ?"
+        self.assertEqual(main.extrait_reprise("Très bien.\n\n" + q), q)
+
+    def test_pas_de_question(self):
+        self.assertEqual(main.extrait_reprise("Bravo, exercice terminé."), "")

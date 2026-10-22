@@ -2387,14 +2387,38 @@ def question_en_attente(phone, profile, now=None):
     reponses = [m.get("content", "") for m in session.get("messages") or [] if m.get("role") == "assistant"]
     if not reponses:
         return ""
-    lignes = [l.strip() for l in str(reponses[-1]).splitlines() if "?" in l]
-    if not lignes:
+    return extrait_reprise(reponses[-1])
+
+
+OPTION_REPRISE = re.compile(r"^\s*(?:[-•*]\s*)?[a-dA-D]\s*[).:]\s+\S")
+
+
+def extrait_reprise(texte):
+    """Derniere question d'un message d'Akili, avec ses choix a, b, c et, si elle est trop courte pour se
+    comprendre seule (« Que préfères-tu faire ? »), la phrase d'avant (essai du 21 oct. : la reprise
+    citait la question sans les options ni le contexte)."""
+    lignes = [l.strip() for l in str(texte or "").splitlines()]
+    indices = [i for i, l in enumerate(lignes) if "?" in l]
+    if not indices:
         return ""
-    question = lignes[-1]
+    i = indices[-1]
+    question = lignes[i]
     if len(question) > QUESTION_REPRISE_MAX:
         phrases = re.split(r"(?<=[.!:])\s+", question)
         question = phrases[-1] if len(phrases[-1]) <= QUESTION_REPRISE_MAX else question[-QUESTION_REPRISE_MAX:]
-    return question
+    options = []
+    for ligne in lignes[i + 1:]:
+        if not ligne:
+            continue
+        if not OPTION_REPRISE.match(ligne):
+            break
+        options.append(ligne[:QUESTION_REPRISE_MAX])
+    contexte = ""
+    if not options and len(question) < 60 and question == lignes[i]:
+        avant = [l for l in lignes[:i] if l]
+        if avant and len(avant[-1]) <= QUESTION_REPRISE_MAX:
+            contexte = avant[-1]
+    return "\n".join([x for x in [contexte, question] if x] + options)
 
 
 def message_reprise(question):
