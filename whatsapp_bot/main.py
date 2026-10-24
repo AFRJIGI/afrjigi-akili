@@ -1793,6 +1793,53 @@ def proposer_premier_exercice_si_prevu(phone, profile):
     return True
 
 
+SERIES_INCONNUES = {"TOUTES", "", None}
+MESSAGE_PRECISER_NIVEAU = "Pour bien t'aider, j'ai besoin de ton niveau exact. Choisis-le dans la liste."
+MESSAGE_SERIE_MANQUANTE = "Il me manque juste ta série pour bien t'aider."
+
+
+def demander_niveau_precis(phone, profile):
+    """Niveau sans serie (« Niveau terminal ») : on redemande le niveau, sans « Bienvenue »."""
+    profile["onboarding_step"] = "exam"
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    send_whatsapp(phone, MESSAGE_PRECISER_NIVEAU, allow_audio=False)
+    envoyer_choix(phone, "Quel niveau prépares-tu ?", OPTIONS_EXAM)
+
+
+def completer_serie(phone, profile):
+    """Matiere choisie mais serie inconnue : le profil n'etait jamais pret et chaque message relancait
+    « Bienvenue sur Akili » (controle qualite du 24 oct.). On demande la serie (ou le niveau), puis
+    l'inscription se termine avec la matiere deja choisie."""
+    profile["matiere_avant_serie"] = True
+    if profile.get("type_examen") == "BAC_GENERAL":
+        profile["onboarding_step"] = "serie_general"
+        user_profiles[phone] = profile
+        sauver_etat_whatsapp(phone, profile)
+        send_whatsapp(phone, MESSAGE_SERIE_MANQUANTE, allow_audio=False)
+        ask_serie_general(phone)
+    else:
+        demander_niveau_precis(phone, profile)
+
+
+def demander_matiere_ou_terminer(phone, profile):
+    """Apres le niveau : liste des matieres, ou fin de l'inscription si la matiere a deja ete choisie
+    avant la serie (voir completer_serie)."""
+    if (profile.pop("matiere_avant_serie", None) and profile.get("matiere_confirmed")
+            and profile.get("matiere") and matiere_proposee(profile, profile["matiere"])):
+        deja_inscrit = bool(profile.get("onboarding_completed_at"))
+        profile = terminer_inscription(phone, profile, deja_inscrit=deja_inscrit)
+        proposer_premier_exercice_si_prevu(phone, profile)
+        return
+    profile["onboarding_step"] = "matiere"
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    if profile.get("type_examen") == "BAC_TECHNIQUE":
+        ask_matiere_technique(phone, profile.get("serie"))
+    else:
+        ask_matiere(phone, profile.get("serie", "TOUTES"))
+
+
 def inscrire_niveau_donne(phone, profile, texte):
     """Pendant l'inscription, l'eleve ecrit son niveau en toutes lettres (« Terminale D », « Tle C maths ») :
     on l'enregistre et on passe a la matiere. Avant, « Terminale D » etait gardee comme une question et
@@ -2065,10 +2112,7 @@ def handle_onboarding_choice(phone, profile, text):
         if key == "a":
             profile["type_examen"] = "BEPC"
             profile["serie"] = "BEPC"
-            profile["onboarding_step"] = "matiere"
-            user_profiles[phone] = profile
-            sauver_etat_whatsapp(phone, profile)
-            ask_matiere(phone, "BEPC")
+            demander_matiere_ou_terminer(phone, profile)
             return True
         if key == "b":
             profile["type_examen"] = "BAC_GENERAL"
@@ -2097,10 +2141,7 @@ def handle_onboarding_choice(phone, profile, text):
         values = BAC_GENERAL_SERIES_CHOICES
         if key in values:
             profile["serie"] = values[key]
-            profile["onboarding_step"] = "matiere"
-            user_profiles[phone] = profile
-            sauver_etat_whatsapp(phone, profile)
-            ask_matiere(phone, profile["serie"])
+            demander_matiere_ou_terminer(phone, profile)
             return True
 
     if step == "serie_technique":
@@ -2116,10 +2157,7 @@ def handle_onboarding_choice(phone, profile, text):
     if step == "classe_technique":
         if key in CLASSES_TECHNIQUE:
             profile["classe"] = CLASSES_TECHNIQUE[key]
-            profile["onboarding_step"] = "matiere"
-            user_profiles[phone] = profile
-            sauver_etat_whatsapp(phone, profile)
-            ask_matiere_technique(phone, profile.get("serie"))
+            demander_matiere_ou_terminer(phone, profile)
             return True
 
     if step == "seconde":
@@ -2127,10 +2165,7 @@ def handle_onboarding_choice(phone, profile, text):
         if key in values:
             profile["serie"] = values[key]
             profile["type_examen"] = "BAC_GENERAL"
-            profile["onboarding_step"] = "matiere"
-            user_profiles[phone] = profile
-            sauver_etat_whatsapp(phone, profile)
-            ask_matiere(phone, profile["serie"])
+            demander_matiere_ou_terminer(phone, profile)
             return True
 
     if step == "classe_intermediaire":
@@ -2146,10 +2181,7 @@ def handle_onboarding_choice(phone, profile, text):
         }
         if key in values:
             profile["serie"] = values[key]
-            profile["onboarding_step"] = "matiere"
-            user_profiles[phone] = profile
-            sauver_etat_whatsapp(phone, profile)
-            ask_matiere(phone, profile["serie"])
+            demander_matiere_ou_terminer(phone, profile)
             return True
 
     if step == "matiere":
@@ -2164,6 +2196,9 @@ def handle_onboarding_choice(phone, profile, text):
         if key in values:
             profile["matiere"] = values[key]
             profile["matiere_confirmed"] = True
+            if profile.get("serie") in SERIES_INCONNUES:
+                completer_serie(phone, profile)
+                return True
             deja_inscrit = bool(profile.get("mode") and (profile.get("onboarding_completed_at") or profile.get("ville")))
             terminer_inscription(phone, profile, deja_inscrit=deja_inscrit)
             return True
@@ -2456,6 +2491,14 @@ def needs_onboarding(phone, profile, text):
         or any(has_expr(msg, x) for x in ["TERMINAL", "TERMINALE", "TLE", "SECONDE", "PREMIERE", "1ERE", "BEPC"])
     )
     if has_level_or_series and not profile.get("matiere_confirmed") and not matiere_explicit:
+        # Controle qualite du 24 oct. : « Niveau terminal » envoyait a la matiere sans serie ; le profil
+        # n'etait jamais pret et « Bienvenue sur Akili » revenait a chaque message.
+        if profile.get("serie") in SERIES_INCONNUES:
+            if has_expr(msg, "BEPC"):
+                profile["type_examen"], profile["serie"] = "BEPC", "BEPC"
+            else:
+                demander_niveau_precis(phone, profile)
+                return True
         profile["onboarding_step"] = "matiere"
         user_profiles[phone] = profile
         ask_matiere(phone, profile.get("serie", "TOUTES"))
@@ -3939,7 +3982,7 @@ REPONSES_SANS_CONTENU = {"OK", "OKAY", "MERCI", "MERCI BEAUCOUP", "OUI", "D ACCO
 
 def demander_ville_ecole_si_besoin(phone):
     """Apres le premier bilan : ville et ecole, si on ne les connait pas. Vrai si demandees."""
-    profile = user_profiles.get(phone) or charger_etat_whatsapp(phone) or {}
+    profile = charger_etat_whatsapp(phone) or user_profiles.get(phone) or {}
     if profile.get("ville") or profile.get("ville_ecole_demandee"):
         return False
     profile["ville_ecole_demandee"] = True
@@ -4202,6 +4245,27 @@ def noter_reponse_revision(phone, profile, reponse_akili, now=None):
         print(f"Erreur noter_reponse_revision: {repr(e)}", flush=True)
 
 
+MESSAGE_REPRISE_LENDEMAIN = ("Bonjour ! Hier, on s'est arrêté sur cette question :\n\n« {question} »\n\n"
+                             "Réponds-moi pour finir l'exercice, ou envoie un nouvel exercice.")
+
+
+def question_restee_sans_reponse(phone, revision):
+    """Question d'Akili laissee sans reponse apres la seance revisee : l'eleve est revenu apres le bilan,
+    puis il est reparti en pleine question. Controle qualite du 24 oct. : le defi du lendemain arrivait
+    alors que « Combien trouves-tu pour a ? » attendait encore sa reponse. "" sinon."""
+    session = charger_session_bilan(phone) or {}
+    if session.get("conversation_key") != revision.get("conversation_key"):
+        return ""
+    fin_revisee = parse_datetime(revision.get("derniere_activite"))
+    derniere = parse_datetime(session.get("derniere_activite"))
+    if not fin_revisee or not derniere or derniere <= fin_revisee:
+        return ""
+    messages = session.get("messages") or []
+    if not messages or messages[-1].get("role") != "assistant":
+        return ""
+    return extrait_reprise(messages[-1].get("content", ""))
+
+
 def traiter_revisions_lendemain(now=None):
     now = now or datetime.now(timezone.utc)
     if now.hour not in REVISION_HEURES_ENVOI:
@@ -4228,6 +4292,16 @@ def traiter_revisions_lendemain(now=None):
         # Pas de revision si l'eleve l'a refusee, ou s'il a change de matiere ou de mode depuis.
         if profile.get("revisions_off") or cle_conversation_profil(phone, profile) != revision.get("conversation_key"):
             noter_revision(phone, {"statut": "ignoree"})
+            continue
+        question = question_restee_sans_reponse(phone, revision)
+        if question:
+            if not reserver_revision(phone):
+                continue
+            user_profiles[phone] = profile
+            send_whatsapp(phone, MESSAGE_REPRISE_LENDEMAIN.format(question=question), allow_audio=False)
+            noter_revision(phone, {"statut": "reprise_envoyee"})
+            envoyees += 1
+            print(f"REVISION_LENDEMAIN reprise d'une question sans reponse matiere={revision.get('matiere')}", flush=True)
             continue
         if not reserver_revision(phone):
             continue
@@ -4261,7 +4335,11 @@ def envoyer_fin_de_session(phone, source="au_revoir"):
         if source == "au_revoir":
             send_whatsapp(phone, MESSAGE_AU_REVOIR_SIMPLE, allow_audio=False)
         return False
-    profil = user_profiles.get(phone) or charger_etat_whatsapp(phone) or {}
+    # Etat Firestore d'abord : la copie Cloud Run de la tache planifiee peut garder en memoire un profil
+    # d'il y a plusieurs heures (24 oct. : bilan de Philosophie enregistre en Anglais, mini-test faux).
+    profil = charger_etat_whatsapp(phone) or user_profiles.get(phone) or {}
+    if profil:
+        user_profiles[phone] = profil
     if espace_enseignant_actif(profil):
         # Seance de preparation d'un enseignant : pas de bilan ni de revision.
         if source == "au_revoir":
@@ -6824,6 +6902,11 @@ async def _receive_message_impl(request: Request):
                 send_whatsapp(phone, message_bon_retour(profile), allow_audio=False)
                 track_inbound("welcome_back", profile)
                 return {"status": "ok", "reason": "welcome_back"}
+            if (profile.get("serie") in SERIES_INCONNUES and profile.get("matiere_confirmed")
+                    and profile.get("onboarding_completed_at")):
+                completer_serie(phone, profile)
+                track_inbound("serie_manquante_completee", profile)
+                return {"status": "ok", "reason": "serie_manquante"}
             profile["onboarding_step"] = "exam"
             user_profiles[phone] = profile
             ask_exam(phone)
@@ -7081,6 +7164,12 @@ async def _receive_message_impl(request: Request):
                 track_inbound("onboarding_question_reposee", profile)
                 return {"status": "ok", "reason": "onboarding_question_reposee"}
             if profile.get("serie") in {"TOUTES", "", None}:
+                if profile.get("matiere_confirmed") and profile.get("onboarding_completed_at"):
+                    # Inscrit avec une matiere mais sans serie (avant le 24 oct.) : on complete la serie
+                    # au lieu de tout recommencer a chaque message.
+                    completer_serie(phone, profile)
+                    track_inbound("serie_manquante_completee", profile)
+                    return {"status": "ok", "reason": "serie_manquante"}
                 profile["onboarding_step"] = "exam"
                 user_profiles[phone] = profile
                 ask_exam(phone)
