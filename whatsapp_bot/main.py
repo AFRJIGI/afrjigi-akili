@@ -2362,10 +2362,22 @@ def est_salutation(text):
     return any(m in SALUTATIONS for m in mots) and all(m in SALUTATIONS | MOTS_D_ADRESSE for m in mots)
 
 
+# Textes pre-remplis des publicites et des liens (controle qualite du 26 oct. : « Pour commencer, cliquez sur
+# le lien: https://wa.me/... » et « Bonjour ! Puis-je en savoir plus a ce sujet ? » etaient gardes comme
+# questions, puis « repris » apres l'inscription ; 7 conversations sur 49).
+PRE_REMPLIS = re.compile(r"(?<![A-Z0-9])(WA ME|CLIQUEZ SUR LE LIEN|CLIQUE SUR LE LIEN|EN SAVOIR PLUS|META STUDENT|HTTPS?)(?![A-Z0-9])")
+
+
+def est_message_pre_rempli(text):
+    msg = normalize_for_match(text)
+    return bool(msg) and len(msg.split()) <= 25 and bool(PRE_REMPLIS.search(msg)) \
+        and not re.search(r"(?<![A-Z0-9])(EXERCICE|CORRIGE|EXPLIQUE|CALCULE|RESOUS|DEMONTRE)", msg)
+
+
 def est_message_d_accueil(text):
     """Salutation, ou texte pre-rempli des flyers et des pubs (« Bonjour Akili, je participe au pilote AfrJigi »)."""
     msg = normalize_for_match(text)
-    if est_salutation(text):
+    if est_salutation(text) or est_message_pre_rempli(text):
         return True
     return bool(re.search(r"(?<![A-Z0-9])(PILOTE|JE PARTICIPE|JE VEUX ESSAYER AKILI|JE DECOUVRE AKILI)(?![A-Z0-9])", msg)) \
         and not contient_une_demande(text) and len(msg.split()) <= 12
@@ -6369,6 +6381,20 @@ def journaliser_statuts_whatsapp(statuts):
             print(f"Erreur journaliser_statuts_whatsapp: {repr(e)}", flush=True)
 
 
+def id_du_message(body):
+    """Identifiant WhatsApp du message (wamid...), None sinon."""
+    try:
+        messages = body["entry"][0]["changes"][0]["value"].get("messages") or []
+        return str(messages[0].get("id") or "") or None if messages else None
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return None
+
+
+# Message deja reserve par receive_message (avant le verrou) : _receive_message_impl ne le reserve pas une
+# seconde fois (la seconde reservation echouerait et le message serait pris pour un doublon).
+_message_reserve = contextvars.ContextVar("message_reserve", default=None)
+
+
 def expediteur_du_message(body):
     """Numero de l'eleve qui a envoye un message ; None pour un accuse de lecture ou un corps inattendu."""
     try:
@@ -6401,13 +6427,26 @@ async def receive_message(request: Request):
     """Traite le message puis sauve le profil complet dans Firestore : la copie Cloud Run
     qui recevra le message suivant repartira de cet etat, pas d'une memoire perimee.
     Les messages d'un meme eleve passent un par un (verrou_eleve.py, 19 oct.)."""
-    phone_verrou, jeton_verrou = None, None
+    phone_verrou, jeton_verrou, message_id = None, None, None
     try:
-        phone_verrou = expediteur_du_message(await request.json())
+        corps = await request.json()
+        phone_verrou = expediteur_du_message(corps)
+        message_id = id_du_message(corps) if phone_verrou else None
+    except Exception as exc:
+        print(f"VERROU non pris : {exc!r}", flush=True)
+    # Doublon de Meta (renvoi quand la reponse tarde) : rejete AVANT de faire la queue. Controle qualite du
+    # 24 oct. : 570 doublons en 48 h attendaient le verrou, jusqu'a 45 s, devant les vrais messages.
+    if message_id:
+        if message_id in processed_messages or not reserver_message_whatsapp(message_id):
+            print(f"Message déjà traité: {message_id}", flush=True)
+            return {"status": "ok", "reason": "duplicate"}
+        processed_messages.add(message_id)
+    try:
         if phone_verrou:
             jeton_verrou = await prendre_verrou_eleve(phone_verrou)
     except Exception as exc:
         print(f"VERROU non pris : {exc!r}", flush=True)
+    jeton_reserve = _message_reserve.set(message_id)
     jeton = _profil_charge_requete.set(None)
     try:
         return await _receive_message_impl(request)
@@ -6420,6 +6459,7 @@ async def receive_message(request: Request):
                 if profil:  # vide apres un reset : rien a sauver
                     sauver_etat_whatsapp(phone, profil)
         finally:
+            _message_reserve.reset(jeton_reserve)
             liberer_verrou_eleve(phone_verrou, jeton_verrou)
 
 
@@ -6448,7 +6488,9 @@ async def _receive_message_impl(request: Request):
         if choix_liste.startswith("choix_"):
             text = choix_liste[len("choix_"):]  # comme si l'eleve avait tape la lettre
         message_id = msg.get("id")
-        if message_id and (message_id in processed_messages or not reserver_message_whatsapp(message_id)):
+        deja_reserve = bool(message_id) and message_id == _message_reserve.get()
+        if message_id and not deja_reserve and (message_id in processed_messages
+                                                or not reserver_message_whatsapp(message_id)):
             print(f"Message déjà traité: {message_id}", flush=True)
             return {"status": "ok", "reason": "duplicate"}
         if message_id:
@@ -7135,7 +7177,8 @@ async def _receive_message_impl(request: Request):
             return {"status": "ok"}
 
         if needs_onboarding(phone, profile, texte_eleve):
-            if is_learning_request(text) and (media_info or ressemble_a_une_question(original_text)):
+            if is_learning_request(text) and (media_info or (ressemble_a_une_question(original_text)
+                                                             and not est_message_d_accueil(original_text))):
                 profile_waiting = user_profiles.get(phone, profile)
                 profile_waiting["pending_question"] = text
                 profile_waiting["pending_question_display"] = original_text
