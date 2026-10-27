@@ -582,12 +582,20 @@ REGLES_PEDAGOGIE = (
     # Mesure du 27 oct. (devoir de SVT, 5 essais) : 52 % de legendes justes, 49 % avec plus de reflexion.
     # Les organites sont reconnus, mais les traits serres sont suivis jusqu'au mauvais numero (noyau,
     # membrane, hyaloplasme), et la reponse est donnee avec assurance.
-    "SCHÉMA EN PHOTO : tu lis mal à quel numéro mène chaque trait quand les traits sont serrés. Ne dis donc "
-    "jamais seulement « juste » ou « faux » pour un numéro. Pour chaque numéro, donne le signe qui permet de "
-    "reconnaître la structure, puis ce que tu crois voir, et laisse l'élève vérifier sur sa feuille. Exemple : "
-    "« 8 : tu dis lysosome (petit sac rond et sombre). Au bout du trait 8, je crois voir des tubes ramifiés "
-    "sans grains, ce qui serait le réticulum lisse : vérifie sur ta feuille. » Si tu ne vois pas où va un trait, "
-    "dis-le et demande une photo plus nette ou zoomée sur ce numéro.\n"
+    "SCHÉMA EN PHOTO : tu lis mal à quel numéro mène chaque trait quand les traits sont serrés. N'écris donc "
+    "jamais « juste », « faux », « juste si… », « parfait » ni « très bon début » pour la légende d'un numéro. "
+    "Pour chaque numéro, donne le signe qui permet de reconnaître la structure proposée et demande à l'élève "
+    "de vérifier sur sa feuille. Exemple : « 8 : tu dis lysosome. Un lysosome est un petit sac rond et sombre. "
+    "Regarde le bout du trait 8 : est-ce un petit sac rond, ou des tubes ramifiés sans grains ? » Si tu ne "
+    "vois pas où va un trait, demande une photo plus nette ou zoomée sur ce numéro.\n"
+    # Test du 27 oct. apres le 0112 : « 1 (Noyau) : Juste, s'il s'agit de... » pour 4 legendes fausses ;
+    # « 1 et 8 (Reticulum) : C'est juste » alors que l'un est granuleux et l'autre lisse ; noyau donne en 1
+    # puis en 7 sans remarque. Ces trois controles se font sur le texte de l'eleve, sans lire le schema.
+    "LÉGENDE PRÉCISE : un nom général ne suffit pas quand il existe plusieurs sortes (réticulum → granuleux "
+    "ou lisse ; membrane → plasmique ou nucléaire ; vésicule → de pinocytose, de sécrétion…). Demande "
+    "laquelle avant d'aller plus loin.\n"
+    "MÊME NOM DEUX FOIS : si l'élève donne le même nom à deux numéros (noyau en 1 et en 7, réticulum en 1 et "
+    "en 8), signale-le : soit l'un des deux est faux, soit il faut les distinguer.\n"
     # Test du 26 oct. (devoir de SVT) : « Tes réponses sont bien notées » sans dire si elles etaient justes ;
     # « 2 mitochondrie » jamais corrige alors qu'Akili placait la mitochondrie en 13 ; « tu as deja identifie
     # le lysosome pour l'element 8 » repris comme un fait ; questions qui decrivaient la bonne reponse.

@@ -63,8 +63,9 @@ class BonneLettreTests(unittest.TestCase):
         regles = charger()["REGLES_PEDAGOGIE"]
         for attendu in ("ne réduis jamais le choix à 2 options", "TOUS les numéros", "Ne la transforme jamais en QCM",
                         "dessiner sur papier", "ne l'écris jamais", "c'est pas grave", "photo de sa copie",
-                        "reprends CHAQUE numéro donné", "Ne dis donc jamais seulement « juste » ou « faux »",
-                        "je crois voir", "vérifie sur ta feuille", "photo plus nette ou zoomée",
+                        "reprends CHAQUE numéro donné", "N'écris donc jamais « juste », « faux »",
+                        "« juste si… »", "très bon début", "vérifier sur sa feuille", "photo plus nette ou zoomée",
+                        "réticulum → granuleux", "MÊME NOM DEUX FOIS", "noyau en 1 et en 7",
                         "ne reprends jamais une réponse de l'élève",
                         "corrige l'ancienne", "ne décrit ni ne définit la bonne réponse", "sans nommer ni définir"):
             self.assertIn(attendu, regles)
