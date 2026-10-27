@@ -62,7 +62,9 @@ class BonneLettreTests(unittest.TestCase):
     def test_regles_pedagogiques(self):
         regles = charger()["REGLES_PEDAGOGIE"]
         for attendu in ("ne réduis jamais le choix à 2 options", "TOUS les numéros", "Ne la transforme jamais en QCM",
-                        "dessiner sur papier", "ne l'écris jamais", "c'est pas grave", "photo de sa copie"):
+                        "dessiner sur papier", "ne l'écris jamais", "c'est pas grave", "photo de sa copie",
+                        "corrige CHAQUE numéro donné", "« 2 : faux, c'est … »", "ne reprends jamais une réponse de l'élève",
+                        "corrige l'ancienne", "ne décrit ni ne définit la bonne réponse", "sans nommer ni définir"):
             self.assertIn(attendu, regles)
 
     def test_mode_examen_ne_redige_pas_et_note_la_copie(self):
