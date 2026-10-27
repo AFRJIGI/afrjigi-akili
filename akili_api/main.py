@@ -204,6 +204,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import random
 import re
 import unicodedata
 from coefficients import get_toutes_matieres_serie
@@ -565,6 +566,43 @@ REGLE_FINALE_UNE_QUESTION = (
     "explication, puis demande-lui de faire seul la question suivante, du même type. Jamais plusieurs "
     "questions ni plusieurs exercices corrigés dans un même message."
 )
+
+# Controle qualite du 26 oct. et devoir de SVT teste par l'equipe (24 oct.) : la bonne reponse des QCM
+# etait presque toujours (a) ; apres une erreur, il ne restait que 2 choix ; une legende de 15 numeros
+# traitee sur 2 numeros ; justifications et schemas transformes en QCM ; en mode examen, Akili a redige
+# le paragraphe a la place de l'eleve puis note son propre texte au lieu de la photo de la copie.
+REGLES_PEDAGOGIE = (
+    "QCM APRÈS UNE ERREUR : ne réduis jamais le choix à 2 options. Repose la question avec au moins 3 "
+    "options nouvelles ou reformulées (la bonne réponse à une autre place), ou demande une réponse écrite "
+    "courte.\n"
+    "LÉGENDES D'UN SCHÉMA NUMÉROTÉ : demande d'abord à l'élève d'écrire la liste de TOUS les numéros (1, 2, "
+    "3… jusqu'au dernier) avec sa légende pour chacun. Corrige ensuite numéro par numéro, sans en oublier. "
+    "Propose un QCM seulement pour un numéro où il bloque.\n"
+    "JUSTIFICATIONS : quand l'énoncé demande de justifier, expliquer, déduire ou dire pourquoi, c'est l'élève "
+    "qui rédige sa réponse. Ne la transforme jamais en QCM ; aide-le avec un indice s'il bloque.\n"
+    "SCHÉMA À RÉALISER : demande à l'élève de le dessiner sur papier et de t'envoyer une photo. Ne le "
+    "remplace pas par un QCM.\n"
+    "PRODUCTION ÉCRITE (paragraphe, résumé, rédaction, commentaire, dissertation, lettre) : ne l'écris jamais "
+    "à la place de l'élève, même s'il dit « c'est pas grave », « fais-le » ou « je ne sais pas ». Guide-le "
+    "phrase par phrase (idée, mot de liaison, exemple). Ne félicite jamais l'élève pour un texte que tu as "
+    "écrit toi-même.\n"
+    "PHOTO D'UNE COPIE : quand l'élève envoie la photo de sa copie, corrige ce qui est écrit sur cette photo, "
+    "jamais un texte de l'historique. Si la photo est illisible, dis-le.\n"
+    "CITATIONS : n'affirme jamais qu'une citation connue n'est pas de son auteur si tu n'en es pas certain ; "
+    "dis plutôt que tu n'es pas sûr de la source."
+)
+
+LETTRES_QCM = "abcd"
+
+
+def consigne_bonne_lettre(lettre=None):
+    """Place de la bonne reponse tiree au hasard par le code, a chaque message : le modele seul la mettait
+    presque toujours en (a)."""
+    lettre = lettre if lettre and lettre in LETTRES_QCM else random.choice(LETTRES_QCM)
+    nombre = "4 options (a, b, c, d)" if lettre == "d" else "au moins 3 options"
+    return (f"PLACE DE LA BONNE RÉPONSE (pour ce message) : si tu proposes un nouveau choix (a, b, c…), "
+            f"propose {nombre} et place la bonne réponse en ({lettre}). Ne dis jamais que la place est imposée.")
+
 
 LONGUEUR_WHATSAPP = (
     "LONGUEUR SUR WHATSAPP (impératif, prioritaire sur les étapes décrites plus haut) : toute ta réponse "
@@ -1126,6 +1164,8 @@ MODE EXAMEN ACTIVE.
 - Une fois l'exercice note, passe a l'exercice suivant de la meme maniere (resoudre entierement sur papier, envoyer une photo, notation par le bareme), et ainsi de suite jusqu'a la fin du sujet.
 - A la fin de tous les exercices du sujet, donne une note totale sur l'ensemble et un bilan tres bref.
 - L'eleve peut aussi ecrire "terminer" ou "j'ai fini" a tout moment pour demander la correction de l'exercice en cours meme sans photo, a partir de ce qu'il a deja envoye en texte.
+- Ne redige JAMAIS la reponse ou la production a la place de l'eleve (paragraphe, resume, redaction, calcul), meme s'il dit « c'est pas grave » ou « je n'y arrive pas » : en mode examen, c'est lui qui ecrit.
+- La note porte UNIQUEMENT sur ce que l'eleve a ecrit sur la photo de sa copie (ou en texte), jamais sur un texte que tu as ecrit toi-meme.
 """
     return f"""
 MODE ETUDE ACTIVE.
@@ -1582,7 +1622,9 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
             system_prompt = system_prompt + "\n\n" + consigne(progression)
         if not enseignant:
             # En dernier : la fin du prompt pese le plus (conseil Google for Startups, 17 oct.).
+            system_prompt = system_prompt + "\n\n" + REGLES_PEDAGOGIE
             system_prompt = system_prompt + "\n\n" + REGLE_FINALE_UNE_QUESTION
+            system_prompt = system_prompt + "\n" + consigne_bonne_lettre()
 
         # ─── 4. PRÉPARATION DU CONTENU MULTIMODAL POUR VERTEX AI ───
         contents = [system_prompt]
@@ -1834,7 +1876,7 @@ def bilan_session(
 REVISION_CONSIGNES = """Hier, l'eleve a travaille avec toi. Prepare le message de revision d'aujourd'hui, tres court :
 1. Premiere phrase : "Hier, tu as travaillé " suivi de la notion principale de la seance, en quelques mots.
 2. Puis exactement : "Petit défi de 2 minutes :" suivi d'UNE seule question sur le point "a revoir" du bilan (a defaut, sur la notion principale de la seance).
-3. La question est un QCM a 3 choix, chacun sur sa propre ligne : "a. ...", "b. ...", "c. ...". Une seule bonne reponse.
+3. La question est un QCM a 3 choix, chacun sur sa propre ligne : "a. ...", "b. ...", "c. ...". Une seule bonne reponse, placee en LETTRE_PLACEHOLDER.
 4. Derniere ligne exactement : "Réponds par a, b ou c."
 
 REGLES :
@@ -1897,7 +1939,7 @@ def revision_lendemain(
         niveau = " ".join(x for x in [type_examen or "", serie or "", classe or ""] if x)
         prompt = (
             f"Tu es Akili, tuteur de l'eleve (matiere : {matiere or 'non precisee'}, niveau : {niveau}).\n\n"
-            f"{REVISION_CONSIGNES}\n\nBILAN DE LA SEANCE D'HIER :\n{(bilan or '')[:2000]}\n\n"
+            f"{REVISION_CONSIGNES.replace('LETTRE_PLACEHOLDER', random.choice('abc'))}\n\nBILAN DE LA SEANCE D'HIER :\n{(bilan or '')[:2000]}\n\n"
             "HISTORIQUE DE LA SEANCE D'HIER :\n" + "\n".join(lignes)
         )
         texte = generer_texte_gemini(prompt, "Revision")
@@ -1924,6 +1966,17 @@ REGLES :
 - Tutoiement.
 - Reponds UNIQUEMENT par un objet JSON, sans texte autour, de la forme :
 {"chapitre": "nom court du chapitre", "questions": [{"question": "...", "a": "...", "b": "...", "c": "...", "bonne": "b", "explication": "..."}]}"""
+
+
+def melanger_choix(question, ordre=None):
+    """Remet les choix a, b, c dans un ordre tire au hasard et deplace « bonne » avec eux."""
+    if not isinstance(question, dict) or question.get("bonne") not in ("a", "b", "c") \
+            or not all(question.get(x) for x in "abc"):
+        return question
+    ordre = list(ordre or random.sample("abc", 3))
+    textes = {nouvelle: question[ancienne] for nouvelle, ancienne in zip("abc", ordre)}
+    bonne = "abc"[ordre.index(question["bonne"])]
+    return dict(question, **textes, bonne=bonne)
 
 
 def lire_json_modele(texte):
@@ -1979,6 +2032,7 @@ def mini_test(
         donnees = lire_json_modele(generer_texte_gemini(prompt, "Mini-test"))
         if not isinstance(donnees, dict) or len(donnees.get("questions") or []) != 3:
             return {"error": "Mini-test illisible"}
+        donnees["questions"] = [melanger_choix(q) for q in donnees["questions"]]
         if phase == "fin" and chapitre:
             donnees["chapitre"] = chapitre
         print(f"MINI_TEST matiere={matiere} phase={phase} chapitre={donnees.get('chapitre')!r}", flush=True)

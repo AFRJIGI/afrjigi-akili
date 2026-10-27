@@ -57,6 +57,9 @@ Signale chaque probleme avec un de ces types :
 - eleve_bloque : l'eleve tourne en rond, se plaint, abandonne ou repete sa demande sans etre aide
 - bug_technique : message d'erreur, "je n'arrive pas a lire le fichier" sans fichier, message en double, boucle d'inscription
 - format : LaTeX, vouvoiement, mise en forme cassee
+- pedagogie : Akili fait le travail a la place de l'eleve (redige le paragraphe, la justification ou le
+  schema), reduit un QCM a 2 choix apres une erreur, ne traite qu'une partie des numeros d'une legende, ou
+  note un autre texte que la copie envoyee en photo
 - autre
 
 Important : juge uniquement Akili. Une erreur de l'eleve, corrigee par Akili, n'est pas un probleme.
@@ -204,6 +207,59 @@ def lire_resultat(texte):
     return resultat
 
 
+# Controle qualite du 26 oct. : la bonne reponse des QCM etait presque toujours (a).
+REPONSE_LETTRE = re.compile(r"^\s*\(?([a-dA-D])\)?\s*[.!]?\s*$")
+VALIDATIONS = ("c'est exact", "exact", "bravo", "c'est juste", "c'est correct", "très bien",
+               "tres bien", "excellent", "parfait", "bonne réponse", "oui")
+
+
+def option_proposee(texte, lettre):
+    return bool(re.search(rf"(^|\s)\(?{lettre}[.)]\s", str(texte or ""), flags=re.I | re.M))
+
+
+def lettres_validees(conversations):
+    """Counter des lettres validees par Akili : reponse de l'eleve reduite a une lettre, proposee dans le
+    message precedent d'Akili, et message suivant qui commence par une validation. Les mini-tests ne
+    valident pas entre les questions : ils ne sont pas comptes."""
+    compte = Counter()
+    for liste in conversations.values():
+        for i, m in enumerate(liste):
+            r = REPONSE_LETTRE.match(str(m.get("text") or "")) if m.get("direction") == "inbound" else None
+            if not r:
+                continue
+            lettre = r.group(1).lower()
+            avant = next((x for x in reversed(liste[:i]) if x.get("direction") == "outbound"), None)
+            apres = next((x for x in liste[i + 1:] if x.get("direction") == "outbound"), None)
+            if not avant or not apres or not option_proposee(avant.get("text"), lettre):
+                continue
+            debut = str(apres.get("text") or "").strip().lower().lstrip("*_ ")
+            if debut.startswith(VALIDATIONS):
+                compte[lettre] += 1
+    return compte
+
+
+def qcm_a_deux_choix(conversations):
+    """(QCM a 2 choix, QCM proposes) dans les messages d'Akili."""
+    deux = total = 0
+    for liste in conversations.values():
+        for m in liste:
+            texte = m.get("text") if m.get("direction") == "outbound" else ""
+            if texte and option_proposee(texte, "a") and option_proposee(texte, "b"):
+                total += 1
+                deux += not option_proposee(texte, "c")
+    return deux, total
+
+
+def lignes_qcm(conversations):
+    lettres = lettres_validees(conversations)
+    n = sum(lettres.values())
+    lignes = ["", f"## QCM : place de la bonne reponse ({n} reponses validees)"]
+    lignes += [f"- {x} : {lettres[x]} ({100 * lettres[x] / n:.0f} %)" for x in "abcd"] if n else ["- aucune"]
+    deux, total = qcm_a_deux_choix(conversations)
+    lignes.append(f"- QCM a 2 choix seulement : {deux} sur {total}")
+    return lignes
+
+
 def rapport(resultats, jour):
     notes = [r["note"] for r in resultats if isinstance(r.get("note"), (int, float))]
     types = Counter(p.get("type") for r in resultats for p in r.get("problemes", []))
@@ -277,7 +333,7 @@ def main():
         except Exception as exc:
             print(f"  (resultat non sauvegarde : {exc!r})")
 
-    texte = rapport(resultats, jour)
+    texte = rapport(resultats, jour) + "\n" + "\n".join(lignes_qcm(conversations))
     dossier = Path.home() / "controle_qualite"
     dossier.mkdir(exist_ok=True)
     fichier = dossier / f"{etiquette}.md"

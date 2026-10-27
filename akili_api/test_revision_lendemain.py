@@ -1,6 +1,7 @@
 """Endpoint /revision-lendemain : prompt construit a partir de la seance et du bilan d'hier."""
 import ast
 import json
+import random
 import time
 import unittest
 from pathlib import Path
@@ -19,7 +20,7 @@ class FauxModele:
 
 
 def charger(modele):
-    ns = {"json": json, "time": time, "Optional": Optional, "model": modele,
+    ns = {"json": json, "time": time, "random": random, "Optional": Optional, "model": modele,
           "TooManyRequests": type("TooManyRequests", (Exception,), {}),
           "Form": lambda *a, **k: None, "app": type("A", (), {"post": staticmethod(lambda *a, **k: (lambda f: f))})()}
     noeuds = [n for n in ast.parse(SOURCE).body

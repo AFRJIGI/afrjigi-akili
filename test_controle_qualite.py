@@ -78,6 +78,40 @@ class ControleQualiteTests(unittest.TestCase):
         self.assertNotIn("2250100000001", texte)
 
 
+class PlaceBonneReponseTests(unittest.TestCase):
+    """Controle qualite du 26 oct. : la bonne reponse des QCM etait presque toujours (a)."""
+    def conv(self, *echanges):
+        return {"p": [msg("p", d, t, i) for i, (d, t) in enumerate(echanges)]}
+
+    def test_compte_les_lettres_validees(self):
+        conv = self.conv(
+            ("outbound", "Quel organite ? (a) noyau (b) mitochondrie (c) ribosome. Réponds par a, b ou c."),
+            ("inbound", "b"),
+            ("outbound", "C'est exact ! La mitochondrie produit l'énergie."),
+            ("outbound", "Et ici ?\na. ADN\nb. ARN\nc. lipide"),
+            ("inbound", "(a)"),
+            ("outbound", "*Bravo* !"),
+            ("outbound", "Quelle loi ? (a) Ohm (b) Joule (c) Faraday"),
+            ("inbound", "c"),
+            ("outbound", "Pas tout à fait : relis l'énoncé."),
+            ("inbound", "d"),
+            ("outbound", "Exact."))
+        self.assertEqual(dict(cq.lettres_validees(conv)), {"b": 1, "a": 1})
+
+    def test_qcm_a_deux_choix(self):
+        conv = self.conv(("outbound", "Alors ? (a) 12 (b) 14"), ("outbound", "(a) 1 (b) 2 (c) 3"),
+                         ("outbound", "Calcule f(2)."))
+        self.assertEqual(cq.qcm_a_deux_choix(conv), (1, 2))
+
+    def test_lignes_du_rapport(self):
+        conv = self.conv(("outbound", "(a) x (b) y (c) z"), ("inbound", "a"), ("outbound", "Très bien !"))
+        texte = "\n".join(cq.lignes_qcm(conv))
+        self.assertIn("1 reponses validees", texte)
+        self.assertIn("- a : 1 (100 %)", texte)
+        self.assertIn("QCM a 2 choix seulement : 0 sur 1", texte)
+        self.assertIn("- aucune", "\n".join(cq.lignes_qcm({})))
+
+
 if __name__ == "__main__":
     unittest.main()
 

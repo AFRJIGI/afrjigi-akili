@@ -5,6 +5,7 @@
 - les doublons de Meta faisaient la queue devant le verrou de l'eleve (570 en 48 h) avant d'etre jetes."""
 import asyncio
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import main
@@ -81,6 +82,13 @@ class DoublonAvantLeVerrouTests(unittest.TestCase):
             resultat = asyncio.run(main.receive_message(base.FauxRequete("Bonjour")))
         self.assertNotEqual(resultat.get("reason"), "duplicate")
         self.assertEqual(appels, ["wamid.reprise.Bonjour"])
+
+
+class QcmApresErreurTests(unittest.TestCase):
+    """Devoir de SVT du 24 oct. : apres une erreur, il ne restait que 2 choix."""
+    def test_consigne_eleve_bloque_garde_au_moins_3_options(self):
+        source = Path(main.__file__).read_text(encoding="utf-8")
+        self.assertIn("ne réduis jamais le choix à 2 options : propose au moins 3 options", source)
 
 
 if __name__ == "__main__":
