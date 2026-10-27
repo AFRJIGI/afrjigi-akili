@@ -576,9 +576,18 @@ REGLES_PEDAGOGIE = (
     "options nouvelles ou reformulées (la bonne réponse à une autre place), ou demande une réponse écrite "
     "courte.\n"
     "LÉGENDES D'UN SCHÉMA NUMÉROTÉ : demande d'abord à l'élève d'écrire la liste de TOUS les numéros (1, 2, "
-    "3… jusqu'au dernier) avec sa légende pour chacun. Dès qu'il envoie sa liste, corrige CHAQUE numéro donné, "
-    "dans ce même message : « 1 : juste », « 2 : faux, c'est … ». Ne passe aux numéros manquants qu'après. "
-    "Propose un QCM seulement pour un numéro où il bloque.\n"
+    "3… jusqu'au dernier) avec sa légende pour chacun. Dès qu'il envoie sa liste, reprends CHAQUE numéro donné "
+    "dans ce même message, avant de passer aux numéros manquants. Propose un QCM seulement pour un numéro où il "
+    "bloque.\n"
+    # Mesure du 27 oct. (devoir de SVT, 5 essais) : 52 % de legendes justes, 49 % avec plus de reflexion.
+    # Les organites sont reconnus, mais les traits serres sont suivis jusqu'au mauvais numero (noyau,
+    # membrane, hyaloplasme), et la reponse est donnee avec assurance.
+    "SCHÉMA EN PHOTO : tu lis mal à quel numéro mène chaque trait quand les traits sont serrés. Ne dis donc "
+    "jamais seulement « juste » ou « faux » pour un numéro. Pour chaque numéro, donne le signe qui permet de "
+    "reconnaître la structure, puis ce que tu crois voir, et laisse l'élève vérifier sur sa feuille. Exemple : "
+    "« 8 : tu dis lysosome (petit sac rond et sombre). Au bout du trait 8, je crois voir des tubes ramifiés "
+    "sans grains, ce qui serait le réticulum lisse : vérifie sur ta feuille. » Si tu ne vois pas où va un trait, "
+    "dis-le et demande une photo plus nette ou zoomée sur ce numéro.\n"
     # Test du 26 oct. (devoir de SVT) : « Tes réponses sont bien notées » sans dire si elles etaient justes ;
     # « 2 mitochondrie » jamais corrige alors qu'Akili placait la mitochondrie en 13 ; « tu as deja identifie
     # le lysosome pour l'element 8 » repris comme un fait ; questions qui decrivaient la bonne reponse.
@@ -600,6 +609,13 @@ REGLES_PEDAGOGIE = (
     "jamais un texte de l'historique. Si la photo est illisible, dis-le.\n"
     "CITATIONS : n'affirme jamais qu'une citation connue n'est pas de son auteur si tu n'en es pas certain ; "
     "dis plutôt que tu n'es pas sûr de la source."
+)
+
+SCHEMA_PHOTO_ENSEIGNANT = (
+    "SCHÉMA EN PHOTO : la lecture des numéros d'un schéma photographié n'est pas fiable quand les traits sont "
+    "serrés (mesure du 27 oct. : environ une légende sur deux attribuée au mauvais numéro). Pour une légende, "
+    "donne le signe qui permet de reconnaître chaque structure et signale à l'enseignant les numéros dont tu "
+    "n'es pas sûr, pour qu'il vérifie avant de distribuer un corrigé."
 )
 
 LETTRES_QCM = "abcd"
@@ -1609,7 +1625,7 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
         # Enseignant verifie (espace enseignant du bot) : assistant de preparation, pas tuteur d'eleve.
         enseignant = (user_type or "").strip().upper() == "ENSEIGNANT"
         if enseignant:
-            system_prompt = prompt_enseignant(matiere_propre, examen_registre, serie, classe)
+            system_prompt = prompt_enseignant(matiere_propre, examen_registre, serie, classe) + "\n\n" + SCHEMA_PHOTO_ENSEIGNANT
 
         if (
             matiere_propre == "FRENCH"

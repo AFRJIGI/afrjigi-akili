@@ -63,7 +63,9 @@ class BonneLettreTests(unittest.TestCase):
         regles = charger()["REGLES_PEDAGOGIE"]
         for attendu in ("ne réduis jamais le choix à 2 options", "TOUS les numéros", "Ne la transforme jamais en QCM",
                         "dessiner sur papier", "ne l'écris jamais", "c'est pas grave", "photo de sa copie",
-                        "corrige CHAQUE numéro donné", "« 2 : faux, c'est … »", "ne reprends jamais une réponse de l'élève",
+                        "reprends CHAQUE numéro donné", "Ne dis donc jamais seulement « juste » ou « faux »",
+                        "je crois voir", "vérifie sur ta feuille", "photo plus nette ou zoomée",
+                        "ne reprends jamais une réponse de l'élève",
                         "corrige l'ancienne", "ne décrit ni ne définit la bonne réponse", "sans nommer ni définir"):
             self.assertIn(attendu, regles)
 
@@ -72,6 +74,13 @@ class BonneLettreTests(unittest.TestCase):
         self.assertIn("Ne redige JAMAIS la reponse ou la production a la place de l'eleve", examen)
         self.assertIn("UNIQUEMENT sur ce que l'eleve a ecrit sur la photo de sa copie", examen)
         self.assertNotIn("Ne redige JAMAIS", charger()["instructions_mode"]("etude", "BEPC"))
+
+
+class SchemaEnseignantTests(unittest.TestCase):
+    def test_avertissement_ajoute_au_prompt_enseignant(self):
+        self.assertIn('prompt_enseignant(matiere_propre, examen_registre, serie, classe) + "\\n\\n" + SCHEMA_PHOTO_ENSEIGNANT',
+                      SOURCE)
+        self.assertIn("signale à l'enseignant les numéros dont tu", SOURCE)
 
 
 class MelangeMiniTestTests(unittest.TestCase):
