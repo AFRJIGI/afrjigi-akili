@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from google.cloud import firestore, storage
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from gtts import gTTS
 import tableau_de_bord
@@ -3747,6 +3747,9 @@ def send_whatsapp_boutons(to, corps, boutons):
 
 # ─── Programme personnalise de revision (voir programme.py) ───
 
+COMMANDES_ARRET_PROGRAMME = {"STOP PROGRAMME", "ARRETER PROGRAMME", "ARRETE PROGRAMME", "STOP MON PROGRAMME",
+                             "PLUS DE PROGRAMME", "ARRETER MON PROGRAMME"}
+COMMANDES_RAPPEL_PROGRAMME = COMMANDES_ARRET_PROGRAMME | {"REPRENDRE PROGRAMME", "REPRENDRE MON PROGRAMME"}
 MOTS_ARRET_PROGRAMME = {"FIN", "STOP", "ARRETE", "ANNULER", "ANNULE", "LAISSE", "NON", "PLUS TARD"}
 
 
@@ -3754,12 +3757,35 @@ def matieres_programme(profile):
     return programme.matieres_du_profil(profile, matieres_technique(profile.get("serie")))
 
 
-def envoyer_texte_programme(phone, profile):
-    texte = programme.texte_programme(profile, profile["programme"], matieres_programme(profile),
-                                      datetime.now(timezone.utc).date())
+def envoyer_texte_programme(phone, profile, nouvelle_semaine=False):
+    aujourd_hui = datetime.now(timezone.utc).date()
+    texte = programme.texte_programme(profile, profile["programme"], matieres_programme(profile), aujourd_hui,
+                                      nouvelle_semaine=nouvelle_semaine)
+    profile["programme"] = dict(profile["programme"], semaine_envoyee=programme.cle_semaine(aujourd_hui))
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
     send_whatsapp(phone, texte, allow_audio=False)
     save_whatsapp_event(phone, "outbound", "[programme] " + texte, profile,
-                        extra={"processing_stage": "programme_envoye"})
+                        extra={"processing_stage": "programme_semaine" if nouvelle_semaine else "programme_envoye"})
+
+
+def programme_de_la_semaine_a_envoyer(profile):
+    """Vrai au premier message d'une nouvelle semaine (lundi -> dimanche) : le programme de la semaine est
+    envoye a ce moment-la, dans la fenetre WhatsApp de 24 h ouverte par l'eleve (choix du 28 oct. : pas de
+    modele Meta payant pour l'instant)."""
+    prog = profile.get("programme")
+    if not isinstance(prog, dict) or prog.get("off") or prog.get("examen") != programme.examen_du_profil(profile):
+        return False
+    aujourd_hui = datetime.now(timezone.utc).date()
+    if programme.semaines_restantes(prog["examen"], aujourd_hui) <= 0:
+        return False
+    deja = prog.get("semaine_envoyee")
+    if not deja:
+        try:
+            deja = programme.cle_semaine(date.fromisoformat(str(prog.get("cree_le"))[:10]))
+        except ValueError:
+            deja = ""
+    return deja != programme.cle_semaine(aujourd_hui)
 
 
 def demarrer_programme(phone, profile, refaire=False):
@@ -3786,7 +3812,7 @@ def demarrer_programme(phone, profile, refaire=False):
     profile["programme_etape"] = "prioritaires"
     user_profiles[phone] = profile
     sauver_etat_whatsapp(phone, profile)
-    texte = programme.question_prioritaires(matieres, examen, aujourd_hui)
+    texte = programme.question_prioritaires(matieres, examen, aujourd_hui, profile.get("serie"))
     send_whatsapp(phone, texte, allow_audio=False)
     save_whatsapp_event(phone, "outbound", "[programme] " + texte, profile,
                         extra={"processing_stage": "programme_question_prioritaires"})
@@ -6896,6 +6922,29 @@ async def _receive_message_impl(request: Request):
 
         # Programme personnalise de revision (« mon programme », 28 oct.).
         commande_programme = normalize_for_match(text).replace("PERSONALISE", "PERSONNALISE")
+        if is_profile_ready(profile) and commande_programme in COMMANDES_RAPPEL_PROGRAMME:
+            arret = commande_programme in COMMANDES_ARRET_PROGRAMME
+            if isinstance(profile.get("programme"), dict):
+                profile["programme"] = dict(profile["programme"], off=arret)
+                user_profiles[phone] = profile
+                sauver_etat_whatsapp(phone, profile)
+                send_whatsapp(phone, (
+                    "C'est noté : je ne t'enverrai plus ton programme chaque semaine. Écris « mon programme » "
+                    "pour le revoir, ou « reprendre programme » pour le recevoir à nouveau."
+                    if arret else "C'est noté : tu recevras ton programme au début de chaque semaine."),
+                    allow_audio=False)
+            else:
+                send_whatsapp(phone, "Tu n'as pas encore de programme : écris « mon programme » pour le créer.",
+                              allow_audio=False)
+            raison = "programme_off" if arret else "programme_on"
+            track_inbound(raison, profile)
+            return {"status": "ok", "reason": raison}
+        if (is_profile_ready(profile) and not onboarding_step and not profile.get("programme_etape")
+                and commande_programme not in programme.COMMANDES
+                and not commande_programme.startswith(("MODIFIER MON PROGRAMME", "CHANGER MON PROGRAMME",
+                                                       "REFAIRE MON PROGRAMME"))
+                and programme_de_la_semaine_a_envoyer(profile)):
+            envoyer_texte_programme(phone, profile, nouvelle_semaine=True)  # puis le message suit son chemin
         if media_file is None and is_profile_ready(profile) and (
                 commande_programme in programme.COMMANDES or commande_programme in {
                     "MODIFIER MON PROGRAMME", "CHANGER MON PROGRAMME", "REFAIRE MON PROGRAMME"}):

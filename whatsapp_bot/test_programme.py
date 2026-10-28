@@ -75,6 +75,28 @@ class CalculTests(unittest.TestCase):
         self.assertIn("Tu es déjà en Mathématiques", deja)
 
 
+class RotationTests(unittest.TestCase):
+    def test_les_petites_matieres_tournent(self):
+        matieres = programme.matieres_du_profil(PROFIL_D)
+        vues = set()
+        for semaine in range(6):
+            seances = programme.repartir(matieres, ["PC", "SVT"], 7, rotation=semaine)
+            self.assertEqual(sum(seances.values()), 7)
+            self.assertEqual((seances["PC"], seances["SVT"]), (2, 2))
+            vues |= set(seances)
+        self.assertTrue({"PHILO", "ANGLAIS", "HG"} <= vues)
+        self.assertEqual(programme.numero_semaine("2026-10-28T10:00:00+00:00", date(2026, 11, 2)), 1)
+        self.assertEqual(programme.numero_semaine("2026-10-28T10:00:00+00:00", date(2026, 11, 1)), 0)
+
+    def test_langues_facultatives(self):
+        question = programme.question_prioritaires(programme.matieres_du_profil(PROFIL_D), "BAC_GENERAL",
+                                                   AUJOURD_HUI, "D")
+        self.assertIn("h. Espagnol (facultatif)", question)
+        a1 = dict(PROFIL_D, serie="A1")
+        self.assertIn("Espagnol (coef. 3, si c'est ta 2e langue)",
+                      programme.question_prioritaires(programme.matieres_du_profil(a1), "BAC_GENERAL", AUJOURD_HUI, "A1"))
+
+
 class ConversationTests(unittest.TestCase):
     setUp_base = base.BonjourPendantInscriptionTests.setUp
     tearDown_base = base.BonjourPendantInscriptionTests.tearDown
@@ -126,6 +148,31 @@ class ConversationTests(unittest.TestCase):
         with mock.patch.object(main, "answer_learning_request", return_value={"status": "ok"}):
             self.envoyer("on passe en physique-chimie")
         self.assertEqual(self.etat.get("matiere"), "PC")
+
+    def test_programme_au_premier_message_de_la_semaine(self):
+        self.etat["programme"] = {"examen": "BAC_GENERAL", "prioritaires": ["PC"], "temps": "60",
+                                  "cree_le": "2026-10-20T10:00:00+00:00"}
+        with mock.patch.object(main, "answer_learning_request", return_value={"status": "ok"}) as akili:
+            self.envoyer("Comment calculer une dérivée ?")
+            akili.assert_called_once()
+        self.assertTrue(self.envoyes[0].startswith("📆 *Nouvelle semaine !*"))
+        self.assertIn("stop programme", self.envoyes[0])
+        semaine = self.etat["programme"]["semaine_envoyee"]
+        with mock.patch.object(main, "answer_learning_request", return_value={"status": "ok"}):
+            self.envoyer("Et une primitive ?")
+        self.assertEqual(sum(1 for m in self.envoyes if "Nouvelle semaine" in m), 1)
+        self.assertEqual(self.etat["programme"]["semaine_envoyee"], semaine)
+
+    def test_pas_de_renvoi_la_semaine_de_creation_ni_apres_stop(self):
+        aujourd_hui = main.datetime.now(main.timezone.utc).isoformat()
+        self.etat["programme"] = {"examen": "BAC_GENERAL", "prioritaires": ["PC"], "temps": "60", "cree_le": aujourd_hui}
+        self.assertFalse(main.programme_de_la_semaine_a_envoyer(self.etat))
+        self.etat["programme"]["cree_le"] = "2026-10-01T10:00:00+00:00"
+        self.assertTrue(main.programme_de_la_semaine_a_envoyer(self.etat))
+        self.assertEqual(self.envoyer("stop programme").get("reason"), "programme_off")
+        self.assertFalse(main.programme_de_la_semaine_a_envoyer(self.etat))
+        self.assertEqual(self.envoyer("reprendre programme").get("reason"), "programme_on")
+        self.assertFalse(self.etat["programme"]["off"])
 
     def test_reponse_non_comprise_puis_vraie_question(self):
         self.envoyer("mon programme")

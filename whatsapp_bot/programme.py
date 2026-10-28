@@ -108,9 +108,11 @@ TEXTE_PHASES = {
 }
 
 
-def repartir(matieres, prioritaires, seances):
+def repartir(matieres, prioritaires, seances, rotation=0):
     """{code: nombre de seances} : poids = coefficient x 2 si prioritaire ; plus forts restes ; chaque
-    matiere prioritaire a au moins une seance. Les langues facultatives n'entrent que si elles sont choisies."""
+    matiere prioritaire a au moins une seance. Les langues facultatives n'entrent que si elles sont choisies.
+    `rotation` (numero de la semaine) : chaque semaine, une matiere restee sans seance en prend une, a tour de
+    role (test du 28 oct. : avec 1 h par jour, la philosophie et l'anglais n'apparaissaient jamais)."""
     poids = {code: coef * (2 if code in prioritaires else 1)
              for code, _, coef in matieres if coef and (code not in SEULEMENT_SI_CHOISIES or code in prioritaires)}
     total = sum(poids.values())
@@ -129,14 +131,54 @@ def repartir(matieres, prioritaires, seances):
             if donneur:
                 resultat[donneur] -= 1
                 resultat[code] += 1
+    oubliees = sorted((c for c in resultat if resultat[c] == 0 and c not in prioritaires),
+                      key=lambda c: (-poids[c], c))
+    if oubliees:
+        servies = [c for c in resultat if c not in prioritaires and resultat[c] > 0]
+        plusieurs = [c for c in servies if resultat[c] >= 2]
+        donneur = (max(plusieurs, key=lambda c: (resultat[c], -poids[c])) if plusieurs
+                   else min(servies, key=lambda c: (poids[c], c), default=None))
+        if donneur:
+            candidates = sorted(oubliees + ([] if plusieurs else [donneur]), key=lambda c: (-poids[c], c))
+            elue = candidates[rotation % len(candidates)]
+            if elue != donneur:
+                resultat[donneur] -= 1
+                resultat[elue] += 1
     return {code: n for code, n in resultat.items() if n > 0}
 
 
-def question_prioritaires(matieres, examen, aujourd_hui):
+def numero_semaine(programme_cree_le, aujourd_hui):
+    """Semaines ecoulees depuis la creation du programme (0 la premiere semaine, lundi -> dimanche)."""
+    try:
+        debut = date.fromisoformat(str(programme_cree_le)[:10])
+    except ValueError:
+        return 0
+    lundi = lambda d: d.toordinal() - d.weekday()
+    return max(0, (lundi(aujourd_hui) - lundi(debut)) // 7)
+
+
+def cle_semaine(aujourd_hui):
+    annee, semaine, _ = aujourd_hui.isocalendar()
+    return f"{annee}-S{semaine:02d}"
+
+
+SERIES_LANGUES_FACULTATIVES = {"C", "D"}
+
+
+def precision_matiere(code, coef, examen, serie):
+    if examen == "BAC_TECHNIQUE" or not coef:
+        return ""  # coefficients du METFPA pas encore integres
+    if code in SEULEMENT_SI_CHOISIES:
+        if (serie or "").upper() in SERIES_LANGUES_FACULTATIVES:
+            return " (facultatif)"
+        return f" (coef. {coef}, si c'est ta 2e langue)"
+    return f" (coef. {coef})"
+
+
+def question_prioritaires(matieres, examen, aujourd_hui, serie=""):
     semaines = semaines_restantes(examen, aujourd_hui)
-    avec_coef = examen != "BAC_TECHNIQUE"  # coefficients du METFPA pas encore integres
-    lignes = [f"{LETTRES[i]}. {libelle}" + (f" (coef. {coef})" if avec_coef and coef else "")
-              for i, (_, libelle, coef) in enumerate(matieres)]
+    lignes = [f"{LETTRES[i]}. {libelle}" + precision_matiere(code, coef, examen, serie)
+              for i, (code, libelle, coef) in enumerate(matieres)]
     return (f"📅 Il te reste {semaines} semaines avant le {EXAMENS[examen]['libelle']} "
             f"({EXAMENS[examen]['texte']}).\n\nOn prépare ton programme de révision. Quelles matières "
             f"veux-tu renforcer en priorité ? Choisis jusqu'à {MAX_PRIORITAIRES} lettres, par exemple : a c\n\n"
@@ -176,14 +218,15 @@ def lire_temps(texte):
     return None
 
 
-def texte_programme(profile, programme, matieres, aujourd_hui):
+def texte_programme(profile, programme, matieres, aujourd_hui, nouvelle_semaine=False):
     """Message du programme : semaines restantes, phase, seances de la semaine."""
     examen = programme["examen"]
     semaines = semaines_restantes(examen, aujourd_hui)
     if semaines <= 0:
         return EXAMEN_PASSE
     libelles = {code: libelle for code, libelle, _ in matieres}
-    seances = repartir(matieres, programme.get("prioritaires") or [], SEANCES_PAR_TEMPS.get(programme.get("temps"), 5))
+    seances = repartir(matieres, programme.get("prioritaires") or [], SEANCES_PAR_TEMPS.get(programme.get("temps"), 5),
+                       rotation=numero_semaine(programme.get("cree_le"), aujourd_hui))
     ordre = sorted(seances, key=lambda c: (c not in (programme.get("prioritaires") or []), -seances[c]))
     lignes = [f"• {libelles.get(c, c)} : {seances[c]} séance{'s' if seances[c] > 1 else ''}"
               + (" ⭐" if c in (programme.get("prioritaires") or []) else "") for c in ordre]
@@ -198,9 +241,11 @@ def texte_programme(profile, programme, matieres, aujourd_hui):
         depart = f"\n\nTu es déjà en {premiere} : envoie ton exercice ou demande un exercice pour commencer."
     else:
         depart = f"\n\nPour commencer, écris : « on passe en {premiere.lower()} »."
-    return (f"🎯 *Ton programme {titre}* : {semaines} semaine{'s' if semaines > 1 else ''} avant les écrits.\n\n"
+    return (("📆 *Nouvelle semaine !* Avant de continuer, voici ton programme.\n\n" if nouvelle_semaine else "")
+            + f"🎯 *Ton programme {titre}* : {semaines} semaine{'s' if semaines > 1 else ''} avant les écrits.\n\n"
             f"*En ce moment* : {TEXTE_PHASES[etape]}\n\n"
             f"*Cette semaine* (⭐ = tes priorités) :\n" + "\n".join(lignes)
             + "\n\nUne séance = environ 30 minutes avec Akili, sur un exercice ou un chapitre."
             + depart
-            + "\n\nTu peux revoir ce programme à tout moment : écris « mon programme ».")
+            + "\n\nTu peux revoir ce programme à tout moment : écris « mon programme »."
+            + ("\nPour ne plus le recevoir chaque semaine : écris « stop programme »." if nouvelle_semaine else ""))
