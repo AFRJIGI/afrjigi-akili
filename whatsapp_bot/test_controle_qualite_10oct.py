@@ -83,9 +83,9 @@ class ChangementDeNiveauTests(Webhook):
 
 class MenuTests(Webhook):
     def test_lettre_hors_liste_au_menu(self):
-        # …4465 : « d » au menu lancait un exercice de francais.
+        # …4465 : « d » au menu lancait un exercice de francais (« d » = Mon programme depuis le 28 oct.).
         self.profil = dict(PROFIL, onboarding_step="menu_choice")
-        self.envoyer("d", "wamid.menu1")
+        self.envoyer("e", "wamid.menu1")
         self.assertIn(main.MESSAGE_CHOIX_NON_COMPRIS, self.envoyes)
         self.assertIn("Que veux-tu faire ?", self.listes[-1])
         self.assertEqual(main.user_profiles[PHONE]["onboarding_step"], "menu_choice")

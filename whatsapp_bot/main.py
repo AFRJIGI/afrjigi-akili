@@ -21,6 +21,7 @@ import pedagogical_consent as pedagogical
 import espace_enseignant as prof
 import notation
 import mini_test
+import programme
 import verrou_eleve
 from marketing_consent import (
     OPTED_IN,
@@ -1643,6 +1644,7 @@ def envoyer_menu_eleve(phone, profile):
         ("a", "Changer de matière", "Garder le même niveau"),
         ("b", "Changer de niveau", "Niveau, série ou examen"),
         ("c", "Changer de mode", f"Étude ou examen (aujourd'hui : {LIBELLES_MODES.get(profile.get('mode') or 'etude', 'mode étude')})"),
+        ("d", "Mon programme", "Plan de révision jusqu'à l'examen"),
     ])
 
 
@@ -2029,6 +2031,7 @@ def mot_cle_vers_lettre(step, text, profile):
             "a": ["MATIERE"],
             "b": ["NIVEAU", "SERIE", "CLASSE"],
             "c": ["MODE", "ETUDE", "EXAMEN"],
+            "d": ["PROGRAMME", "PLANNING", "PLAN"],
         },
     }
 
@@ -2106,6 +2109,10 @@ def handle_onboarding_choice(phone, profile, text):
             user_profiles[phone] = profile
             sauver_etat_whatsapp(phone, profile)
             ask_mode(phone)
+            return True
+        if key == "d":
+            profile["onboarding_step"] = ""
+            demarrer_programme(phone, profile)
             return True
 
     if step == "exam":
@@ -3736,6 +3743,107 @@ def send_whatsapp_boutons(to, corps, boutons):
     except Exception as e:
         print(f"Erreur WHATSAPP_SEND_BOUTONS: {repr(e)}", flush=True)
         return False
+
+
+# ─── Programme personnalise de revision (voir programme.py) ───
+
+MOTS_ARRET_PROGRAMME = {"FIN", "STOP", "ARRETE", "ANNULER", "ANNULE", "LAISSE", "NON", "PLUS TARD"}
+
+
+def matieres_programme(profile):
+    return programme.matieres_du_profil(profile, matieres_technique(profile.get("serie")))
+
+
+def envoyer_texte_programme(phone, profile):
+    texte = programme.texte_programme(profile, profile["programme"], matieres_programme(profile),
+                                      datetime.now(timezone.utc).date())
+    send_whatsapp(phone, texte, allow_audio=False)
+    save_whatsapp_event(phone, "outbound", "[programme] " + texte, profile,
+                        extra={"processing_stage": "programme_envoye"})
+
+
+def demarrer_programme(phone, profile, refaire=False):
+    """« mon programme » : affiche le programme s'il existe, sinon pose les deux questions."""
+    profile.pop("programme_etape", None)
+    profile.pop("programme_rappel", None)
+    examen = programme.examen_du_profil(profile)
+    matieres = matieres_programme(profile) if examen else []
+    if not examen or not matieres:
+        user_profiles[phone] = profile
+        sauver_etat_whatsapp(phone, profile)
+        send_whatsapp(phone, programme.PAS_D_EXAMEN, allow_audio=False)
+        return "programme_sans_examen"
+    aujourd_hui = datetime.now(timezone.utc).date()
+    if programme.semaines_restantes(examen, aujourd_hui) <= 0:
+        send_whatsapp(phone, programme.EXAMEN_PASSE, allow_audio=False)
+        return "programme_examen_passe"
+    existant = profile.get("programme")
+    if not refaire and isinstance(existant, dict) and existant.get("examen") == examen:
+        envoyer_texte_programme(phone, profile)
+        send_whatsapp(phone, "Pour changer tes priorités ou ton temps disponible, écris « modifier mon programme ».",
+                      allow_audio=False)
+        return "programme_affiche"
+    profile["programme_etape"] = "prioritaires"
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    texte = programme.question_prioritaires(matieres, examen, aujourd_hui)
+    send_whatsapp(phone, texte, allow_audio=False)
+    save_whatsapp_event(phone, "outbound", "[programme] " + texte, profile,
+                        extra={"processing_stage": "programme_question_prioritaires"})
+    return "programme_demarre"
+
+
+def traiter_etape_programme(phone, profile, text):
+    """Reponse a une question du programme. None si le message n'y repond pas (l'etape est alors abandonnee
+    et le message suit son chemin habituel)."""
+    etape = profile.get("programme_etape")
+    msg = normalize_for_match(text)
+    if msg in MOTS_ARRET_PROGRAMME:
+        profile.pop("programme_etape", None)
+        profile.pop("programme_rappel", None)
+        user_profiles[phone] = profile
+        sauver_etat_whatsapp(phone, profile)
+        send_whatsapp(phone, "D'accord, on laisse le programme de côté. Écris « mon programme » quand tu veux.",
+                      allow_audio=False)
+        return "programme_annule"
+    if etape == "prioritaires":
+        choix = programme.lire_prioritaires(text, matieres_programme(profile))
+        if choix:
+            profile["programme_choix"] = choix
+            profile["programme_etape"] = "temps"
+            profile.pop("programme_rappel", None)
+            user_profiles[phone] = profile
+            sauver_etat_whatsapp(phone, profile)
+            envoyer_choix(phone, "Combien de temps peux-tu travailler avec Akili ?",
+                          [(lettre, libelle, "") for lettre, _, libelle, _ in programme.TEMPS])
+            return "programme_prioritaires"
+        rappel = programme.PRIORITES_NON_COMPRISES
+    elif etape == "temps":
+        temps = programme.lire_temps(text)
+        if temps:
+            profile["programme"] = {"examen": programme.examen_du_profil(profile),
+                                    "prioritaires": profile.pop("programme_choix", []), "temps": temps,
+                                    "cree_le": datetime.now(timezone.utc).isoformat()}
+            profile.pop("programme_etape", None)
+            profile.pop("programme_rappel", None)
+            user_profiles[phone] = profile
+            sauver_etat_whatsapp(phone, profile)
+            envoyer_texte_programme(phone, profile)
+            return "programme_cree"
+        rappel = "Réponds par a, b, c ou d (ou écris fin pour arrêter)."
+    else:
+        return None
+    # Reponse courte non comprise : un rappel, une fois ; un vrai message abandonne la question.
+    if not profile.get("programme_rappel") and len(msg.split()) <= 3 and "?" not in text:
+        profile["programme_rappel"] = True
+        user_profiles[phone] = profile
+        sauver_etat_whatsapp(phone, profile)
+        send_whatsapp(phone, rappel, allow_audio=False)
+        return "programme_rappel"
+    for cle in ("programme_etape", "programme_rappel", "programme_choix"):
+        profile.pop(cle, None)
+    user_profiles[phone] = profile
+    return None
 
 
 # ─── Mini-test de progression (voir mini_test.py) ───
@@ -6786,6 +6894,21 @@ async def _receive_message_impl(request: Request):
             track_inbound("revisions_off" if arret else "revisions_on", profile)
             return {"status": "ok", "reason": "revisions_off" if arret else "revisions_on"}
 
+        # Programme personnalise de revision (« mon programme », 28 oct.).
+        commande_programme = normalize_for_match(text).replace("PERSONALISE", "PERSONNALISE")
+        if media_file is None and is_profile_ready(profile) and (
+                commande_programme in programme.COMMANDES or commande_programme in {
+                    "MODIFIER MON PROGRAMME", "CHANGER MON PROGRAMME", "REFAIRE MON PROGRAMME"}):
+            raison = demarrer_programme(phone, profile, refaire=commande_programme.startswith(
+                ("MODIFIER", "CHANGER", "REFAIRE")))
+            track_inbound(raison, user_profiles.get(phone, profile))
+            return {"status": "ok", "reason": raison}
+        if media_file is None and profile.get("programme_etape"):
+            raison = traiter_etape_programme(phone, profile, text)
+            if raison:
+                track_inbound(raison, user_profiles.get(phone, profile))
+                return {"status": "ok", "reason": raison}
+
         if not onboarding_step and is_profile_ready(profile) and media_file is None \
                 and proposer_mode_etude(phone, profile, text):
             user_profiles[phone] = profile
@@ -6964,6 +7087,8 @@ async def _receive_message_impl(request: Request):
             )
             if profil_complet:
                 profile["onboarding_step"] = "menu_choice"
+                for cle in ("programme_etape", "programme_rappel", "programme_choix"):
+                    profile.pop(cle, None)
                 user_profiles[phone] = profile
                 sauver_etat_whatsapp(phone, profile)
                 envoyer_menu_eleve(phone, profile)
