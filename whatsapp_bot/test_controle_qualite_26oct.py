@@ -85,10 +85,12 @@ class DoublonAvantLeVerrouTests(unittest.TestCase):
 
 
 class QcmApresErreurTests(unittest.TestCase):
-    """Devoir de SVT du 24 oct. : apres une erreur, il ne restait que 2 choix."""
-    def test_consigne_eleve_bloque_garde_au_moins_3_options(self):
+    """Devoir de SVT du 24 oct. : apres une erreur, il ne restait que 2 choix. Controle du 29 oct. : options
+    retirees ou remelangees apres une erreur -> memes options aux memes lettres."""
+    def test_consigne_eleve_bloque_garde_les_memes_options(self):
         source = Path(main.__file__).read_text(encoding="utf-8")
-        self.assertIn("ne réduis jamais le choix à 2 options : propose au moins 3 options", source)
+        self.assertIn("garde les mêmes options aux mêmes lettres avec un indice", source)
+        self.assertIn("Ne réduis jamais le choix à 2 options.", source)
 
 
 if __name__ == "__main__":

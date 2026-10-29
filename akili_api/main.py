@@ -572,9 +572,16 @@ REGLE_FINALE_UNE_QUESTION = (
 # traitee sur 2 numeros ; justifications et schemas transformes en QCM ; en mode examen, Akili a redige
 # le paragraphe a la place de l'eleve puis note son propre texte au lieu de la photo de la copie.
 REGLES_PEDAGOGIE = (
-    "QCM APRÈS UNE ERREUR : ne réduis jamais le choix à 2 options. Repose la question avec au moins 3 "
-    "options nouvelles ou reformulées (la bonne réponse à une autre place), ou demande une réponse écrite "
-    "courte.\n"
+    # Controle qualite du 29 oct. : options retirees ou remelangees apres une erreur (13 conversations).
+    "QCM APRÈS UNE ERREUR : à la première erreur, garde EXACTEMENT les mêmes options, aux mêmes lettres "
+    "(n'en retire aucune, ne les remélange pas ; ne réduis jamais le choix à 2 options), donne un indice qui fait réfléchir sans nommer la bonne "
+    "réponse, et demande de choisir à nouveau. Après une deuxième erreur sur la même question, donne la bonne "
+    "réponse avec une explication courte de pourquoi, puis pose une question semblable (nouvelles valeurs, "
+    "nouvelles options) pour vérifier qu'il a compris.\n"
+    "ÉLÈVE QUI NE COMPREND PAS : s'il écrit « je ne comprends pas », « je ne sais pas comment on fait » ou "
+    "« je ne comprends rien », ne repose pas la même question. Change d'approche : montre la méthode sur un "
+    "exemple entièrement résolu, avec d'autres nombres, en 3 ou 4 lignes courtes, puis donne-lui un exercice "
+    "presque identique à faire seul.\n"
     "LÉGENDES D'UN SCHÉMA NUMÉROTÉ : demande d'abord à l'élève d'écrire la liste de TOUS les numéros (1, 2, "
     "3… jusqu'au dernier) avec sa légende pour chacun. Dès qu'il envoie sa liste, reprends CHAQUE numéro donné "
     "dans ce même message, avant de passer aux numéros manquants. Propose un QCM seulement pour un numéro où il "
@@ -635,7 +642,9 @@ def consigne_bonne_lettre(lettre=None):
     lettre = lettre if lettre and lettre in LETTRES_QCM else random.choice(LETTRES_QCM)
     nombre = "4 options (a, b, c, d)" if lettre == "d" else "au moins 3 options"
     return (f"PLACE DE LA BONNE RÉPONSE (pour ce message) : si tu proposes un nouveau choix (a, b, c…), "
-            f"propose {nombre} et place la bonne réponse en ({lettre}). Ne dis jamais que la place est imposée.")
+            f"propose {nombre} et place la bonne réponse en ({lettre}). Ne dis jamais que la place est imposée. "
+            "Cette règle ne s'applique pas quand tu reposes la même question après une erreur : garde alors les "
+            "mêmes options aux mêmes lettres.")
 
 
 LONGUEUR_WHATSAPP = (
@@ -1105,6 +1114,27 @@ def est_reponse_courte(question, history, a_un_fichier=False):
     return not any(mot in q_maj for mot in MOTS_NOUVELLE_DEMANDE)
 
 
+# Controle qualite du 29 oct. : Akili a envoye a un eleve ses notes internes (« L'eleve n'a pas choisi une
+# lettre... Consignes a respecter : ne pas mettre de LaTeX... »).
+MARQUEURS_FUITE_FORTS = ("consignes à respecter", "consignes a respecter", "moins de 700 caractères",
+                         "moins de 700 caracteres", "ne pas mettre de latex", "pas de salutation",
+                         "consignes de génération", "répondre en texte simple whatsapp")
+MARQUEURS_FUITE_FAIBLES = ("je dois lui", "je dois demander", "je dois répondre", "l'élève n'a pas",
+                           "l'eleve n'a pas", "l'élève a répondu", "une seule question à la fin")
+
+
+def fuite_de_consignes(texte):
+    """Vrai si la reponse destinee a l'eleve contient les notes internes du modele."""
+    t = (texte or "").lower().replace("\u2019", "'")
+    score = 2 * sum(m in t for m in MARQUEURS_FUITE_FORTS) + sum(m in t for m in MARQUEURS_FUITE_FAIBLES)
+    return score >= 2
+
+
+CONSIGNE_SANS_NOTES = ("ATTENTION : ta réponse précédente contenait tes notes internes et tes consignes. "
+                       "Écris uniquement le message destiné à l'élève, en le tutoyant, sans parler de toi ni de "
+                       "tes consignes.")
+
+
 def formater_contexte_document(doc, question, serie):
     type_doc = (doc.get("type_doc") or "").upper().strip()
     max_chars = 7000 if type_doc == "PROGRESSION_ANNUELLE" else 2800
@@ -1392,6 +1422,9 @@ Quand l'élève a rédigé son développement, tu lui donnes :
 RÈGLES ABSOLUES :
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - Ne JAMAIS rédiger l'introduction, le développement ou la conclusion à la place de l'élève
+- Pour un argument, donne l'idée en quelques mots, l'auteur et la citation : c'est l'élève qui écrit les
+  phrases (annonce, explication, citation introduite, bilan). Ne donne jamais une « structure complète »
+  faite de phrases déjà rédigées, même quand l'élève demande des explications (contrôle qualité du 29 oct.)
 - Toujours proposer des OPTIONS et laisser l'élève CHOISIR
 - Encourager et valoriser les efforts de l'élève
 - Corriger et noter les productions de l'élève quand il les soumet
@@ -1775,6 +1808,19 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
                 for part in (cand.content.parts or [])
             )
             print(f"⚠️ Reponse Gemini en plusieurs parts, recollee ({len(texte_reponse)} caracteres)", flush=True)
+
+        if (user_type or "").strip().upper() != "ENSEIGNANT" and fuite_de_consignes(texte_reponse):
+            print("FUITE_CONSIGNES detectee, nouvelle generation", flush=True)
+            try:
+                nouvelle = model.generate_content(contents + [CONSIGNE_SANS_NOTES],
+                                                  generation_config=config_generation(matiere))
+                texte_nouveau = nouvelle.text or ""
+                if texte_nouveau and not fuite_de_consignes(texte_nouveau):
+                    texte_reponse = texte_nouveau
+                else:
+                    print("FUITE_CONSIGNES persistante", flush=True)
+            except Exception as erreur_fuite:
+                print(f"FUITE_CONSIGNES nouvelle generation impossible : {erreur_fuite}", flush=True)
 
         # ─── 6. MISE À JOUR DU COMPTEUR DE QUESTIONS ───
         new_count = questions_today + 1 if not is_premium else questions_today

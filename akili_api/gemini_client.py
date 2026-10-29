@@ -29,7 +29,9 @@ MODELE_SECOURS = os.environ.get("AKILI_MODELE_SECOURS", "").strip()
 REFLEXION = os.environ.get("AKILI_REFLEXION", "").strip().lower()
 # Reflexion des reponses breves de l'eleve (« b », « oui », « 48 ») : la reflexion est facturee au prix
 # de la sortie et pesait environ 1 050 tokens par appel (mesure du 29 oct.). Vide = meme reglage que AKILI_REFLEXION.
-REFLEXION_COURTE = os.environ.get("AKILI_REFLEXION_COURTE", "low").strip().lower()
+# Controle qualite du 29 oct. : deux erreurs graves sur des reponses d'une lettre en « low » ; remis a
+# « medium » le 30 oct. par la variable d'environnement. Par defaut, meme reglage que AKILI_REFLEXION.
+REFLEXION_COURTE = os.environ.get("AKILI_REFLEXION_COURTE", "").strip().lower()
 LOCATIONS_SECOURS = [l.strip() for l in os.environ.get("VERTEX_LOCATION_SECOURS", "us-central1,europe-west1").split(",")
                      if l.strip() and l.strip() != LOCATION]
 LOCATION_SECOURS = LOCATIONS_SECOURS[0] if LOCATIONS_SECOURS else ""
