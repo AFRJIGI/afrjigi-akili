@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from google.cloud import storage, firestore
-from gemini_client import ModeleGemini, Part, MODELE, LOCATION, est_temporaire
+from gemini_client import ModeleGemini, Part, MODELE, LOCATION, REFLEXION_COURTE, est_temporaire
 from oeuvres import consigne_oeuvres
 from typing import Optional
 from PIL import Image
@@ -1085,6 +1085,26 @@ def consigne_progression(progression, aujourd_hui=None):
     )
 
 
+# Mesure du 29 oct. : environ 12 000 tokens d'entree par appel, 1 % lus depuis le cache. Une reponse breve
+# de l'eleve au milieu d'un echange n'a besoin ni du corpus ni de la progression : l'historique suffit.
+MOTS_NOUVELLE_DEMANDE = ("EXERCICE", "LECON", "LEÇON", "COURS", "SUJET", "REVISION", "RÉVISION", "CHAPITRE",
+                         "PROGRAMME", "DEVOIR", "TEST", "EXAMEN", "EPREUVE", "ÉPREUVE", "INTERRO")
+
+
+def est_reponse_courte(question, history, a_un_fichier=False):
+    """« b », « oui », « 48 », « je sais pas » apres un message d'Akili ; pas une nouvelle demande."""
+    q = (question or "").strip()
+    if a_un_fichier or not q or len(q) > 20 or "?" in q:
+        return False
+    try:
+        if not json.loads(history or "[]"):
+            return False
+    except Exception:
+        return False
+    q_maj = q.upper()
+    return not any(mot in q_maj for mot in MOTS_NOUVELLE_DEMANDE)
+
+
 def formater_contexte_document(doc, question, serie):
     type_doc = (doc.get("type_doc") or "").upper().strip()
     max_chars = 7000 if type_doc == "PROGRESSION_ANNUELLE" else 2800
@@ -1310,8 +1330,10 @@ def ask_question(
         mode_registre = normaliser_mode(mode, question)
 
         question_recherche = (question_brute or question or "").strip()
+        reponse_courte = (est_reponse_courte(question_recherche, history, file is not None)
+                          and (user_type or "").strip().upper() != "ENSEIGNANT")
 
-        contexte_docs = chercher_contexte(
+        contexte_docs = [] if reponse_courte else chercher_contexte(
             question_recherche,
             matiere=matiere_registre,
             serie=serie,
@@ -1320,7 +1342,7 @@ def ask_question(
             max_docs=6
         ) if question_recherche else []
 
-        progression = progression_de_reference(
+        progression = None if reponse_courte else progression_de_reference(
             documents, matiere_registre, serie, examen_registre, question_recherche, classe=classe
         )
         if progression:
@@ -1663,7 +1685,8 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
         # ─── 4. PRÉPARATION DU CONTENU MULTIMODAL POUR VERTEX AI ───
         contents = [system_prompt]
         
-        if history:
+        # Le bot WhatsApp met deja l'historique dans la question (« HISTORIQUE RECENT ») : ne pas l'envoyer deux fois.
+        if history and "HISTORIQUE RECENT" not in (question or ""):
             try:
                 history_data = json.loads(history)
                 history_text = "\n".join([
@@ -1720,7 +1743,8 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
         debut_appel = time.time()
         for tentative in range(3):
             try:
-                response = model.generate_content(contents, generation_config=config_generation(matiere))
+                reglage_court = {"reflexion": REFLEXION_COURTE} if reponse_courte and REFLEXION_COURTE else {}
+                response = model.generate_content(contents, generation_config=config_generation(matiere), **reglage_court)
                 break
             except Exception as e:
                 # Un 429 peut arriver en TooManyRequests (classe parente) ou en ResourceExhausted selon le

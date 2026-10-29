@@ -27,6 +27,9 @@ MODELE = os.environ.get("AKILI_MODELE", "gemini-2.5-flash").strip()
 LOCATION = os.environ.get("VERTEX_LOCATION", "global").strip()
 MODELE_SECOURS = os.environ.get("AKILI_MODELE_SECOURS", "").strip()
 REFLEXION = os.environ.get("AKILI_REFLEXION", "").strip().lower()
+# Reflexion des reponses breves de l'eleve (« b », « oui », « 48 ») : la reflexion est facturee au prix
+# de la sortie et pesait environ 1 050 tokens par appel (mesure du 29 oct.). Vide = meme reglage que AKILI_REFLEXION.
+REFLEXION_COURTE = os.environ.get("AKILI_REFLEXION_COURTE", "low").strip().lower()
 LOCATIONS_SECOURS = [l.strip() for l in os.environ.get("VERTEX_LOCATION_SECOURS", "us-central1,europe-west1").split(",")
                      if l.strip() and l.strip() != LOCATION]
 LOCATION_SECOURS = LOCATIONS_SECOURS[0] if LOCATIONS_SECOURS else ""
@@ -93,20 +96,20 @@ def construire_config(generation_config, modele=MODELE, reflexion=REFLEXION):
     return types.GenerateContentConfig(**reglages)
 
 
-def ligne_consommation(reponse, duree, modele):
+def ligne_consommation(reponse, duree, modele, reflexion=None):
     """Journal de consommation pour estimer le cout reel par message (lecture, cache, ecriture, reflexion)."""
     u = getattr(reponse, "usage_metadata", None)
     valeur = lambda nom: int(getattr(u, nom, 0) or 0) if u is not None else 0
     return (f"GEMINI_USAGE modele={modele} duree={duree:.1f}s entree={valeur('prompt_token_count')} "
             f"cache={valeur('cached_content_token_count')} sortie={valeur('candidates_token_count')} "
-            f"reflexion={valeur('thoughts_token_count')}")
+            f"reflexion={valeur('thoughts_token_count')} niveau={reflexion or REFLEXION or 'defaut'}")
 
 
 class ModeleGemini:
     def __init__(self, nom_modele=None):
         self.nom_modele = nom_modele or MODELE
 
-    def generate_content(self, contents, generation_config=None):
+    def generate_content(self, contents, generation_config=None, reflexion=None):
         debut = time.time()
         contenus = list(contents) if isinstance(contents, (list, tuple)) else contents
         lieux = [LOCATION] + [l for l in LOCATIONS_SECOURS if l != LOCATION]
@@ -117,7 +120,7 @@ class ModeleGemini:
             modele = self.nom_modele if i == 0 else (MODELE_SECOURS or self.nom_modele)
             try:
                 reponse = client(lieu).models.generate_content(
-                    model=modele, contents=contenus, config=construire_config(generation_config, modele))
+                    model=modele, contents=contenus, config=construire_config(generation_config, modele, reflexion or REFLEXION))
                 break
             except Exception as erreur:
                 premiere_erreur = premiere_erreur or erreur
@@ -127,5 +130,5 @@ class ModeleGemini:
                 # Capacite partagee saturee ou reponse trop lente : essai tout de suite sur le point suivant.
                 raison = "429" if est_refus_de_quota(erreur) else "delai"
                 print(f"GEMINI_SECOURS {raison} sur {lieu}, essai sur {suivant}", flush=True)
-        print(ligne_consommation(reponse, time.time() - debut, modele), flush=True)
+        print(ligne_consommation(reponse, time.time() - debut, modele, reflexion), flush=True)
         return reponse
