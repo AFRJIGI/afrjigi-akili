@@ -65,7 +65,7 @@ class ReglesTests(unittest.TestCase):
 class GrilleTests(unittest.TestCase):
     def test_grille_alignee(self):
         grille = (Path(__file__).parent.parent / "controle_qualite.py").read_text(encoding="utf-8")
-        self.assertIn("retire ou remelange les options d'un QCM apres une premiere erreur", grille)
+        self.assertIn("retire, ajoute ou remelange les options d'un\n  QCM quand il repose la meme question", grille)
         self.assertIn("DEUX erreurs sur la meme question", grille)
 
 

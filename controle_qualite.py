@@ -58,8 +58,9 @@ Signale chaque probleme avec un de ces types :
 - bug_technique : message d'erreur, "je n'arrive pas a lire le fichier" sans fichier, message en double, boucle d'inscription
 - format : LaTeX, vouvoiement, mise en forme cassee
 - pedagogie : Akili fait le travail a la place de l'eleve (redige le paragraphe, la justification ou le
-  schema), retire ou remelange les options d'un QCM apres une premiere erreur, ne traite qu'une partie des
-  numeros d'une legende, ou note un autre texte que la copie envoyee en photo. N'est PAS un probleme : apres
+  schema, ou tous les remplacements d'une application numerique), retire, ajoute ou remelange les options d'un
+  QCM quand il repose la meme question, ne traite qu'une partie des numeros d'une legende, ou note un autre
+  texte que la copie envoyee en photo. N'est PAS un probleme : apres
   DEUX erreurs sur la meme question, donner la bonne reponse avec une explication puis poser une question
   semblable ; montrer un exemple entierement resolu a un eleve qui dit ne rien comprendre, puis lui donner
   un exercice proche a faire seul

@@ -61,7 +61,7 @@ class BonneLettreTests(unittest.TestCase):
 
     def test_regles_pedagogiques(self):
         regles = charger()["REGLES_PEDAGOGIE"]
-        for attendu in ("ne réduis jamais le choix à 2 options", "TOUS les numéros", "Ne la transforme jamais en QCM",
+        for attendu in ("jamais 2 options seulement", "TOUS les numéros", "Ne la transforme jamais en QCM",
                         "dessiner sur papier", "ne l'écris jamais", "c'est pas grave", "photo de sa copie",
                         "reprends CHAQUE numéro donné", "N'écris donc jamais « juste », « faux »",
                         "« juste si… »", "très bon début", "vérifier sur sa feuille", "photo plus nette ou zoomée",
