@@ -101,6 +101,7 @@ class BilanAvecLeProfilActuelTests(unittest.TestCase):
                     mock.patch.object(main, "noter_session_bilan"), \
                     mock.patch.object(main, "planifier_revision"), \
                     mock.patch.object(main, "maybe_send_marketing_consent_prompt", return_value=False), \
+                    mock.patch.object(main, "MINI_TEST_EN_FIN_DE_SEANCE", True), \
                     mock.patch.object(main, "proposer_mini_test_fin_de_seance", return_value=True) as test:
                 self.assertTrue(main.envoyer_fin_de_session(PHONE, source="inactivite"))
             self.assertEqual(vus, ["PHILO"])

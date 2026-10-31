@@ -29,6 +29,13 @@ BOUTONS_REPONSE = [(f"minitest_{l}", l) for l in LETTRES]
 
 PROPOSITION_DEBUT = ("Pour finir : 3 questions rapides sur ce que tu viens de travailler, pour voir où tu en es "
                      "(1 minute, ce n'est pas noté). On y va ?")
+# Au demarrage d'une seance, l'eleve vient d'arriver : il a le temps. A la fin, il s'en allait, et il
+# refusait 4 fois sur 5 (31 oct. : 1 564 propositions, 280 tests de debut faits, 4 tests de fin).
+PROPOSITION_DEBUT_DEMARRAGE = ("3 questions rapides pour voir où tu en es avant de continuer "
+                               "(1 minute, ce n'est pas noté). On y va ?")
+REPRISE_CHAPITRE = "La dernière fois, tu travaillais « {chapitre} »."
+REPRISE_MATIERE = "La dernière fois, on travaillait {matiere}."
+REPRISE_SEULE = " On reprend par là, ou tu préfères autre chose ?"
 PROPOSITION_FIN = ("Tu as travaillé « {chapitre} » il y a quelques jours. 3 questions rapides pour voir tes "
                    "progrès (1 minute, pas noté). On y va ?")
 PREPARATION = "Je prépare tes 3 questions…"
@@ -63,9 +70,16 @@ def noter_jour_actif(profile, matiere, now=None):
     return True
 
 
-def phase_a_proposer(profile, nb_echanges, now=None):
-    """'debut', 'fin' ou None : faut-il proposer un mini-test apres cette reponse d'Akili ?"""
-    if profile.get("mini_test") or nb_echanges < ECHANGES_AVANT_PROPOSITION:
+def phase_a_proposer(profile, nb_echanges, now=None, au_demarrage=False):
+    """'debut', 'fin' ou None : faut-il proposer un mini-test ?
+
+    au_demarrage : au premier message d'une nouvelle journee, le nombre d'echanges de la seance vaut 0 et
+    ne dit rien ; on ne l'exige pas. Tout le reste (delai entre propositions, cycle en cours, nombre de
+    refus) s'applique a l'identique, donc une proposition faite au demarrage en empeche une en fin de seance.
+    """
+    if profile.get("mini_test"):
+        return None
+    if not au_demarrage and nb_echanges < ECHANGES_AVANT_PROPOSITION:
         return None
     matiere = profile.get("matiere")
     if not matiere:
@@ -85,6 +99,22 @@ def phase_a_proposer(profile, nb_echanges, now=None):
     return "debut"
 
 
+def texte_reprise(chapitre, matiere_libelle):
+    """« La derniere fois, tu travaillais X. » Chapitre si on le connait, matiere sinon, rien du tout si
+    on n'a ni l'un ni l'autre : une phrase vague ou fausse coute plus qu'un silence."""
+    if chapitre:
+        return REPRISE_CHAPITRE.format(chapitre=str(chapitre)[:80])
+    if matiere_libelle:
+        return REPRISE_MATIERE.format(matiere=matiere_libelle)
+    return ""
+
+
+def chapitre_en_cours(etat, matiere):
+    """Chapitre du cycle en cours dans la matiere, s'il y en a un."""
+    cycle = (etat.get("mini_tests") or {}).get(matiere) or {}
+    return cycle.get("chapitre") or ""
+
+
 def derniere_question(texte):
     """Derniere question posee par Akili (« Peux-tu me dire la derivee de f(x) = x² + 3x + 5 ? »), a reposer
     apres le test : sans elle, l'eleve ne savait plus ou il en etait (test du 8 oct.)."""
@@ -93,7 +123,7 @@ def derniere_question(texte):
     return questions[-1][:300] if questions else ""
 
 
-def proposer(profile, phase, now=None, reprise=""):
+def proposer(profile, phase, now=None, reprise="", au_demarrage=False):
     """Enregistre la proposition dans le profil et renvoie le texte a envoyer avec les boutons."""
     matiere = profile["matiere"]
     cycles = profile.setdefault("mini_tests", {})
@@ -107,7 +137,7 @@ def proposer(profile, phase, now=None, reprise=""):
                             "cree_le": (now or datetime.now(timezone.utc)).isoformat()}
     if phase == "fin":
         return PROPOSITION_FIN.format(chapitre=cycle.get("chapitre") or "ce chapitre")
-    return PROPOSITION_DEBUT
+    return PROPOSITION_DEBUT_DEMARRAGE if au_demarrage else PROPOSITION_DEBUT
 
 
 def questions_valides(donnees):

@@ -3512,7 +3512,12 @@ def journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve,
         or not derniere
         or now - derniere > timedelta(minutes=SESSION_INACTIVITE_MINUTES)
     ):
-        session = {"conversation_key": conversation_key, "debut": now.isoformat(), "messages": [], "nb_echanges": 0}
+        # La seance precedente est effacee par celle-ci : on en garde de quoi dire a l'eleve ou il
+        # s'etait arrete au prochain message (reprise de debut de seance, 31 oct.).
+        precedente = session or {}
+        session = {"conversation_key": conversation_key, "debut": now.isoformat(), "messages": [], "nb_echanges": 0,
+                   "precedente_matiere": precedente.get("matiere") or "",
+                   "precedente_fin": precedente.get("derniere_activite") or ""}
 
     messages = list(session.get("messages") or [])
     messages.append({"role": "user", "content": str(texte_eleve or "")[:1000]})
@@ -3909,6 +3914,62 @@ def sauver_etat_mini_test(phone, etat):
 
 
 _jour_actif_note = {}
+_reprise_notee = {}
+
+
+def reprise_debut_de_seance(phone, profile, session):
+    """Premier message d'une nouvelle journee : rappelle ou l'eleve s'etait arrete, et profite de ce
+    moment pour proposer le mini-test. Vrai si un message est parti.
+
+    Pourquoi ici et plus seulement en fin de seance : au 31 oct., sur 1 564 cycles ou un mini-test a ete
+    propose apres le bilan, 280 tests de debut ont ete faits (18 %) et 4 tests de fin. Le test arrivait
+    quand l'eleve s'en allait. Au premier message du jour, il vient d'arriver.
+    """
+    try:
+        session = session or {}
+        if int(session.get("nb_echanges", 0)) != 1 or not mini_test_eligible(profile):
+            return False
+        fin_precedente = parse_datetime(session.get("precedente_fin"))
+        if not fin_precedente:
+            return False  # premiere seance de l'eleve : rien a rappeler
+        now = datetime.now(timezone.utc)
+        if fin_precedente.date() >= now.date():
+            return False  # deja venu aujourd'hui
+        cle = (phone, mini_test.aujourd_hui(now))
+        if _reprise_notee.get(phone) == cle:
+            return False
+        _reprise_notee[phone] = cle
+
+        matiere = session.get("precedente_matiere") or (profile or {}).get("matiere") or ""
+        etat = charger_etat_mini_test(phone, profile)
+        if etat is None:
+            return False
+        chapitre = mini_test.chapitre_en_cours(etat, matiere)
+        rappel = mini_test.texte_reprise(chapitre, libelle_matiere(matiere) if matiere else "")
+        if not rappel:
+            return False
+
+        etat["matiere"] = matiere
+        phase = mini_test.phase_a_proposer(etat, 0, now=now, au_demarrage=True) if matiere else None
+        if phase:
+            texte = rappel + " " + mini_test.proposer(etat, phase, now=now, au_demarrage=True)
+            if not send_whatsapp_boutons(phone, texte, mini_test.BOUTONS_PROPOSITION):
+                return False
+            sauver_etat_mini_test(phone, etat)
+            save_whatsapp_event(phone, "outbound", "[reprise] " + texte, profile,
+                                extra={"processing_stage": f"reprise_mini_test_{phase}"})
+            print(f"REPRISE_SEANCE avec mini-test phase={phase} chapitre={bool(chapitre)}", flush=True)
+            return True
+
+        texte = rappel + mini_test.REPRISE_SEULE
+        send_whatsapp(phone, texte, allow_audio=False)
+        save_whatsapp_event(phone, "outbound", "[reprise] " + texte, profile,
+                            extra={"processing_stage": "reprise_simple"})
+        print(f"REPRISE_SEANCE simple chapitre={bool(chapitre)}", flush=True)
+        return True
+    except Exception as e:
+        print(f"Erreur reprise_debut_de_seance: {repr(e)}", flush=True)
+        return False
 
 
 def mini_test_jour_actif(phone, profile):
@@ -3954,6 +4015,17 @@ def proposer_mini_test_fin_de_seance(phone, profile, session):
     except Exception as e:
         print(f"Erreur proposer_mini_test_fin_de_seance: {repr(e)}", flush=True)
         return False
+
+
+# Depuis le 31 oct. (0119), le test est propose au premier message de la journee suivante
+# (reprise_debut_de_seance), plus apres le bilan : 18 % de tests de debut faits, 1,4 % de tests de fin.
+MINI_TEST_EN_FIN_DE_SEANCE = False
+
+
+def mini_test_apres_bilan(phone, profile, session):
+    if not MINI_TEST_EN_FIN_DE_SEANCE:
+        return False
+    return proposer_mini_test_fin_de_seance(phone, profile, session)
 
 
 def generer_mini_test(phone, profile, test, etat=None):
@@ -4506,9 +4578,9 @@ def envoyer_fin_de_session(phone, source="au_revoir"):
         # Controle qualite du 13 oct. : apres « Tu as fait une pause », la question de la ville ou les boutons
         # d'avis coupaient l'exercice que l'eleve allait reprendre. Seulement l'invitation (une fois) ou le test.
         if not maybe_send_marketing_consent_prompt(phone):
-            proposer_mini_test_fin_de_seance(phone, profil, session)
+            mini_test_apres_bilan(phone, profil, session)
     elif (not maybe_send_marketing_consent_prompt(phone) and not demander_ville_ecole_si_besoin(phone)
-            and not proposer_mini_test_fin_de_seance(phone, profil, session)):
+            and not mini_test_apres_bilan(phone, profil, session)):
         demander_avis_seance(phone)
     print(f"FIN_SESSION envoyee source={source} echanges={session.get('nb_echanges')}", flush=True)
     return True
@@ -5607,6 +5679,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         retenir_document_comme_enonce(phone, profile, conversation_key, media_file, type_examen, serie, mode)
     if compter_activation:
         mini_test_jour_actif(phone, profile)
+        reprise_debut_de_seance(phone, profile, session)
 
     print(f"WHATSAPP_AUDIO_REPLY reply_audio={reply_audio}", flush=True)
 
