@@ -39,6 +39,8 @@ class RevisionTests(unittest.TestCase):
                                        matiere="Mathématiques", serie="F1", type_examen="BAC_TECHNIQUE",
                                        classe="PREMIERE")
         self.assertIn("Petit défi", res["reponse"])
+        self.assertIn(res["bonne_reponse"], ("a", "b", "c"))
+        self.assertIn(f"placee en {res['bonne_reponse']}", modele.prompts[0])
         prompt = modele.prompts[0]
         self.assertIn("relation de Chasles", prompt)
         self.assertIn("BAC_TECHNIQUE F1 PREMIERE", prompt)

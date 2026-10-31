@@ -2050,16 +2050,18 @@ def revision_lendemain(
         if not lignes:
             return {"error": "Historique vide"}
         niveau = " ".join(x for x in [type_examen or "", serie or "", classe or ""] if x)
+        bonne_lettre = random.choice('abc')
         prompt = (
             f"Tu es Akili, tuteur de l'eleve (matiere : {matiere or 'non precisee'}, niveau : {niveau}).\n\n"
-            f"{REVISION_CONSIGNES.replace('LETTRE_PLACEHOLDER', random.choice('abc'))}\n\nBILAN DE LA SEANCE D'HIER :\n{(bilan or '')[:2000]}\n\n"
+            f"{REVISION_CONSIGNES.replace('LETTRE_PLACEHOLDER', bonne_lettre)}\n\nBILAN DE LA SEANCE D'HIER :\n{(bilan or '')[:2000]}\n\n"
             "HISTORIQUE DE LA SEANCE D'HIER :\n" + "\n".join(lignes)
         )
         texte = generer_texte_gemini(prompt, "Revision")
         if not texte:
             return {"error": "Revision vide"}
         print(f"REVISION_LENDEMAIN matiere={matiere} messages={len(lignes)}", flush=True)
-        return {"reponse": texte}
+        # La lettre demandee pour la bonne reponse : le bot la garde pour corriger l'eleve lui-meme (0120).
+        return {"reponse": texte, "bonne_reponse": bonne_lettre}
     except Exception as e:
         print(f"❌ Erreur revision-lendemain ({type(e).__module__}.{type(e).__name__}) : {e}", flush=True)
         return {"error": f"Erreur lors de la revision : {str(e)}"}

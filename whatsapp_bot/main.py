@@ -4394,7 +4394,8 @@ def session_eligible_revision(revision):
     )
 
 
-def generer_revision(session, profile):
+def generer_revision(session, profile, details=None):
+    """details : dictionnaire rempli avec la lettre de la bonne reponse (« a », « b » ou « c »), si l'API la donne."""
     try:
         res = requests.post(
             AKILI_REVISION_URL,
@@ -4408,7 +4409,11 @@ def generer_revision(session, profile):
             },
             timeout=90,
         )
-        texte = (res.json().get("reponse") or "").strip()
+        donnees = res.json()
+        texte = (donnees.get("reponse") or "").strip()
+        lettre = str(donnees.get("bonne_reponse") or "").strip().lower()
+        if details is not None and lettre in ("a", "b", "c"):
+            details["bonne_reponse"] = lettre
         if not texte:
             print(f"REVISION reponse vide: {res.text[:200]}", flush=True)
         return texte
@@ -4446,7 +4451,33 @@ def correction_est_juste(reponse_akili):
     return None
 
 
-def noter_reponse_revision(phone, profile, reponse_akili, now=None):
+LETTRE_SEULE = re.compile(r"^(?:(?:LA |MA )?(?:REPONSE|OPTION|CHOIX|PROPOSITION|C EST|JE PENSE|JE CHOISIS|JE DIRAIS) )?([ABC])$")
+
+
+def lettre_choisie(texte_eleve):
+    """« b », « B. », « réponse c », « c) » -> la lettre ; None si l'élève a répondu autrement (mots, calcul)."""
+    if not texte_eleve or len(str(texte_eleve)) > 30:
+        return None
+    m = LETTRE_SEULE.match(normalize_for_match(str(texte_eleve)))
+    return m.group(1).lower() if m else None
+
+
+def juger_reponse_revision(attente, texte_eleve, reponse_akili):
+    """(juste, methode). Depuis le 31 oct. (0120), le QCM est corrige avec la lettre gardee a l'envoi : jusqu'ici
+    la correction se lisait dans les premiers mots d'Akili et 58 % des reponses (717) restaient sans verdict.
+    Si les deux lectures se contredisent, aucun verdict : mieux vaut ne pas noter que noter faux."""
+    selon_akili = correction_est_juste(reponse_akili)
+    bonne = str((attente or {}).get("bonne_reponse") or "").lower()
+    lettre = lettre_choisie(texte_eleve)
+    if bonne in ("a", "b", "c") and lettre:
+        juste = lettre == bonne
+        if selon_akili is not None and selon_akili != juste:
+            return None, "conflit"
+        return juste, "lettre"
+    return selon_akili, "texte_akili" if selon_akili is not None else "aucun"
+
+
+def noter_reponse_revision(phone, profile, reponse_akili, now=None, texte_eleve=None):
     """Premiere reponse de l'eleve dans les 24 h apres un defi de revision : repondu, et juste ou non."""
     attente = (profile or {}).get("revision_en_attente")
     if not attente:
@@ -4456,9 +4487,10 @@ def noter_reponse_revision(phone, profile, reponse_akili, now=None):
     envoyee = parse_datetime(attente.get("le"))
     if not envoyee or now - envoyee > timedelta(hours=24):
         return
+    juste, methode = juger_reponse_revision(attente, texte_eleve, reponse_akili)
     try:
         feedback_db.collection(REVISIONS_RESULTATS).document(attente["id"]).set(
-            {"repondu": True, "repondu_le": now.isoformat(), "juste": correction_est_juste(reponse_akili)}, merge=True)
+            {"repondu": True, "repondu_le": now.isoformat(), "juste": juste, "methode": methode}, merge=True)
     except Exception as e:
         print(f"Erreur noter_reponse_revision: {repr(e)}", flush=True)
 
@@ -4523,7 +4555,8 @@ def traiter_revisions_lendemain(now=None):
             continue
         if not reserver_revision(phone):
             continue
-        texte = generer_revision(revision, profile)
+        details = {}
+        texte = generer_revision(revision, profile, details)
         if not texte:
             noter_revision(phone, {"statut": "echec"})
             continue
@@ -4535,8 +4568,10 @@ def traiter_revisions_lendemain(now=None):
         try:
             feedback_db.collection(REVISIONS_RESULTATS).document(resultat_id).set({
                 "eleve": consent_document_id(phone), "matiere": revision.get("matiere"),
-                "type_examen": revision.get("type_examen"), "envoyee_le": now.isoformat(), "repondu": False})
-            profile["revision_en_attente"] = {"id": resultat_id, "le": now.isoformat()}
+                "type_examen": revision.get("type_examen"), "envoyee_le": now.isoformat(), "repondu": False,
+                "bonne_reponse": details.get("bonne_reponse", "")})
+            profile["revision_en_attente"] = {"id": resultat_id, "le": now.isoformat(),
+                                              "bonne_reponse": details.get("bonne_reponse", "")}
             sauver_etat_whatsapp(phone, profile)
         except Exception as e:
             print(f"Erreur resultat revision: {repr(e)}", flush=True)
@@ -5671,7 +5706,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         print(f"ENONCE retenu (exercice propose par Akili, {len(exercice_akili)} car.)", flush=True)
     sauver_historique_conv(conversation_key, conversations[conversation_key])
     session = journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve, recu)
-    noter_reponse_revision(phone, profile, recu)
+    noter_reponse_revision(phone, profile, recu, texte_eleve=texte_eleve)
 
     send_whatsapp(phone, reponse, limit=send_limit, add_continuation=continuation)
     send_vector_formula_if_needed(phone, text + "\n" + reponse)
