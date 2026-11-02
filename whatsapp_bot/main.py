@@ -3443,7 +3443,8 @@ def est_demande_changement_matiere(text, matiere_actuelle=""):
         return (not suite or bool(citee)
                 or re.fullmatch(r"(?:CONTINUER|CA|RIEN|CETTE MATIERE|DE CETTE MATIERE)(?: .*)?", suite) is not None)
     if re.search(r"(?<![A-Z0-9])" + VERBES_PASSAGE + r"(?![A-Z0-9])", msg):
-        return autre_matiere or has_expr(msg, "REDACTION")
+        # « passons directement a la redaction » en seance de francais reste du francais (controle qualite du 2 nov.).
+        return autre_matiere or (has_expr(msg, "REDACTION") and not actuelle.startswith("FRANCAIS"))
     return False
 
 
@@ -3975,6 +3976,9 @@ def reprise_debut_de_seance(phone, profile, session):
         _reprise_notee[phone] = cle
 
         matiere = session.get("precedente_matiere") or (profile or {}).get("matiere") or ""
+        actuelle = (profile or {}).get("matiere") or ""
+        if actuelle and matiere and actuelle != matiere:
+            return False  # l'eleve vient de changer de matiere : parler de l'ancienne serait faux (controle du 2 nov.)
         etat = charger_etat_mini_test(phone, profile)
         if etat is None:
             return False

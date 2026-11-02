@@ -70,6 +70,14 @@ class RepriseTests(unittest.TestCase):
                 PHONE, profil(), seance(precedente_fin=NOW.isoformat())))
         envoi.assert_not_called()
 
+    def test_rien_si_l_eleve_a_change_de_matiere(self):
+        p = profil()
+        p["matiere"] = "ANGLAIS"
+        with mock.patch.object(main, "charger_etat_mini_test", return_value=self._etat()), \
+             mock.patch.object(main, "send_whatsapp") as envoi:
+            self.assertFalse(main.reprise_debut_de_seance(PHONE, p, seance(precedente_matiere="HG")))
+        envoi.assert_not_called()
+
     def test_rien_a_la_toute_premiere_seance(self):
         with mock.patch.object(main, "charger_etat_mini_test", return_value=self._etat()), \
              mock.patch.object(main, "send_whatsapp") as envoi:
@@ -133,3 +141,11 @@ class TexteRepriseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RedactionEnFrancaisTests(unittest.TestCase):
+    def test_redaction_en_francais_n_est_pas_un_changement_de_matiere(self):
+        self.assertFalse(main.est_demande_changement_matiere("Stp passons directement a la redaction", "FRANCAIS"))
+
+    def test_redaction_depuis_une_autre_matiere_reste_un_changement(self):
+        self.assertTrue(main.est_demande_changement_matiere("allons sur la redaction", "MATHS"))
