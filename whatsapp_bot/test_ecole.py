@@ -59,6 +59,33 @@ class ModuleTests(unittest.TestCase):
         lignes, erreurs = ecole.lire_liste("role;classe\neleve;2nde C\n", "TST", set(), random.Random(3))
         self.assertEqual((len(lignes), erreurs), (1, []))
 
+    def test_rapport_eleves_et_classeur(self):
+        import os, tempfile
+        codes = [{"code": "TST-AAAA1", "role": "eleve", "classe": "Tle D", "eleve_hash": "h1"},
+                 {"code": "TST-AAAA2", "role": "eleve", "classe": "Tle D", "eleve_hash": "h2"},
+                 {"code": "TST-AAAA3", "role": "eleve", "classe": "Tle D"},
+                 {"code": "TST-OFF22", "role": "eleve", "classe": "Tle D", "actif": False}]
+        activite = [{"code": "TST-AAAA1", "jour": "2026-11-03", "echanges": 4, "matieres": {"SVT": 3, "MATHS": 1}},
+                    {"code": "TST-AAAA1", "jour": "2026-11-05", "echanges": 2, "matieres": {"SVT": 2}}]
+        tests = [{"eleve": "h1", "phase": "debut", "cree_le": "2026-11-03T10:00", "score": 1, "total": 3, "matiere": "SVT", "chapitre": "Digestion"},
+                 {"eleve": "h1", "phase": "fin", "cree_le": "2026-11-06T10:00", "score": 3, "total": 3, "score_debut": 1}]
+        lignes = ecole.rapport_eleves(codes, activite, tests, [], "2026-11-02", "2026-11-08")
+        self.assertEqual([x["code"] for x in lignes], ["TST-AAAA1", "TST-AAAA2", "TST-AAAA3"])  # le code desactive n'y est pas
+        a, b, c = lignes
+        self.assertEqual((a["statut"], a["jours_actifs"], a["echanges"], a["derniere_activite"], a["progression"]),
+                         ("Actif", 2, 6, "2026-11-05", 2))
+        self.assertEqual(a["matieres_texte"], "SVT (5), Maths (1)")
+        self.assertEqual((b["statut"], c["statut"]), ("Connecté, inactif cette période", "Pas encore connecté"))
+        classes = ecole.rapport_classes(codes, None, activite, tests, [], "2026-11-02", "2026-11-08")
+        with tempfile.TemporaryDirectory() as d:
+            chemin = os.path.join(d, "rapport.xlsx")
+            ecole.ecrire_classeur(chemin, "Ecole de test", classes, lignes, "2026-11-02", "2026-11-08")
+            import openpyxl
+            wb = openpyxl.load_workbook(chemin)
+            self.assertEqual(wb.sheetnames, ["Par classe", "Par élève (code)", "À reprendre en classe"])
+            self.assertEqual(wb["Par élève (code)"].max_row, 4)
+            self.assertEqual(wb["Par classe"]["A2"].value, "Tle D")
+
     def test_rapport(self):
         codes = [
             {"code": "TST-AAAA1", "role": "eleve", "classe": "Tle D", "eleve_hash": "h1"},
@@ -167,7 +194,7 @@ class ParcoursTests(Base):
         self.assertEqual((self.etat["ecole_id"], self.etat["code_eleve"], self.etat["classe_ecole"]), ("TST", CODE, "Tle D"))
         self.assertEqual(self.etat["nom_ecole"], "Ecole de test")
         self.assertEqual(self.db.docs[ecole.COLLECTION_CODES][CODE]["eleve_hash"], HASH)
-        self.assertIn("tu es en Tle D à Ecole de test", self.envoyes[-1])
+        self.assertIn("tu es en Tle D (Ecole de test)", self.envoyes[-1])
         self.assertEqual(self.listes[-1], ("matiere", "D"))     # il ne lui reste qu'a choisir sa matiere
         self.assertEqual(self.etat["onboarding_step"], "matiere")
 

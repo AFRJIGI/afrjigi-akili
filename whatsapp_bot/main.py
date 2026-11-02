@@ -5311,8 +5311,8 @@ def activer_code_ecole(phone, profile, code):
                     "user_type": profile.get("user_type") or "ELEVE"})
     for cle in ("pending_question", "pending_question_display"):
         profile.pop(cle, None)
-    accueil = (f"C'est enregistré : tu es en {classe} à {nom_ecole} (code {code}). "
-               "Ton école pourra voir comment tu travailles avec Akili.")
+    accueil = (f"C'est enregistré : tu es en {classe} ({nom_ecole}), code {code}. "
+               "Ton établissement pourra voir comment tu travailles avec Akili.")
     matiere_ok = (profile.get("matiere_confirmed") and profile.get("matiere") and not nouveau_niveau
                   and matiere_proposee(profile, profile["matiere"]))
     if matiere_ok:

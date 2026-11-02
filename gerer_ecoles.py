@@ -6,7 +6,7 @@
   python3 gerer_ecoles.py lister --ecole LKU
   python3 gerer_ecoles.py reinitialiser LKU-K7M4Q          # eleve qui change de telephone
   python3 gerer_ecoles.py desactiver LKU-K7M4Q
-  python3 gerer_ecoles.py rapport --ecole LKU [--jours 7] [--sortie rapport.txt]
+  python3 gerer_ecoles.py rapport --ecole LKU [--jours 7] [--sortie rapport.xlsx | rapport.txt]
 
 Liste remise par l'ecole (CSV, SANS NOM d'eleve) : colonnes role (eleve|prof), classe (eleve), classes
 (prof, separees par ;), matieres (prof, codes Akili separes par ;), nom (prof, facultatif), code (facultatif :
@@ -159,8 +159,17 @@ def main(argv=None):
         tests = [d.to_dict() for d in db.collection("mini_tests").stream() if (d.to_dict() or {}).get("eleve") in hashes]
         revisions = [d.to_dict() for d in db.collection("revisions_resultats").stream() if (d.to_dict() or {}).get("eleve") in hashes]
         classes = ecole.rapport_classes(codes, None, activite, tests, revisions, du, au)
-        texte = ecole.texte_rapport(ecole_doc.get("nom") or args.ecole, classes, du, au)
-        if args.sortie:
+        nom = ecole_doc.get("nom") or args.ecole
+        texte = ecole.texte_rapport(nom, classes, du, au)
+        if args.sortie and args.sortie.lower().endswith(".xlsx"):
+            eleves = ecole.rapport_eleves(codes, activite, tests, revisions, du, au)
+            try:
+                ecole.ecrire_classeur(args.sortie, nom, classes, eleves, du, au)
+            except ImportError:
+                sys.exit("Il manque openpyxl : pip install --user openpyxl, puis relancer.")
+            print(f"Classeur écrit : {args.sortie}")
+            print(texte)
+        elif args.sortie:
             Path(args.sortie).write_text(texte, encoding="utf-8")
             print(f"Rapport écrit : {args.sortie}")
         else:

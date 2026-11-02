@@ -254,3 +254,106 @@ def texte_rapport(nom_ecole, classes, du, au):
 def periode(jours, maintenant=None):
     fin = (maintenant or datetime.now(timezone.utc)).date()
     return (fin - timedelta(days=jours - 1)).isoformat(), fin.isoformat()
+
+
+# ─── Rapport par eleve (code) et classeur Excel pour la direction ─────────────
+
+MATIERES = {"MATHS": "Maths", "PC": "Physique-Chimie", "SVT": "SVT", "FRANCAIS": "Français", "FRENCH": "Français",
+            "PHILO": "Philosophie", "HG": "Histoire-Géo", "ANGLAIS": "Anglais", "ALLEMAND": "Allemand",
+            "ESPAGNOL": "Espagnol", "EDHC": "EDHC"}
+
+
+def libelle_matiere(code):
+    return MATIERES.get(code, str(code).replace("_", " ").capitalize())
+
+
+def rapport_eleves(codes, activite, mini_tests, revisions, du, au):
+    """Une ligne par code eleve : classe, connecte ou non, activite de la periode, tests, revisions.
+    Les noms n'existent pas dans Akili : l'ecole relie elle-meme le code a l'eleve."""
+    lignes, par_hash = {}, {}
+    for c in codes:
+        if c.get("role") != ROLE_ELEVE or c.get("actif", True) is False:
+            continue
+        lignes[c["code"]] = {
+            "code": c["code"], "classe": c.get("classe") or "?", "connecte": bool(c.get("eleve_hash")),
+            "jours_actifs": 0, "echanges": 0, "matieres": {}, "derniere_activite": "",
+            "tests_debut": 0, "tests_fin": 0, "progression": None, "revisions": 0, "revisions_justes": 0}
+        if c.get("eleve_hash"):
+            par_hash[c["eleve_hash"]] = c["code"]
+    for a in activite:
+        ligne = lignes.get(a.get("code"))
+        jour = _jour(a.get("jour"))
+        if not ligne or not a.get("echanges") or not (du <= jour <= au):
+            continue
+        ligne["jours_actifs"] += 1
+        ligne["echanges"] += int(a["echanges"])
+        ligne["derniere_activite"] = max(ligne["derniere_activite"], jour)
+        for m, n in (a.get("matieres") or {}).items():
+            ligne["matieres"][m] = ligne["matieres"].get(m, 0) + int(n)
+    for t in mini_tests:
+        ligne = lignes.get(par_hash.get(t.get("eleve")))
+        if not ligne or not (du <= _jour(t.get("cree_le")) <= au):
+            continue
+        if t.get("phase") == "debut":
+            ligne["tests_debut"] += 1
+        else:
+            ligne["tests_fin"] += 1
+            if t.get("score_debut") is not None:
+                ligne["progression"] = int(t.get("score", 0)) - int(t["score_debut"])
+    for r in revisions:
+        ligne = lignes.get(par_hash.get(r.get("eleve")))
+        if not ligne or not (du <= _jour(r.get("envoyee_le")) <= au) or not r.get("repondu") or r.get("juste") is None:
+            continue
+        ligne["revisions"] += 1
+        ligne["revisions_justes"] += 1 if r["juste"] else 0
+    for ligne in lignes.values():
+        top = sorted(ligne["matieres"].items(), key=lambda x: -x[1])[:2]
+        ligne["matieres_texte"] = ", ".join(f"{libelle_matiere(m)} ({n})" for m, n in top)
+        if not ligne["connecte"]:
+            ligne["statut"] = "Pas encore connecté"
+        elif ligne["echanges"] == 0:
+            ligne["statut"] = "Connecté, inactif cette période"
+        else:
+            ligne["statut"] = "Actif"
+    return sorted(lignes.values(), key=lambda x: (x["classe"], x["code"]))
+
+
+def ecrire_classeur(chemin, nom_ecole, classes, eleves, du, au):
+    """Classeur Excel pour la direction : resume par classe, une ligne par code, chapitres a reprendre."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    wb = Workbook()
+    entete = PatternFill("solid", fgColor="1F4E79")
+
+    def feuille(ws, titres, largeurs, lignes):
+        ws.append(titres)
+        for i, (cellule, l) in enumerate(zip(ws[1], largeurs), 1):
+            cellule.fill, cellule.font = entete, Font(bold=True, color="FFFFFF")
+            cellule.alignment = Alignment(wrap_text=True, vertical="center")
+            ws.column_dimensions[chr(64 + i)].width = l
+        for ligne in lignes:
+            ws.append(ligne)
+        ws.freeze_panes = "A2"
+
+    r = wb.active
+    r.title = "Par classe"
+    feuille(r, ["Classe", "Codes", "Connectés", "% connectés", "Actifs sur la période", "Échanges",
+                "Tests de début", "Tests de fin", "Progression moyenne (sur 3)", "Révisions justes"],
+            [14, 9, 11, 12, 14, 11, 12, 12, 16, 16],
+            [[c["classe"], c["codes"], c["lies"], round(100 * c["lies"] / c["codes"]) if c["codes"] else 0,
+              c["actifs"], c["echanges"], c["tests_debut"], c["tests_fin"], c["gain_moyen"],
+              f"{c['revisions_justes']}/{c['revisions']}" if c["revisions"] else ""] for c in classes])
+    r["A%d" % (r.max_row + 2)] = f"{nom_ecole} — période du {du} au {au}"
+    e = wb.create_sheet("Par élève (code)")
+    feuille(e, ["Classe", "Code", "Statut", "Jours actifs", "Échanges", "Dernière activité", "Matières travaillées",
+                "Tests début", "Tests fin", "Progression (sur 3)", "Révisions justes"],
+            [12, 13, 28, 10, 10, 16, 34, 10, 10, 14, 14],
+            [[x["classe"], x["code"], x["statut"], x["jours_actifs"], x["echanges"], x["derniere_activite"],
+              x["matieres_texte"], x["tests_debut"], x["tests_fin"], x["progression"],
+              f"{x['revisions_justes']}/{x['revisions']}" if x["revisions"] else ""] for x in eleves])
+    ch = wb.create_sheet("À reprendre en classe")
+    feuille(ch, ["Classe", "Matière", "Chapitre", "Réussite au test de début", "Nombre d'élèves"],
+            [12, 18, 40, 20, 14],
+            [[c["classe"], libelle_matiere(m), chap, f"{pct} %", n]
+             for c in classes for m, chap, pct, n in c["chapitres_faibles"]])
+    wb.save(chemin)
