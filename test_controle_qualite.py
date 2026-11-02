@@ -204,3 +204,11 @@ class DepuisTests(unittest.TestCase):
 
     def test_autre_matiere_attendue(self):
         self.assertIn("ce n'est pas « mauvaise_matiere »", cq.GRILLE)
+
+
+class EnseignantIgnoreTests(unittest.TestCase):
+    def test_conversation_en_mode_enseignant_non_relue(self):
+        msgs = [dict(msg("2250100000009", d, x, i), mode="enseignant") for i, (d, x) in enumerate([
+            ("inbound", "Donne un sujet"), ("outbound", "Voici un sujet"), ("inbound", "merci"),
+            ("outbound", "Avec plaisir")], 1)]
+        self.assertNotIn("2250100000009", cq.regrouper(msgs))

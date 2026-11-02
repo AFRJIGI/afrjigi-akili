@@ -6122,6 +6122,24 @@ FILLER_GREETING_WORDS = {
 }
 
 
+VALIDATION_EN_TETE = re.compile(r"^\s*(?:C'est exact|C’est exact|Exact|C'est correct|C’est correct|Bonne réponse|C'est bien ça)\s*[!.]*\s*",
+                                re.IGNORECASE)
+CORRECTION_DANS_LA_SUITE = re.compile(
+    r"(?:la bonne réponse (?:est|serait|était)|la réponse correcte|la bonne option (?:est|serait)|"
+    r"en réalité|ce n'est pas (?:la bonne|correct)|ce n’est pas (?:la bonne|correct))",
+    re.IGNORECASE)
+
+
+def retirer_validation_contradictoire(text):
+    """« C'est exact ! » suivi d'une correction (controle qualite du 2 nov. : l'eleve repond B, Akili ecrit
+    « C'est exact ! » puis donne A). Si la suite corrige, on remplace l'en-tete par une formule neutre."""
+    text = str(text or "")
+    debut = VALIDATION_EN_TETE.match(text)
+    if debut and CORRECTION_DANS_LA_SUITE.search(text[debut.end():]):
+        return "Pas tout à fait. " + text[debut.end():].lstrip()
+    return text
+
+
 def strip_filler_opening(text):
     """Supprime les phrases d'accroche/compliment en debut de reponse (garde-fou code, en plus du prompt).
 
@@ -6421,6 +6439,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
                 raise ValueError("Réponse Akili vide")
             reponse_text = "Désolé, je n'ai pas pu répondre."
         reponse_text = strip_filler_opening(reponse_text)
+        reponse_text = retirer_validation_contradictoire(reponse_text)
         if return_details:
             return {
                 "text": reponse_text,

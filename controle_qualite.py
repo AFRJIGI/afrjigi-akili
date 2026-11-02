@@ -155,6 +155,9 @@ def regrouper(messages):
         liste.sort(key=lambda m: m.get("created_at", ""))
         eleve = [m for m in liste if m.get("direction") == "inbound"]
         akili = [m for m in liste if m.get("direction") == "outbound" and not est_automatique(m.get("text"))]
+        # Espace enseignant : ce n'est pas un eleve qui travaille, le reviewer le jugeait a tort (controle du 2 nov.).
+        if any(m.get("mode") == "enseignant" for m in liste[-3:]):
+            continue
         if len(eleve) >= MIN_MESSAGES_ELEVE and akili:
             retenues[phone] = liste
     return retenues
