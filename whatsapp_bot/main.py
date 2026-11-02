@@ -19,6 +19,7 @@ import tableau_de_bord
 from template_replies import retention_template_text
 import pedagogical_consent as pedagogical
 import espace_enseignant as prof
+import ecole as ecoles
 import notation
 import mini_test
 import programme
@@ -3533,7 +3534,25 @@ def journal_session_ajouter(phone, profile, conversation_key, mode, texte_eleve,
         "mode": mode or profile.get("mode") or "etude",
     })
     sauver_session_bilan(phone, session)
+    noter_activite_ecole(profile)
     return session
+
+
+def noter_activite_ecole(profile, now=None):
+    """Un echange de plus pour un eleve d'ecole partenaire (rapport par classe). Rien pour les autres eleves."""
+    profile = profile or {}
+    if not profile.get("ecole_id") or not profile.get("code_eleve"):
+        return
+    now = now or datetime.now(timezone.utc)
+    jour = now.strftime("%Y-%m-%d")
+    matiere = str(profile.get("matiere") or "AUTRE")
+    try:
+        feedback_db.collection(ecoles.COLLECTION_ACTIVITE).document(f"{profile['code_eleve']}__{jour}").set({
+            "ecole": profile["ecole_id"], "code": profile["code_eleve"], "classe": profile.get("classe_ecole") or "",
+            "jour": jour, "echanges": firestore.Increment(1), "matieres": {matiere: firestore.Increment(1)},
+        }, merge=True)
+    except Exception as e:
+        print(f"Erreur noter_activite_ecole: {repr(e)}", flush=True)
 
 
 LIBELLES_MATIERES = {
@@ -4065,6 +4084,9 @@ def enregistrer_resultat_mini_test(phone, profile, resultat):
     resultat.update({"eleve": consent_document_id(phone), "type_examen": profile.get("type_examen"),
                      "serie": profile.get("serie"), "classe": profile.get("classe") or "",
                      "mode": profile.get("mode") or "etude"})
+    if profile.get("ecole_id"):
+        resultat.update({"ecole_id": profile["ecole_id"], "code_eleve": profile.get("code_eleve") or "",
+                         "classe_ecole": profile.get("classe_ecole") or ""})
     try:
         feedback_db.collection(mini_test.COLLECTION).add(resultat)
     except Exception as e:
@@ -5238,6 +5260,73 @@ def enregistrer_classes_enseignant(phone, profile, text, demande=False):
     send_whatsapp(phone, message, allow_audio=False)
     envoyer_menu_enseignant(phone, profile)
     return "enseignant_classes"
+
+
+def activer_code_ecole(phone, profile, code):
+    """Code d'une ecole partenaire (LKU-K7M4Q) ecrit par un eleve ou un professeur. Renvoie la raison du traitement."""
+    try:
+        reference = feedback_db.collection(ecoles.COLLECTION_CODES).document(code)
+        snapshot = reference.get()
+        data = (snapshot.to_dict() or {}) if snapshot.exists else {}
+        ecole_doc = {}
+        if data:
+            ecole_snap = feedback_db.collection(ecoles.COLLECTION_ECOLES).document(data.get("ecole") or ecoles.ecole_du_code(code)).get()
+            ecole_doc = (ecole_snap.to_dict() or {}) if ecole_snap.exists else {}
+    except Exception as e:
+        print(f"Erreur activer_code_ecole: {repr(e)}", flush=True)
+        send_whatsapp(phone, ecoles.MESSAGE_ERREUR, allow_audio=False)
+        return "ecole_code_erreur"
+    if not data or data.get("actif", True) is False or ecole_doc.get("actif", True) is False:
+        send_whatsapp(phone, ecoles.MESSAGE_CODE_INVALIDE, allow_audio=False)
+        return "ecole_code_invalide"
+    ecole_id = data.get("ecole") or ecoles.ecole_du_code(code)
+    nom_ecole = ecole_doc.get("nom") or ecole_id
+    if data.get("role") == ecoles.ROLE_PROF:
+        profile.update({"ecole_id": ecole_id, "nom_ecole": nom_ecole})
+        return activer_code_enseignant(phone, profile, code)
+    empreinte = consent_document_id(phone)
+    if data.get("eleve_hash") and data["eleve_hash"] != empreinte:
+        send_whatsapp(phone, ecoles.MESSAGE_CODE_DEJA_UTILISE, allow_audio=False)
+        return "ecole_code_deja_utilise"
+    try:
+        champs = ecoles.profil_de_classe(data.get("classe") or "")
+    except ValueError:
+        print(f"Erreur activer_code_ecole: classe illisible {data.get('classe')!r} pour {code}", flush=True)
+        send_whatsapp(phone, ecoles.MESSAGE_ERREUR, allow_audio=False)
+        return "ecole_code_erreur"
+    maintenant = datetime.now(timezone.utc).isoformat()
+    if not data.get("eleve_hash"):
+        try:
+            reference.update({"eleve_hash": empreinte, "lie_le": maintenant})
+        except Exception as e:
+            print(f"Erreur liaison code ecole: {repr(e)}", flush=True)
+            send_whatsapp(phone, ecoles.MESSAGE_ERREUR, allow_audio=False)
+            return "ecole_code_erreur"
+    classe = data.get("classe") or ""
+    nouveau_niveau = (profile.get("type_examen"), profile.get("serie")) != (champs["type_examen"], champs["serie"])
+    profile.update(champs)
+    if not champs.get("classe"):
+        profile.pop("classe", None)
+    profile.update({"ecole_id": ecole_id, "code_eleve": code, "classe_ecole": classe, "nom_ecole": nom_ecole,
+                    "user_type": profile.get("user_type") or "ELEVE"})
+    for cle in ("pending_question", "pending_question_display"):
+        profile.pop(cle, None)
+    accueil = (f"C'est enregistré : tu es en {classe} à {nom_ecole} (code {code}). "
+               "Ton école pourra voir comment tu travailles avec Akili.")
+    matiere_ok = (profile.get("matiere_confirmed") and profile.get("matiere") and not nouveau_niveau
+                  and matiere_proposee(profile, profile["matiere"]))
+    if matiere_ok:
+        profile["onboarding_step"] = ""
+        terminer_inscription(phone, profile, deja_inscrit=True, silencieux=True)
+        send_whatsapp(phone, accueil + "\n\nContinue : envoie ton exercice, une photo ou le chapitre à travailler.",
+                      allow_audio=False)
+        return "ecole_code_eleve"
+    profile.pop("matiere_confirmed", None)
+    user_profiles[phone] = profile
+    sauver_etat_whatsapp(phone, profile)
+    send_whatsapp(phone, accueil, allow_audio=False)
+    demander_matiere_ou_terminer(phone, profile)
+    return "ecole_code_eleve"
 
 
 def traiter_espace_enseignant(phone, profile, text):
@@ -7002,7 +7091,9 @@ async def _receive_message_impl(request: Request):
             if test_en_cours.get("etat") == "en_cours":
                 send_whatsapp(phone, mini_test.INTERROMPU, allow_audio=False)
         print(f"SHORT_DEBUG text={text} is_short={is_short_exercise_answer(text)} is_contextual={is_contextual_exercise_answer(text)} onboarding={onboarding_step}", flush=True)
-        raison_enseignant = traiter_espace_enseignant(phone, profile, text) if media_file is None else None
+        code_ecole = ecoles.extraire_code(text) if (media_file is None and not prof.extraire_code(text)) else None
+        raison_enseignant = (activer_code_ecole(phone, profile, code_ecole) if code_ecole
+                             else traiter_espace_enseignant(phone, profile, text) if media_file is None else None)
         if raison_enseignant:
             track_inbound(raison_enseignant, user_profiles.get(phone, profile))
             return {"status": "ok", "reason": raison_enseignant}
