@@ -1792,8 +1792,23 @@ def proposer_premier_exercice_si_prevu(phone, profile):
     user_profiles[phone] = profile
     sauver_etat_whatsapp(phone, profile)
     answer_learning_request(phone, profile, DEMANDE_PREMIER_EXERCICE, compter_activation=False)
+    profil_apres = user_profiles.get(phone, profile)
+    profil_apres["premier_exercice_envoye_le"] = datetime.now(timezone.utc).isoformat()
+    user_profiles[phone] = profil_apres
+    sauver_etat_whatsapp(phone, profil_apres)
     print("PREMIER_EXERCICE propose apres l'inscription", flush=True)
     return True
+
+
+def reponse_ecrite_avant_le_premier_exercice(profile, recu_le, fenetre_s=180):
+    """Controle qualite du 2 nov. (...5584) : l'eleve tape « b » pendant que le premier exercice se prepare ;
+    le message, traite apres l'envoi de l'exercice, etait corrige comme une reponse (« C'est exact ! »).
+    Vrai si le message a ete ecrit AVANT l'envoi de l'exercice, donc sans que l'eleve l'ait vu."""
+    envoye = parse_datetime((profile or {}).get("premier_exercice_envoye_le"))
+    recu = parse_datetime(recu_le)
+    if not envoye or not recu:
+        return False
+    return recu < envoye and (envoye - recu).total_seconds() <= fenetre_s
 
 
 SERIES_INCONNUES = {"TOUTES", "", None}
@@ -7270,6 +7285,12 @@ async def _receive_message_impl(request: Request):
                 and envoyer_suite_en_attente(phone, profile, text)):
             track_inbound("suite_reponse", profile)
             return {"status": "ok", "reason": "suite_reponse"}
+
+        if (media_file is None and is_short_exercise_answer(text) and not profile.get("onboarding_step")
+                and reponse_ecrite_avant_le_premier_exercice(profile, recu_le)):
+            track_inbound("reponse_avant_premier_exercice", profile)
+            print("REPONSE_AVANT_PREMIER_EXERCICE ignoree", flush=True)
+            return {"status": "ok", "reason": "reponse_avant_premier_exercice"}
 
         if is_contextual_exercise_answer(text) and not profile.get("onboarding_step"):
             cle_en_cours = cle_conversation_profil(phone, profile)
