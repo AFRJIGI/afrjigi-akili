@@ -6145,13 +6145,33 @@ CORRECTION_DANS_LA_SUITE = re.compile(
     re.IGNORECASE)
 
 
-def retirer_validation_contradictoire(text):
+LETTRE_DANS_LA_CORRECTION = re.compile(
+    r"la bonne (?:réponse|option) (?:est|serait|était)\s*(?:la lettre|l'option|l’option|le choix)?\s*[:*(\s]*([a-e])(?![a-zà-ÿ])",
+    re.IGNORECASE)
+NEGATION_DANS_LA_SUITE = re.compile(
+    r"(?:ce n'est pas (?:la bonne|correct)|ce n’est pas (?:la bonne|correct)|en réalité)", re.IGNORECASE)
+REPONSE_UNE_LETTRE = re.compile(r"^\s*\(?([a-e])\)?[\s.!)]*$", re.IGNORECASE)
+
+
+def retirer_validation_contradictoire(text, reponse_eleve=""):
     """« C'est exact ! » suivi d'une correction (controle qualite du 2 nov. : l'eleve repond B, Akili ecrit
-    « C'est exact ! » puis donne A). Si la suite corrige, on remplace l'en-tete par une formule neutre."""
+    « C'est exact ! » puis donne A). On remplace l'en-tete par une formule neutre SEULEMENT si la suite
+    contredit vraiment l'eleve : lettre citee differente de la sienne, ou negation explicite. Quand la
+    lettre citee est la meme que celle de l'eleve, « C'est exact ! » est juste et reste (controle qualite
+    du 4 nov. : « Pas tout à fait » ajoute a tort devant une bonne reponse)."""
     text = str(text or "")
     debut = VALIDATION_EN_TETE.match(text)
-    if debut and CORRECTION_DANS_LA_SUITE.search(text[debut.end():]):
-        return "Pas tout à fait. " + text[debut.end():].lstrip()
+    if not debut:
+        return text
+    suite = text[debut.end():]
+    lettre = LETTRE_DANS_LA_CORRECTION.search(suite)
+    eleve = REPONSE_UNE_LETTRE.match(str(reponse_eleve or ""))
+    if lettre:
+        if eleve and eleve.group(1).lower() != lettre.group(1).lower():
+            return "Pas tout à fait. " + suite.lstrip()
+        return text
+    if NEGATION_DANS_LA_SUITE.search(suite):
+        return "Pas tout à fait. " + suite.lstrip()
     return text
 
 
@@ -6454,7 +6474,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
                 raise ValueError("Réponse Akili vide")
             reponse_text = "Désolé, je n'ai pas pu répondre."
         reponse_text = strip_filler_opening(reponse_text)
-        reponse_text = retirer_validation_contradictoire(reponse_text)
+        reponse_text = retirer_validation_contradictoire(reponse_text, question)
         if return_details:
             return {
                 "text": reponse_text,
