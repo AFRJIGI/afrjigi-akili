@@ -692,6 +692,27 @@ Pour une question de cours, réponds court et précis, avec un exemple concret. 
 Pas de LaTeX. Toute ta réponse doit tenir en 700 caractères au maximum."""
 
 
+def decrire_prompt(system_prompt, question, contexte_texte, matiere, mode):
+    """Une ligne de journal par appel : taille de chaque bloc et empreinte du debut du prompt.
+    Sert a comprendre pourquoi le cache de Gemini ne s'applique que dans 2 % des appels (mesure du 5 nov. :
+    11 364 tokens d'entree en moyenne). Ne change rien a ce qui est envoye au modele."""
+    import hashlib
+    empreinte = lambda t: hashlib.sha1(t.encode("utf-8")).hexdigest()[:8]
+    systeme = str(system_prompt or "")
+    # La derniere ligne du prompt systeme est la place de la bonne reponse, tiree au hasard a chaque message.
+    socle = systeme.rsplit("\n", 1)[0] if "\n" in systeme else systeme
+    q = str(question or "")
+    i_hist = q.find("HISTORIQUE RECENT")
+    i_quest = q.rfind("QUESTION REELLE DE L'ELEVE:")
+    consignes_bot = q[:i_hist] if i_hist >= 0 else (q[:i_quest] if i_quest >= 0 else "")
+    historique = q[i_hist:i_quest] if i_hist >= 0 and i_quest > i_hist else ""
+    reponse_eleve = q[i_quest:] if i_quest >= 0 else q
+    return (f"PROMPT_STRUCTURE matiere={matiere or '-'} mode={mode or '-'} systeme={len(systeme)} "
+            f"socle_hash={empreinte(socle)} debut4000_hash={empreinte(systeme[:4000])} "
+            f"consignes_bot={len(consignes_bot)} bot_hash={empreinte(consignes_bot)} "
+            f"historique={len(historique)} contexte={len(contexte_texte or '')} question={len(reponse_eleve)}")
+
+
 def niveau_bac_technique(serie, classe):
     texte = "BAC Technique"
     if (serie or "").strip():
@@ -1782,6 +1803,10 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
         # ─── 5. APPEL GEMINI 2.5 FLASH (avec retry sur quota 429) ───
         response = None
         last_error = None
+        try:
+            print(decrire_prompt(system_prompt, question, contexte_texte, matiere_propre, mode_registre), flush=True)
+        except Exception as erreur_journal:
+            print(f"PROMPT_STRUCTURE indisponible : {erreur_journal!r}", flush=True)
         debut_appel = time.time()
         for tentative in range(3):
             try:
