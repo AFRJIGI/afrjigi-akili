@@ -6149,7 +6149,10 @@ LETTRE_DANS_LA_CORRECTION = re.compile(
     r"la bonne (?:réponse|option) (?:est|serait|était)\s*(?:la lettre|l'option|l’option|le choix)?\s*[:*(\s]*([a-e])(?![a-zà-ÿ])",
     re.IGNORECASE)
 NEGATION_DANS_LA_SUITE = re.compile(
-    r"(?:ce n'est pas (?:la bonne|correct)|ce n’est pas (?:la bonne|correct)|en réalité)", re.IGNORECASE)
+    r"(?:ce n'est pas (?:la bonne|correct)|ce n’est pas (?:la bonne|correct))", re.IGNORECASE)
+# « en réalité » est retire (0127) : c'est une formule d'explication courante (« en réalité, la limite vaut… »),
+# pas une contradiction de l'élève ; il faisait remplacer « C'est exact » par « Pas tout à fait » a tort
+# (controle qualite du 4 nov., vrai/faux juste de l'élève).
 REPONSE_UNE_LETTRE = re.compile(r"^\s*\(?([a-e])\)?[\s.!)]*$", re.IGNORECASE)
 
 

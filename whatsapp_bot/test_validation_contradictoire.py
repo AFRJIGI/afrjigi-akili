@@ -20,8 +20,14 @@ class ValidationContradictoireTests(unittest.TestCase):
         self.assertEqual(main.retirer_validation_contradictoire(t), t)
 
     def test_negation_explicite_est_corrigee(self):
-        t = "C'est exact! En réalité, la masse ne change pas."
+        t = "C'est exact! Ce n'est pas la bonne réponse : la masse ne change pas."
         self.assertTrue(main.retirer_validation_contradictoire(t, "c").startswith("Pas tout à fait."))
+
+    def test_en_realite_dans_une_explication_ne_corrige_pas(self):
+        # controle qualite du 4 nov. : l'eleve repond « Faux », c'est juste, l'explication dit « en réalité »
+        t = ("C'est exact! L'affirmation 4 est bien *Fausse (F)*. Explication : pour la composée, il faudrait "
+             "connaître la limite de g en 22. En réalité, g tend vers 2026.")
+        self.assertEqual(main.retirer_validation_contradictoire(t, "Faux"), t)
 
     def test_exact_sans_correction_inchange(self):
         t = "C'est exact! Un marché de consommation écoule la production."
