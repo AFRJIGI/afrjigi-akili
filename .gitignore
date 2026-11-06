@@ -40,3 +40,8 @@ Jigi/
 
 # Exports de donnees eleves (numeros de telephone) : ne jamais publier
 whatsapp_bot/*.csv
+codes_*.csv
+profs_cca_*.csv
+maj_matieres.py
+venv_dashboard/
+*.zip
