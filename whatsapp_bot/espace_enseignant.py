@@ -76,9 +76,11 @@ def classe_vers_profil(libelle):
     niveau, serie = mots[0], (mots[1] if len(mots) > 1 else "")
     niveau = {"2NDE": "SECONDE", "2ND": "SECONDE", "2E": "SECONDE", "1E": "PREMIERE", "1RE": "PREMIERE", "TLE": "TERMINALE", "TERM": "TERMINALE", "3E": "3E", "TROISIEME": "3E",
               "6E": "6E", "5E": "5E", "4E": "4E"}.get(niveau, niveau)
-    if niveau in {"6E", "5E", "4E"} and not serie:
+    # Classes de college avec leur division (« 6ème 1 », « 3e A ») : le niveau suffit.
+    division = bool(re.fullmatch(r"[A-Z0-9]{1,2}", serie)) and niveau in {"6E", "5E", "4E", "3E"}
+    if niveau in {"6E", "5E", "4E"} and (not serie or division):
         return {"type_examen": "CLASSE_INTERMEDIAIRE", "serie": niveau, "classe": ""}
-    if niveau in {"3E", "BEPC"} and not serie:
+    if (niveau == "3E" and (not serie or division)) or (niveau == "BEPC" and not serie):
         return {"type_examen": "BEPC", "serie": "BEPC", "classe": ""}
     if serie in SERIES_TECHNIQUES and niveau in CLASSES_TECHNIQUES:
         return {"type_examen": "BAC_TECHNIQUE", "serie": serie, "classe": niveau}
@@ -110,7 +112,7 @@ def message_bienvenue(nom, resume_matieres, resume_classes):
     return (
         f"Bonjour {nom}, votre espace enseignant Akili est activé.\n"
         f"Matières : {resume_matieres}\nClasses : {resume_classes}\n\n"
-        "Merci pour les documents que vous partagez : Akili s'en sert déjà avec les élèves."
+        "Écrivez « menu prof » à tout moment pour revenir au menu, « mes classes » pour voir ou changer vos classes."
     )
 
 
