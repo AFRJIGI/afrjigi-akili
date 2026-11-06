@@ -153,7 +153,7 @@ MESSAGE_DEMANDE_SIGNALEMENT = (
 )
 MESSAGE_DEMANDE_CLASSES = (
     "Dans quelles classes enseignez-vous ? Écrivez-les séparées par des virgules.\n"
-    "Exemples : 2nde F2, 1ère F2, Tle F2 — ou : Tle D, 1ère C — ou : 3e, 4e"
+    "Exemples : 2nde F2, 1ère F2, Tle F2 — ou : Tle D, 1ère C — ou : 6ème 1, 3ème 3, 4e"
 )
 COMMANDES_CLASSES = {"MES CLASSES", "MODIFIER MES CLASSES", "CHANGER MES CLASSES", "AJOUTER UNE CLASSE"}
 COMMANDES_MENU = {"MENU PROF", "ESPACE PROF", "ESPACE ENSEIGNANT", "MENU ENSEIGNANT", "MENU PROFESSEUR"}

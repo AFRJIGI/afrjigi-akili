@@ -2733,6 +2733,7 @@ def is_multiple_choice_answer(text):
 
 
 CONTINUATION_WHATSAPP = "\n\nJe m'arrête ici. Écris *suite* pour lire la suite."
+CONTINUATION_ENSEIGNANT = "\n\nJe m'arrête ici. Écrivez *suite* pour lire la suite."
 SUITE_MAX_HEURES = 3
 MOTS_POLITESSE_SUITE = {"STP", "SVP", "S IL TE PLAIT", "S IL VOUS PLAIT", "MERCI", "AKILI", "PROF"}
 DEMANDES_DE_SUITE = {
@@ -3211,8 +3212,13 @@ def send_whatsapp(
 
     last_outbound_by_phone[dedupe_key] = (message, now_ts)
 
-    should_reply_audio = allow_audio and bool(audio_reply_context.get(str(to)))
+    profil_to = user_profiles.get(to, {}) or {}
+    espace_prof = bool(profil_to.get("enseignant_verifie")) and profil_to.get("mode_enseignant") == prof.MODE_ASSISTANT
+    # Pas d'audio pour les documents que prepare un enseignant (evaluations, corriges : trop longs a ecouter).
+    should_reply_audio = allow_audio and bool(audio_reply_context.get(str(to))) and not espace_prof
     message_parts = split_whatsapp_message(message, limit=limit, max_parts=1, add_continuation=add_continuation)
+    if espace_prof and message_parts and message_parts[-1].endswith(CONTINUATION_WHATSAPP):
+        message_parts[-1] = message_parts[-1][:-len(CONTINUATION_WHATSAPP)] + CONTINUATION_ENSEIGNANT
     suite = reste_non_envoye(message, limit=limit) if add_continuation else ""
 
     if not message_parts:
