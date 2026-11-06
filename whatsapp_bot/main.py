@@ -3952,7 +3952,15 @@ _jour_actif_note = {}
 _reprise_notee = {}
 
 
-def reprise_debut_de_seance(phone, profile, session):
+def reponse_attend_une_reponse(texte):
+    """Vrai si le message d'Akili se termine sur une question ou un QCM a repondre. 0130 : au controle du
+    5 nov., 144 des 159 reprises du jour partaient juste apres une reponse qui finissait deja par une question ;
+    l'eleve recevait deux questions d'affilee (exercice + mini-test) et perdait le fil."""
+    fin = str(texte or "").strip()[-300:]
+    return "?" in fin or "réponds" in fin.lower() or "reponds" in fin.lower()
+
+
+def reprise_debut_de_seance(phone, profile, session, reponse=""):
     """Premier message d'une nouvelle journee : rappelle ou l'eleve s'etait arrete, et profite de ce
     moment pour proposer le mini-test. Vrai si un message est parti.
 
@@ -3970,6 +3978,8 @@ def reprise_debut_de_seance(phone, profile, session):
         now = datetime.now(timezone.utc)
         if fin_precedente.date() >= now.date():
             return False  # deja venu aujourd'hui
+        if reponse_attend_une_reponse(reponse):
+            return False  # l'eleve a deja une question a traiter : pas de seconde question par-dessus
         cle = (phone, mini_test.aujourd_hui(now))
         if _reprise_notee.get(phone) == cle:
             return False
@@ -5822,7 +5832,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
         retenir_document_comme_enonce(phone, profile, conversation_key, media_file, type_examen, serie, mode)
     if compter_activation:
         mini_test_jour_actif(phone, profile)
-        reprise_debut_de_seance(phone, profile, session)
+        reprise_debut_de_seance(phone, profile, session, reponse=recu)
 
     print(f"WHATSAPP_AUDIO_REPLY reply_audio={reply_audio}", flush=True)
 
