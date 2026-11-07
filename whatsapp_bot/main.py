@@ -1939,6 +1939,19 @@ def repartir_a_zero_apres_menu(phone, profile):
         print(f"Erreur effacer contexte apres menu: {repr(e)}", flush=True)
 
 
+def envoyer_bouton_sujet_examen(phone, profile):
+    """A l'activation du mode examen : un bouton pour recevoir un sujet, sans avoir a l'ecrire."""
+    try:
+        if (not BOUTONS_EXERCICE or (profile or {}).get("mode") != "examen"
+                or (profile or {}).get("user_type") == "ENSEIGNANT"):
+            return False
+        return send_whatsapp_boutons(phone, "Prêt ? Touche le bouton pour recevoir ton sujet d'examen.",
+                                     BOUTONS_SUJET_EXAMEN)
+    except Exception as e:
+        print(f"Erreur envoyer_bouton_sujet_examen: {repr(e)}", flush=True)
+        return False
+
+
 def terminer_inscription(phone, profile, deja_inscrit=False, silencieux=False):
     """Fin de l'inscription des la matiere choisie : mode etude par defaut, la ville et
     l'ecole sont demandees plus tard (apres la premiere seance), sans bloquer l'eleve."""
@@ -1957,10 +1970,12 @@ def terminer_inscription(phone, profile, deja_inscrit=False, silencieux=False):
     if deja_inscrit:
         send_whatsapp(phone, f"C'est noté : {resume_profil(profile)}.\n\n"
                              "Envoie maintenant ton exercice, une photo, un PDF ou le chapitre à travailler.")
+        envoyer_bouton_sujet_examen(phone, profile)
     elif avec_exercice:
         send_whatsapp(phone, message_profil_pret_avec_exercice(profile))
     else:
         send_whatsapp(phone, message_profil_pret(profile))
+        envoyer_bouton_sujet_examen(phone, profile)
     return profile
 
 
@@ -2551,6 +2566,31 @@ LETTRES_GRECQUES = {
 }
 
 
+def harmoniser_numerotation(text):
+    """Numerotation reguliere sur WhatsApp (7 nov. : « 1. » et « 2. » devenaient une liste avec retrait,
+    alors que « b) », « c) » restaient colles a gauche, et « 2. a) » partageait une seule ligne).
+    - « 1. texte » devient « 1) texte » : WhatsApp ne le transforme plus en liste.
+    - Les sous-questions « b) », « c)... » qui suivent une question numerotee sont decalees pour tomber
+      sous le « a) » de « 2) a) ... »."""
+    sortie = []
+    dans_question = False
+    for ligne in str(text or "").split("\n"):
+        m = re.match(r"^[ \t]*(\d{1,2})[.)][ \t]+(\S.*)$", ligne)
+        if m and not re.match(r"^\d+[.,]\d", ligne.strip()):
+            suite = m.group(2)
+            sortie.append(f"{m.group(1)}) {suite}")
+            dans_question = True
+            continue
+        sous = re.match(r"^[ \t]*([a-h])[)][ \t]+(\S.*)$", ligne)
+        if sous and dans_question:
+            sortie.append(f"   {sous.group(1)}) {sous.group(2)}")
+            continue
+        if not ligne.strip():
+            dans_question = False
+        sortie.append(ligne)
+    return "\n".join(sortie)
+
+
 def clean_whatsapp_response(message):
     """Nettoie les reponses avant envoi WhatsApp en gardant les retours a la ligne."""
     text = str(message or "").strip()
@@ -2658,6 +2698,8 @@ def clean_whatsapp_response(message):
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r" \*\n \*", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
+    # Apres la fusion des espaces ci-dessus, sinon le retrait des sous-questions serait supprime.
+    text = harmoniser_numerotation(text)
 
     text = text.strip()
     text = text.replace(" .", ".").replace(" ,", ",").replace(" ?", "?").replace(" !", "!")
@@ -3797,7 +3839,8 @@ def send_whatsapp_boutons(to, corps, boutons):
 BOUTONS_EXERCICE = os.environ.get("WHATSAPP_BOUTONS_EXERCICE", "1") == "1"
 BOUTONS_AIDE = [("aide_indice", "Indice"), ("aide_etapes", "Voir les étapes"), ("aide_suivant", "Exercice suivant")]
 BOUTONS_AIDE_TEXTE = {
-    "aide_indice": "Donne-moi un indice pour cet exercice, sans la réponse.",
+    "aide_indice": ("Donne-moi un indice pour cet exercice : seulement la règle ou la méthode à utiliser, ou la "
+                    "première étape à faire, sans aucun résultat chiffré ni la réponse."),
     "aide_etapes": "Montre-moi les étapes de la solution de cet exercice.",
     "aide_suivant": "Propose-moi un autre exercice sur le même chapitre.",
     "examen_autre": "Propose-moi un autre sujet d'examen sur le même chapitre.",
@@ -3805,8 +3848,9 @@ BOUTONS_AIDE_TEXTE = {
 }
 BOUTONS_NAVIGATION = [("aide_suivant", "Exercice suivant"), ("nav_sujet", "Changer de sujet"), ("nav_menu", "Menu")]
 BOUTONS_EXAMEN = [("examen_autre", "Autre sujet"), ("mode_etude_oui", "Mode étude"), ("nav_menu", "Menu")]
-MESSAGE_CONSIGNE_EXAMEN = ("À toi de jouer : résous l'exercice sur ta feuille, puis envoie la photo de ta copie "
-                           "(ou écris ta réponse ici). Akili corrige et note.")
+BOUTONS_SUJET_EXAMEN = [("examen_sujet", "Donne-moi un sujet"), ("nav_menu", "Menu")]
+BOUTONS_AIDE_TEXTE["examen_sujet"] = "Donne-moi un sujet"
+MESSAGE_CONSIGNE_EXAMEN = "Quand tu as fini, envoie la photo de ta copie."
 MESSAGE_CHANGER_SUJET = ("D'accord ! Écris le chapitre que tu veux travailler (exemple : « les probabilités ») "
                          "ou envoie la photo de ton exercice.\n\nPour changer de matière, touche « Menu » "
                          "ou écris menu.")

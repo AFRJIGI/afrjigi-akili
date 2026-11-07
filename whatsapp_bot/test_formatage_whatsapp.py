@@ -18,8 +18,8 @@ class FormatageListesTests(unittest.TestCase):
             "3.  **Ouverture**\n    Tu élargis la réflexion."
         )
         sortie = envoye(texte)
-        self.assertIn("précédentes.\n2. *Réponse finale*", sortie)
-        self.assertIn("problématique.\n3. *Ouverture*", sortie)
+        self.assertIn("précédentes.\n2) *Réponse finale*", sortie)
+        self.assertIn("problématique.\n3) *Ouverture*", sortie)
 
     def test_puces_apres_un_point_d_interrogation(self):
         texte = 'Dans A = (x - 1)² - 4², dis-moi :\n*   Qui joue le rôle de "a" ?\n*   Qui joue le rôle de "b" ?'
@@ -29,7 +29,7 @@ class FormatageListesTests(unittest.TestCase):
 
     def test_liste_apres_une_phrase_simple(self):
         sortie = envoye("Deux notions clés. 1. Croissance économique\nAugmentation du PIB.\n2. Chômage\nSans emploi.")
-        self.assertIn("PIB.\n2. Chômage", sortie)
+        self.assertIn("PIB.\n2) Chômage", sortie)
 
     def test_accroche_retiree_mais_liste_intacte(self):
         texte = "Bonjour ! Excellente initiative de vouloir t'exercer. Voici l'exercice :\n1. Calcule A.\n2. Factorise A."
