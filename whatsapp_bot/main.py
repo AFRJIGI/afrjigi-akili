@@ -3791,6 +3791,37 @@ def send_whatsapp_boutons(to, corps, boutons):
         return False
 
 
+# ─── Boutons d'aide sous un exercice (7 nov.) : Indice / Voir les étapes / Exercice suivant ───
+# L'élève ne peut pas deviner qu'il doit écrire « donne-moi les étapes » : les options sont visibles sous
+# l'exercice. WHATSAPP_BOUTONS_EXERCICE=0 les désactive sans redéployer le code.
+BOUTONS_EXERCICE = os.environ.get("WHATSAPP_BOUTONS_EXERCICE", "1") == "1"
+BOUTONS_AIDE = [("aide_indice", "Indice"), ("aide_etapes", "Voir les étapes"), ("aide_suivant", "Exercice suivant")]
+BOUTONS_AIDE_TEXTE = {
+    "aide_indice": "Donne-moi un indice pour cet exercice, sans la réponse.",
+    "aide_etapes": "Montre-moi les étapes de la solution de cet exercice.",
+    "aide_suivant": "Propose-moi un autre exercice sur le même chapitre.",
+}
+
+
+def envoyer_boutons_exercice(phone, profile, recu, mode="etude", is_teacher=False, espace=False):
+    """Trois boutons sous un exercice propose par Akili (repere : « À toi d'essayer »). Jamais bloquant."""
+    try:
+        if not BOUTONS_EXERCICE or is_teacher or espace or (mode or "etude") != "etude":
+            return False
+        if "A TOI D ESSAYER" not in normalize_for_match(recu or ""):
+            return False
+        if CONTINUATION_WHATSAPP.strip() in (recu or ""):
+            return False  # reponse coupee : les boutons viendraient avant la suite
+        if not send_whatsapp_boutons(phone, "Besoin d'aide ?", BOUTONS_AIDE):
+            return False
+        save_whatsapp_event(phone, "outbound", "[boutons] Indice / Voir les étapes / Exercice suivant",
+                            profile or {}, extra={"processing_stage": "boutons_exercice"})
+        return True
+    except Exception as e:
+        print(f"Erreur envoyer_boutons_exercice: {repr(e)}", flush=True)
+        return False
+
+
 # ─── Programme personnalise de revision (voir programme.py) ───
 
 COMMANDES_ARRET_PROGRAMME = {"STOP PROGRAMME", "ARRETER PROGRAMME", "ARRETE PROGRAMME", "STOP MON PROGRAMME",
@@ -5844,6 +5875,7 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
 
     send_whatsapp(phone, reponse, limit=send_limit, add_continuation=continuation)
     send_vector_formula_if_needed(phone, text + "\n" + reponse)
+    envoyer_boutons_exercice(phone, profile, recu, mode=mode, is_teacher=is_teacher, espace=espace)
     if media_file is not None and (mode or "etude") == "etude" and not is_teacher and not espace:
         retenir_document_comme_enonce(phone, profile, conversation_key, media_file, type_examen, serie, mode)
     if compter_activation:
@@ -6988,6 +7020,10 @@ async def _receive_message_impl(request: Request):
                 "D’accord, tu ne recevras pas ces rappels. Tu peux continuer à utiliser Akili.",
                 persist_event=False, allow_audio=False)
             return {"status": "ok", "reason": "pedagogical_" + decision}
+
+        if bouton_id in BOUTONS_AIDE_TEXTE:
+            text = BOUTONS_AIDE_TEXTE[bouton_id]  # traite comme si l'eleve avait ecrit cette phrase
+            bouton_id = None
 
         if bouton_id:
             if str(bouton_id).startswith("minitest_"):
