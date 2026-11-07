@@ -2314,7 +2314,7 @@ async def paiement_creer(request: Request):
         return {"status": "ok", **paiement.creer_paiement(
             db, (body.get("email") or "").strip(),
             os.environ.get("PAIEMENTPRO_MERCHANT_ID", ""), _base_api_publique(),
-            os.environ.get("PAIEMENTPRO_NOTIF_TOKEN", ""))}
+            os.environ.get("PAIEMENTPRO_NOTIF_TOKEN", ""), body.get("canal"))}
     except paiement.ErreurPaiement as e:
         print(f"Paiement : creation impossible : {e}", flush=True)
         raise HTTPException(status_code=502, detail="Paiement indisponible")

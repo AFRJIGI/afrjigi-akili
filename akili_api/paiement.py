@@ -24,6 +24,8 @@ COLLECTION_PAIEMENTS = "paiements"
 PRIX_PREMIUM_FCFA = 2000
 DUREE_PREMIUM_JOURS = 30
 CODE_DEVISE_FCFA = "952"
+# Canaux acceptes par le compte (test du 7 nov. : le canal est obligatoire, CARD n'est pas active).
+CANAUX = {"OMCIV2": "Orange Money", "MOMO": "MTN Money", "FLOOZ": "Moov Money"}
 
 
 class ErreurPaiement(Exception):
@@ -55,13 +57,13 @@ def _post_json(url, charge, delai=20):
 
 
 def initialiser_paiement(merchant_id, montant, reference, telephone, email, notification_url, return_url,
-                         description="Akili Premium - 1 mois", post=None):
+                         canal, description="Akili Premium - 1 mois", post=None):
     """Retourne l'adresse de la page de paiement ; leve ErreurPaiement sinon."""
     charge = {
         "merchantId": merchant_id,
         "amount": int(montant),
         "description": description,
-        "channel": "",  # vide : Paiement Pro propose le choix du moyen de paiement
+        "channel": canal,  # obligatoire : OMCIV2 (Orange), MOMO (MTN), FLOOZ (Moov)
         "countryCurrencyCode": CODE_DEVISE_FCFA,
         "referenceNumber": reference,
         "customerEmail": email,
@@ -83,8 +85,12 @@ def initialiser_paiement(merchant_id, montant, reference, telephone, email, noti
     return donnees["url"]
 
 
-def creer_paiement(db, email, merchant_id, base_api, token, montant=PRIX_PREMIUM_FCFA, post=None, maintenant=None):
+def creer_paiement(db, email, merchant_id, base_api, token, canal, montant=PRIX_PREMIUM_FCFA, post=None,
+                   maintenant=None):
     """Cree la reference, obtient le lien et enregistre le paiement « en_attente »."""
+    canal = (canal or "").strip().upper()
+    if canal not in CANAUX:
+        raise ErreurPaiement(f"Canal de paiement inconnu : {canal!r}")
     telephone = telephone_depuis_email(email)
     if not telephone:
         raise ErreurPaiement("Seuls les comptes WhatsApp peuvent payer par ce chemin.")
@@ -95,9 +101,9 @@ def creer_paiement(db, email, merchant_id, base_api, token, montant=PRIX_PREMIUM
     url = initialiser_paiement(
         merchant_id, montant, reference, telephone, email,
         notification_url=f"{base}/webhook/paiementpro/{token}",
-        return_url=f"{base}/paiement/retour", post=post)
+        return_url=f"{base}/paiement/retour", canal=canal, post=post)
     db.collection(COLLECTION_PAIEMENTS).document(reference).set({
-        "reference": reference, "email": email, "telephone": telephone, "montant": int(montant),
+        "reference": reference, "email": email, "telephone": telephone, "montant": int(montant), "canal": canal,
         "statut": "en_attente", "cree_le": datetime.utcnow().isoformat(),
     })
     return {"url": url, "reference": reference}

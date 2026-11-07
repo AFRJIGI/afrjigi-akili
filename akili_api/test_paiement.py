@@ -56,13 +56,14 @@ def faux_post(reponse):
 class CreerPaiementTests(unittest.TestCase):
     def test_cree_la_reference_le_lien_et_la_fiche(self):
         db, post = FauxDb(), faux_post({"success": True, "url": "https://paiementpro.net/pay?s=1"})
-        res = paiement.creer_paiement(db, "2250712345678@afrjigi.com", "PP-X", "https://api.test/", "jeton",
+        res = paiement.creer_paiement(db, "2250712345678@afrjigi.com", "PP-X", "https://api.test/", "jeton", "omciv2",
                                       post=post, maintenant=1000)
         self.assertEqual(res, {"url": "https://paiementpro.net/pay?s=1", "reference": "AKILI-2250712345678-1000"})
         url, charge = post.appels[0]
         self.assertEqual(url, paiement.URL_INITIALISATION)
         self.assertEqual(charge["merchantId"], "PP-X")
         self.assertEqual(charge["amount"], 2000)
+        self.assertEqual(charge["channel"], "OMCIV2")
         self.assertEqual(charge["customerPhoneNumber"], "2250712345678")
         self.assertEqual(charge["notificationURL"], "https://api.test/webhook/paiementpro/jeton")
         self.assertEqual(charge["returnURL"], "https://api.test/paiement/retour")
@@ -72,16 +73,22 @@ class CreerPaiementTests(unittest.TestCase):
     def test_refus_de_paiement_pro_ne_cree_pas_de_fiche(self):
         db = FauxDb()
         with self.assertRaises(paiement.ErreurPaiement):
-            paiement.creer_paiement(db, "2250712345678@afrjigi.com", "PP-X", "https://api.test", "jeton",
+            paiement.creer_paiement(db, "2250712345678@afrjigi.com", "PP-X", "https://api.test", "jeton", "MOMO",
                                     post=faux_post({"success": False}))
         self.assertEqual(db.store.get("paiements", {}), {})
 
     def test_compte_non_whatsapp_ou_config_absente(self):
         with self.assertRaises(paiement.ErreurPaiement):
-            paiement.creer_paiement(FauxDb(), "a@b.com", "PP-X", "https://api.test", "jeton", post=faux_post({}))
+            paiement.creer_paiement(FauxDb(), "a@b.com", "PP-X", "https://api.test", "jeton", "MOMO", post=faux_post({}))
         with self.assertRaises(paiement.ErreurPaiement):
-            paiement.creer_paiement(FauxDb(), "2250712345678@afrjigi.com", "", "https://api.test", "jeton",
+            paiement.creer_paiement(FauxDb(), "2250712345678@afrjigi.com", "", "https://api.test", "jeton", "MOMO",
                                     post=faux_post({}))
+
+    def test_canal_obligatoire_et_connu(self):
+        for canal in (None, "", "CARD", "WAVE"):
+            with self.assertRaises(paiement.ErreurPaiement):
+                paiement.creer_paiement(FauxDb(), "2250712345678@afrjigi.com", "PP-X", "https://api.test", "jeton",
+                                        canal, post=faux_post({"success": True, "url": "u"}))
 
 
 class NotificationTests(unittest.TestCase):

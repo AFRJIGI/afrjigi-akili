@@ -4451,7 +4451,22 @@ def commande_de_revision(text):
 
 COMMANDES_PREMIUM = {"PREMIUM", "PAYER", "PAIEMENT", "ABONNEMENT", "ABONNER", "S ABONNER", "PASSER PREMIUM",
                      "DEVENIR PREMIUM", "AKILI PREMIUM", "MON ABONNEMENT"}
+# Le canal de paiement est obligatoire chez Paiement Pro : l'eleve choisit son operateur par un bouton.
+CANAUX_PREMIUM = {"ORANGE": "OMCIV2", "MTN": "MOMO", "MOOV": "FLOOZ"}
+BOUTONS_PREMIUM = [("pay_orange", "Orange Money"), ("pay_mtn", "MTN Money"), ("pay_moov", "Moov Money")]
+BOUTONS_AIDE_TEXTE.update({"pay_orange": "premium orange", "pay_mtn": "premium mtn", "pay_moov": "premium moov"})
 AKILI_PAIEMENT_URL = os.environ.get("AKILI_PAIEMENT_URL", AKILI_API_URL.rsplit("/", 1)[0] + "/paiement/creer")
+
+
+def commande_premium(text):
+    """(True, canal ou None) si le message demande le Premium : « premium », « premium orange »... ;
+    (False, None) sinon."""
+    msg = normalize_for_match(text)
+    if msg in COMMANDES_PREMIUM:
+        return True, None
+    if msg.startswith("PREMIUM ") and msg.split(" ", 1)[1] in CANAUX_PREMIUM:
+        return True, CANAUX_PREMIUM[msg.split(" ", 1)[1]]
+    return False, None
 
 
 def premium_en_cours(phone):
@@ -4477,15 +4492,21 @@ def premium_en_cours(phone):
     return True, fin.strftime("%d/%m/%Y")
 
 
-def traiter_commande_premium(phone):
-    """« premium » : dit si l'abonnement est actif, sinon envoie le lien de paiement Paiement Pro."""
+def traiter_commande_premium(phone, canal=None):
+    """« premium » : dit si l'abonnement est actif, sinon propose l'operateur puis envoie le lien de paiement."""
     actif, fin = premium_en_cours(phone)
     if actif:
         send_whatsapp(phone, "Ton abonnement Premium est actif" + (f" jusqu'au {fin}." if fin else ".")
                       + " Merci de ta confiance !", allow_audio=False)
         return "premium_actif"
+    if not canal:
+        corps = ("Akili Premium : 2 000 FCFA pour 30 jours.\n\nAvec quel moyen veux-tu payer ? "
+                 "Touche un bouton (ou écris : premium orange, premium mtn, premium moov).")
+        if not send_whatsapp_boutons(phone, corps, BOUTONS_PREMIUM):
+            send_whatsapp(phone, corps, allow_audio=False)
+        return "premium_choix"
     try:
-        res = requests.post(AKILI_PAIEMENT_URL, json={"email": f"{phone}@afrjigi.com"}, timeout=30)
+        res = requests.post(AKILI_PAIEMENT_URL, json={"email": f"{phone}@afrjigi.com", "canal": canal}, timeout=30)
         res.raise_for_status()
         lien = res.json()["url"]
     except Exception as e:
@@ -4494,8 +4515,7 @@ def traiter_commande_premium(phone):
                       allow_audio=False)
         return "premium_erreur"
     send_whatsapp(phone, (
-        "Akili Premium : 2 000 FCFA pour 30 jours.\n\n"
-        "Paie par Orange Money, MTN, Moov, Wave ou carte bancaire avec ce lien :\n"
+        "Voici ton lien de paiement (2 000 FCFA, 30 jours) :\n"
         f"{lien}\n\n"
         "Le lien reste valable quelques minutes ; sinon écris « premium » pour en recevoir un nouveau. "
         "Après le paiement, écris « premium » pour vérifier ton abonnement."), allow_audio=False)
@@ -7362,8 +7382,9 @@ async def _receive_message_impl(request: Request):
             track_inbound("revisions_off" if arret else "revisions_on", profile)
             return {"status": "ok", "reason": "revisions_off" if arret else "revisions_on"}
 
-        if media_file is None and normalize_for_match(text) in COMMANDES_PREMIUM:
-            raison = traiter_commande_premium(phone)
+        veut_premium, canal_premium = commande_premium(text) if media_file is None else (False, None)
+        if veut_premium:
+            raison = traiter_commande_premium(phone, canal_premium)
             track_inbound(raison, profile)
             return {"status": "ok", "reason": raison}
 
