@@ -2568,18 +2568,29 @@ LETTRES_GRECQUES = {
 
 def harmoniser_numerotation(text):
     """Numerotation reguliere sur WhatsApp (7 nov. : « 1. » et « 2. » devenaient une liste avec retrait,
-    alors que « b) », « c) » restaient colles a gauche, et « 2. a) » partageait une seule ligne).
+    alors que « b) », « c) » restaient colles a gauche, « 2. a) » partageait une seule ligne et « a) » de
+    « 3) a) » n'etait pas aligne avec « b) »).
     - « 1. texte » devient « 1) texte » : WhatsApp ne le transforme plus en liste.
-    - Les sous-questions « b) », « c)... » qui suivent une question numerotee sont decalees pour tomber
-      sous le « a) » de « 2) a) ... »."""
+    - Une ligne vide separe les questions numerotees.
+    - Les sous-questions « a) », « b)... » sont toutes decalees de la meme facon, sur leur propre ligne :
+      « 3) a) texte » devient « 3) » puis « a) texte » decale."""
     sortie = []
     dans_question = False
+    vu_numero = False
     for ligne in str(text or "").split("\n"):
         m = re.match(r"^[ \t]*(\d{1,2})[.)][ \t]+(\S.*)$", ligne)
         if m and not re.match(r"^\d+[.,]\d", ligne.strip()):
+            if vu_numero and sortie and sortie[-1].strip():
+                sortie.append("")
             suite = m.group(2)
-            sortie.append(f"{m.group(1)}) {suite}")
+            avec_lettre = re.match(r"^([a-h])[)][ \t]+(\S.*)$", suite)
+            if avec_lettre:
+                sortie.append(f"{m.group(1)})")
+                sortie.append(f"   {avec_lettre.group(1)}) {avec_lettre.group(2)}")
+            else:
+                sortie.append(f"{m.group(1)}) {suite}")
             dans_question = True
+            vu_numero = True
             continue
         sous = re.match(r"^[ \t]*([a-h])[)][ \t]+(\S.*)$", ligne)
         if sous and dans_question:
@@ -2587,6 +2598,7 @@ def harmoniser_numerotation(text):
             continue
         if not ligne.strip():
             dans_question = False
+            vu_numero = False
         sortie.append(ligne)
     return "\n".join(sortie)
 

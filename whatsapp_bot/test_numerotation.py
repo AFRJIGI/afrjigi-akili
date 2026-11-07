@@ -20,14 +20,24 @@ class NumerotationTests(unittest.TestCase):
     def test_enonce_du_7_novembre(self):
         self.assertEqual(main.harmoniser_numerotation(ENONCE).split("\n"), [
             "1) Calcule U2, U3 et U4.",
-            "2) a) Démontre que (Vn) est une suite géométrique de raison 2.",
+            "",
+            "2)",
+            "   a) Démontre que (Vn) est une suite géométrique de raison 2.",
             "   b) Exprime Vn en fonction de n.",
             "   c) Justifie que pour tout n ≥ 1, Un = 2n-1 + 1.",
             "   d) Calcule U13.",
+            "",
             "3) Soit Tn = U1 + U2 + ... + Un.",
             "   a) Justifie que Tn = 2n + n - 1.",
             "   b) Calcule la somme des 13 premiers termes de (Un).",
         ])
+
+    def test_capture_du_7_novembre_14h49(self):
+        texte = ("1) Résous x.\n2) Soit P(x).\na) Vérifie P.\nb) Résous P(x) = 0.\n"
+                 "3) a) Résous P(x) < 0.\nb) Résous Q(x) < 0.")
+        self.assertEqual(main.harmoniser_numerotation(texte).split("\n"), [
+            "1) Résous x.", "", "2) Soit P(x).", "   a) Vérifie P.", "   b) Résous P(x) = 0.", "",
+            "3)", "   a) Résous P(x) < 0.", "   b) Résous Q(x) < 0."])
 
     def test_lettres_sans_question_numerotee_restent_a_gauche(self):
         texte = "Réponds :\na) Paris\nb) Lomé\nc) Abidjan"
@@ -43,7 +53,7 @@ class NumerotationTests(unittest.TestCase):
 
     def test_clean_whatsapp_response_l_applique(self):
         sortie = main.clean_whatsapp_response("**Exercice 1**\n1. Calcule A.\n2. a) Montre B.\nb) Donne C.")
-        self.assertIn("1) Calcule A.\n2) a) Montre B.\n   b) Donne C.", sortie)
+        self.assertIn("1) Calcule A.\n\n2)\n   a) Montre B.\n   b) Donne C.", sortie)
 
 
 class ExamenEtIndiceTests(unittest.TestCase):
