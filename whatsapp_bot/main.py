@@ -1270,6 +1270,21 @@ def demande_explication(text):
     return any(has_expr(msg, expr) for expr in DEMANDES_EXPLICATION)
 
 
+MOTS_DEMANDE_SUJET = {"DONNE", "DONNEZ", "PROPOSE", "PROPOSEZ", "ENVOIE", "ENVOYEZ", "AUTRE", "NOUVEAU", "NOUVEL",
+                      "SUIVANT", "VEUX", "VOUDRAIS"}
+MOTS_BESOIN_AIDE = {"COMPRENDS", "COMPRIS", "SAIS", "BLOQUE", "EXPLIQUE", "EXPLIQUER", "AIDE", "AIDEZ", "REPONSE",
+                    "CORRIGE", "SOLUTION", "ETAPES"}
+
+
+def demande_de_sujet(text):
+    """« donne-moi un sujet », « autre exercice », « sujet suivant » : l'eleve veut un nouveau sujet, il n'a pas
+    besoin du mode etude (7 nov., 15 h : l'offre du mode etude repondait a « donne-moi un sujet »)."""
+    mots = normalize_for_match(text).split()
+    if not mots or len(mots) > 12 or not ({"SUJET", "SUJETS", "EXERCICE", "EXERCICES"} & set(mots)):
+        return False
+    return bool(MOTS_DEMANDE_SUJET & set(mots)) and not (MOTS_BESOIN_AIDE & set(mots))
+
+
 def attend_sa_copie(phone, text):
     """Akili vient de donner la consigne du mode examen (resoudre sur papier, envoyer la photo de la copie)
     et l'eleve repond par un court message sans calcul : il n'a pas compris le fonctionnement."""
@@ -1287,6 +1302,8 @@ def proposer_mode_etude(phone, profile, text, now=None):
     repond a la consigne de l'examen sans envoyer sa copie)."""
     now = now or datetime.now(timezone.utc)
     if (profile.get("mode") or "") != "examen":
+        return False
+    if demande_de_sujet(text):
         return False
     if not (demande_explication(text) or attend_sa_copie(phone, text)):
         return False
