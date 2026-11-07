@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from google.cloud import storage, firestore
 from gemini_client import ModeleGemini, Part, MODELE, LOCATION, REFLEXION_COURTE, est_temporaire
 from oeuvres import consigne_oeuvres
+import paiement
 from typing import Optional
 from PIL import Image
 import io
@@ -1338,6 +1339,9 @@ def ask_question(
             
             if statut_plan == "premium" or statut_tier == "PREMIUM":
                 is_premium = True
+                expire = user_data.get("premium_expire_le")
+                if expire and str(expire) < datetime.utcnow().isoformat():
+                    is_premium = False
             
             # Alignement avec ta clé de date : last_question_date
             last_q_date = user_data.get("last_question_date", today_str)
@@ -2246,20 +2250,28 @@ def health_check():
 
 # ─── GESTION DU RECYCLAGE LOGIQUE FREEMIUM & WEBHOOKS ───
 
-def upgrade_to_premium(email: str):
-    """Met à jour le statut de l'utilisateur dans Firestore."""
+def upgrade_to_premium(email: str, jours: Optional[int] = None):
+    """Met à jour le statut de l'utilisateur dans Firestore (crée la fiche si elle n'existe pas).
+    Avec `jours`, le Premium expire à cette échéance (prolongée si déjà en cours)."""
     try:
         ref = db.collection("users").document(email)
-        ref.update({
-            "tier": "PREMIUM",  
-            "upgraded_at": datetime.utcnow().isoformat()
-        })
+        champs = {"email": email, "tier": "PREMIUM", "upgraded_at": datetime.utcnow().isoformat()}
+        if jours:
+            actuel = ref.get()
+            expire = (actuel.to_dict() or {}).get("premium_expire_le") if actuel.exists else None
+            champs["premium_expire_le"] = paiement.nouvelle_expiration(expire, jours)
+        ref.set(champs, merge=True)
         print(f"✅ {email} est passé au plan PREMIUM avec succès.")
     except Exception as e:
         print(f"❌ Erreur lors de l'upgrade Firestore pour {email}: {e}")
+        raise
 
 @app.post("/upgrade/premium")
 async def upgrade_premium(request: Request):
+    # Reserve a l'administrateur : avant, n'importe qui pouvait s'accorder le Premium avec une requete.
+    attendu = os.environ.get("UPGRADE_ADMIN_TOKEN", "")
+    if not paiement.token_valide(request.headers.get("X-Admin-Token"), attendu):
+        raise HTTPException(status_code=403, detail="Acces refuse")
     body = await request.json()
     email = body.get("email")
     if email:
@@ -2290,6 +2302,66 @@ async def paydunya_webhook(request: Request):
     except Exception as e:
         print(f"Erreur Webhook PayDunya : {e}")
     return {"status": "ok"}
+def _base_api_publique():
+    return os.environ.get("API_PUBLIC_URL", "https://akili-api-598190730734.us-central1.run.app")
+
+
+@app.post("/paiement/creer")
+async def paiement_creer(request: Request):
+    """Appele par le bot WhatsApp : renvoie le lien de paiement Paiement Pro (Premium 1 mois)."""
+    body = await request.json()
+    try:
+        return {"status": "ok", **paiement.creer_paiement(
+            db, (body.get("email") or "").strip(),
+            os.environ.get("PAIEMENTPRO_MERCHANT_ID", ""), _base_api_publique(),
+            os.environ.get("PAIEMENTPRO_NOTIF_TOKEN", ""))}
+    except paiement.ErreurPaiement as e:
+        print(f"Paiement : creation impossible : {e}", flush=True)
+        raise HTTPException(status_code=502, detail="Paiement indisponible")
+
+
+async def _parametres_notification(request: Request):
+    """Paiement Pro peut notifier en GET, en formulaire ou en JSON : on accepte les trois."""
+    params = dict(request.query_params)
+    try:
+        if "json" in (request.headers.get("content-type") or ""):
+            corps = await request.json()
+            if isinstance(corps, dict):
+                params.update(corps)
+        else:
+            params.update({k: v for k, v in (await request.form()).items() if isinstance(v, str)})
+    except Exception:
+        pass
+    return params
+
+
+@app.api_route("/webhook/paiementpro/{token}", methods=["GET", "POST"])
+async def paiementpro_webhook(token: str, request: Request):
+    if not paiement.token_valide(token, os.environ.get("PAIEMENTPRO_NOTIF_TOKEN", "")):
+        raise HTTPException(status_code=403, detail="Acces refuse")
+    params = await _parametres_notification(request)
+    # Journal sans le hashcode, pour voir le format reel de la premiere notification.
+    print("PAIEMENTPRO_NOTIF", {k: v for k, v in params.items() if k != "hashcode"}, flush=True)
+    try:
+        resultat = paiement.traiter_notification(
+            db, params, upgrade_to_premium, merchant_id=os.environ.get("PAIEMENTPRO_MERCHANT_ID", ""))
+    except Exception as e:
+        print(f"Erreur notification Paiement Pro : {e}", flush=True)
+        raise HTTPException(status_code=500, detail="Erreur de traitement")
+    print(f"PAIEMENTPRO_RESULTAT {resultat}", flush=True)
+    return {"status": "ok", "resultat": resultat}
+
+
+@app.get("/paiement/retour")
+def paiement_retour():
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(
+        "<html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>Akili</title></head><body style='font-family:sans-serif;text-align:center;padding:40px'>"
+        "<h2>Merci !</h2><p>Retourne sur WhatsApp et écris <b>premium</b> à Akili pour vérifier ton abonnement.</p>"
+        "<p><a href='https://wa.me/13154030671'>Ouvrir WhatsApp</a></p></body></html>")
+
+
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
     try:

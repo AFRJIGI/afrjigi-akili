@@ -4449,6 +4449,59 @@ def commande_de_revision(text):
     return None
 
 
+COMMANDES_PREMIUM = {"PREMIUM", "PAYER", "PAIEMENT", "ABONNEMENT", "ABONNER", "S ABONNER", "PASSER PREMIUM",
+                     "DEVENIR PREMIUM", "AKILI PREMIUM", "MON ABONNEMENT"}
+AKILI_PAIEMENT_URL = os.environ.get("AKILI_PAIEMENT_URL", AKILI_API_URL.rsplit("/", 1)[0] + "/paiement/creer")
+
+
+def premium_en_cours(phone):
+    """(est_premium, date_de_fin « jj/mm/aaaa » ou None) d'apres la fiche Firestore de l'eleve."""
+    try:
+        doc = feedback_db.collection("users").document(f"{phone}@afrjigi.com").get()
+        fiche = doc.to_dict() if doc.exists else {}
+    except Exception as e:
+        print(f"premium_en_cours : lecture impossible : {e}", flush=True)
+        return False, None
+    fiche = fiche or {}
+    if str(fiche.get("tier", "")).upper() != "PREMIUM" and str(fiche.get("plan", "")).lower() != "premium":
+        return False, None
+    expire = fiche.get("premium_expire_le")
+    if not expire:
+        return True, None
+    try:
+        fin = datetime.fromisoformat(str(expire))
+    except ValueError:
+        return True, None
+    if fin < datetime.utcnow():
+        return False, None
+    return True, fin.strftime("%d/%m/%Y")
+
+
+def traiter_commande_premium(phone):
+    """« premium » : dit si l'abonnement est actif, sinon envoie le lien de paiement Paiement Pro."""
+    actif, fin = premium_en_cours(phone)
+    if actif:
+        send_whatsapp(phone, "Ton abonnement Premium est actif" + (f" jusqu'au {fin}." if fin else ".")
+                      + " Merci de ta confiance !", allow_audio=False)
+        return "premium_actif"
+    try:
+        res = requests.post(AKILI_PAIEMENT_URL, json={"email": f"{phone}@afrjigi.com"}, timeout=30)
+        res.raise_for_status()
+        lien = res.json()["url"]
+    except Exception as e:
+        print(f"Paiement : lien impossible : {type(e).__name__}: {e}", flush=True)
+        send_whatsapp(phone, "Le paiement est momentanément indisponible. Réessaie dans quelques minutes.",
+                      allow_audio=False)
+        return "premium_erreur"
+    send_whatsapp(phone, (
+        "Akili Premium : 2 000 FCFA pour 30 jours.\n\n"
+        "Paie par Orange Money, MTN, Moov, Wave ou carte bancaire avec ce lien :\n"
+        f"{lien}\n\n"
+        "Le lien reste valable quelques minutes ; sinon écris « premium » pour en recevoir un nouveau. "
+        "Après le paiement, écris « premium » pour vérifier ton abonnement."), allow_audio=False)
+    return "premium_lien"
+
+
 def cle_conversation_profil(phone, profile):
     profile = profile or {}
     return (f"{phone}:{profile.get('type_examen')}:{profile.get('serie', 'TOUTES')}:"
@@ -7308,6 +7361,11 @@ async def _receive_message_impl(request: Request):
             ), allow_audio=False)
             track_inbound("revisions_off" if arret else "revisions_on", profile)
             return {"status": "ok", "reason": "revisions_off" if arret else "revisions_on"}
+
+        if media_file is None and normalize_for_match(text) in COMMANDES_PREMIUM:
+            raison = traiter_commande_premium(phone)
+            track_inbound(raison, profile)
+            return {"status": "ok", "reason": raison}
 
         # Programme personnalise de revision (« mon programme », 28 oct.).
         commande_programme = normalize_for_match(text).replace("PERSONALISE", "PERSONNALISE")
