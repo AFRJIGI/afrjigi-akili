@@ -5379,10 +5379,20 @@ def traiter_espace_enseignant(phone, profile, text):
         user_profiles[phone] = profile
         sauver_etat_whatsapp(phone, profile)
 
-    if attente == "classes_libres" or prof.est_commande_classes(text):
-        return enregistrer_classes_enseignant(phone, profile, text, demande=attente != "classes_libres")
+    en_classes = attente == "classes_libres"
+    sortie_menu = prof.est_commande_menu(text) or normalize_for_match(text) == "MENU"
+    # Pendant la question des classes, les commandes habituelles passent : reset et « suite » suivent leur
+    # chemin normal, le menu s'ouvre. Avant, tout message etait lu comme une liste de classes (« menu prof »
+    # et « reset » donnaient « Je n'ai pas reconnu ces classes » a l'infini).
+    if en_classes and (normalize_for_match(text) in {"RESET", "REINITIALISER", "REINITIALISER PROFIL"}
+                       or est_demande_de_suite(text)):
+        return None
+    if prof.est_commande_classes(text):
+        return enregistrer_classes_enseignant(phone, profile, text, demande=True)
+    if en_classes and not sortie_menu:
+        return enregistrer_classes_enseignant(phone, profile, text, demande=False)
 
-    if prof.est_commande_menu(text) or normalize_for_match(text) == "MENU":
+    if sortie_menu:
         profile["attente_prof"] = "menu"
         sauver()
         envoyer_menu_enseignant(phone, profile)
