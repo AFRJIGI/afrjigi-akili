@@ -3800,7 +3800,18 @@ BOUTONS_AIDE_TEXTE = {
     "aide_indice": "Donne-moi un indice pour cet exercice, sans la réponse.",
     "aide_etapes": "Montre-moi les étapes de la solution de cet exercice.",
     "aide_suivant": "Propose-moi un autre exercice sur le même chapitre.",
+    "examen_autre": "Propose-moi un autre sujet d'examen sur le même chapitre.",
+    "nav_menu": "menu",
 }
+BOUTONS_NAVIGATION = [("aide_suivant", "Exercice suivant"), ("nav_sujet", "Changer de sujet"), ("nav_menu", "Menu")]
+BOUTONS_EXAMEN = [("examen_autre", "Autre sujet"), ("mode_etude_oui", "Mode étude"), ("nav_menu", "Menu")]
+MESSAGE_CONSIGNE_EXAMEN = ("À toi de jouer : résous l'exercice sur ta feuille, puis envoie la photo de ta copie "
+                           "(ou écris ta réponse ici). Akili corrige et note.")
+MESSAGE_CHANGER_SUJET = ("D'accord ! Écris le chapitre que tu veux travailler (exemple : « les probabilités ») "
+                         "ou envoie la photo de ton exercice.\n\nPour changer de matière, touche « Menu » "
+                         "ou écris menu.")
+DEBUTS_BONNE_REPONSE = ("C EST EXACT", "EXACT", "C EST CORRECT", "CORRECT", "BRAVO", "BONNE REPONSE", "C EST BON",
+                        "TRES BIEN", "PARFAIT")
 
 
 def envoyer_boutons_exercice(phone, profile, recu, mode="etude", is_teacher=False, espace=False):
@@ -3819,6 +3830,52 @@ def envoyer_boutons_exercice(phone, profile, recu, mode="etude", is_teacher=Fals
         return True
     except Exception as e:
         print(f"Erreur envoyer_boutons_exercice: {repr(e)}", flush=True)
+        return False
+
+
+def envoyer_boutons_navigation(phone, profile, recu, mode="etude", is_teacher=False, espace=False):
+    """Apres une bonne réponse sans nouvel exercice : Exercice suivant / Changer de sujet / Menu. Jamais bloquant."""
+    try:
+        if not BOUTONS_EXERCICE or is_teacher or espace or (mode or "etude") != "etude":
+            return False
+        norme = normalize_for_match(recu or "")
+        bonne = any(norme == d or norme.startswith(d + " ") for d in DEBUTS_BONNE_REPONSE)
+        if not bonne or "A TOI D ESSAYER" in norme:
+            return False
+        if CONTINUATION_WHATSAPP.strip() in (recu or ""):
+            return False
+        if not send_whatsapp_boutons(phone, "Et maintenant ?", BOUTONS_NAVIGATION):
+            return False
+        save_whatsapp_event(phone, "outbound", "[boutons] Exercice suivant / Changer de sujet / Menu",
+                            profile or {}, extra={"processing_stage": "boutons_navigation"})
+        return True
+    except Exception as e:
+        print(f"Erreur envoyer_boutons_navigation: {repr(e)}", flush=True)
+        return False
+
+
+def envoyer_boutons_examen(phone, profile, recu, mode="etude", is_teacher=False, espace=False):
+    """Mode examen : la consigne (feuille, photo de la copie) et trois boutons sous les yeux de l'élève."""
+    try:
+        if not BOUTONS_EXERCICE or is_teacher or espace or (mode or "etude") != "examen":
+            return False
+        norme = normalize_for_match(recu or "")
+        if "FEUILLE" not in norme or "COPIE" not in norme:
+            return False
+        if CONTINUATION_WHATSAPP.strip() in (recu or ""):
+            return False
+        # « Mode étude » reprend l'exercice en cours : même mécanisme que l'offre faite à l'élève bloqué.
+        profile["demande_mode_etude"] = {"texte": "Explique-moi cet exercice pas à pas.",
+                                         "at": datetime.now(timezone.utc).isoformat()}
+        user_profiles[phone] = profile
+        sauver_etat_whatsapp(phone, profile)
+        if not send_whatsapp_boutons(phone, MESSAGE_CONSIGNE_EXAMEN, BOUTONS_EXAMEN):
+            return False
+        save_whatsapp_event(phone, "outbound", "[boutons] Autre sujet / Mode étude / Menu",
+                            profile, extra={"processing_stage": "boutons_examen"})
+        return True
+    except Exception as e:
+        print(f"Erreur envoyer_boutons_examen: {repr(e)}", flush=True)
         return False
 
 
@@ -4261,7 +4318,9 @@ def traiter_bouton_avis(phone, bouton_id):
     enregistrer_avis_seance(phone, note, profile)
     if note == "oui":
         profile.pop("attente_commentaire_avis", None)
-        send_whatsapp(phone, MESSAGE_MERCI_AVIS, allow_audio=False)
+        if not (BOUTONS_EXERCICE and send_whatsapp_boutons(
+                phone, "Merci, ça nous fait plaisir ! Que veux-tu faire maintenant ?", BOUTONS_NAVIGATION)):
+            send_whatsapp(phone, MESSAGE_MERCI_AVIS, allow_audio=False)
     else:
         profile["attente_commentaire_avis"] = {"note": note, "at": datetime.now(timezone.utc).isoformat()}
         send_whatsapp(phone, MESSAGE_DEMANDE_COMMENTAIRE, allow_audio=False)
@@ -5876,6 +5935,8 @@ def answer_learning_request(phone, profile, text, media_file=None, message_id=No
     send_whatsapp(phone, reponse, limit=send_limit, add_continuation=continuation)
     send_vector_formula_if_needed(phone, text + "\n" + reponse)
     envoyer_boutons_exercice(phone, profile, recu, mode=mode, is_teacher=is_teacher, espace=espace)
+    envoyer_boutons_navigation(phone, profile, recu, mode=mode, is_teacher=is_teacher, espace=espace)
+    envoyer_boutons_examen(phone, profile, recu, mode=mode, is_teacher=is_teacher, espace=espace)
     if media_file is not None and (mode or "etude") == "etude" and not is_teacher and not espace:
         retenir_document_comme_enonce(phone, profile, conversation_key, media_file, type_examen, serie, mode)
     if compter_activation:
@@ -7037,6 +7098,9 @@ async def _receive_message_impl(request: Request):
                 else:
                     traiter_mini_test(phone, profil_test, bouton_id, etat_test)
                 return {"status": "ok", "reason": "mini_test"}
+            if bouton_id == "nav_sujet":
+                send_whatsapp(phone, MESSAGE_CHANGER_SUJET, allow_audio=False)
+                return {"status": "ok", "reason": "nav_sujet"}
             if traiter_bouton_avis(phone, bouton_id):
                 return {"status": "ok", "reason": "avis_seance"}
             if traiter_bouton_mode(phone, bouton_id):
