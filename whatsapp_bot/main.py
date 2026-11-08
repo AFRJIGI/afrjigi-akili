@@ -1727,10 +1727,14 @@ def nom_de_matiere_seul(phone, profile, text):
         return None
     reste = msg
     for mot in ("STP", "SVP", "S IL TE PLAIT", "S IL VOUS PLAIT", "LE", "LA", "L", "EN", "DU", "DE", "ON FAIT",
-                "MAINTENANT", "PLUTOT", "ET"):
+                "MAINTENANT", "PLUTOT", "ET", "MENU"):
         reste = re.sub(r"(?<![A-Z0-9])" + mot + r"(?![A-Z0-9])", " ", reste)
     if len(reste.split()) > 2:
         return None  # une phrase, pas un nom de matiere
+    # « Menu français » (8 nov., …9289) est une commande explicite : la protection ci-dessous bloquait a tort
+    # parce que le dernier message d'Akili contenait la ligne d'exemple « Français : … ».
+    if msg.startswith("MENU "):
+        return nouvelle
     derniere = normalize_for_match(load_last_assistant_context(phone) or "")
     libelle = normalize_for_match(libelle_matiere(nouvelle))
     if "MATIERE" in derniere or (libelle and libelle in derniere):
