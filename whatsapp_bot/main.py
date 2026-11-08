@@ -3486,7 +3486,11 @@ DEMANDES_CHANGEMENT_MATIERE = [
     "CHANGER DE MATIERE", "CHANGER MATIERE", "CHANGE DE MATIERE", "AUTRE MATIERE", "UNE AUTRE MATIERE",
     "ON CHANGE DE MATIERE", "JE VEUX CHANGER DE MATIERE", "CHANGEONS DE MATIERE",
 ]
-VERBES_PASSAGE = r"(?:PASSONS|PASSER|ON PASSE|ALLONS|ALLER|ON VA|JE VEUX FAIRE|JE PREFERE|FAISONS|ON FAIT)"
+# 8 nov. (controle qualite, …3417) : « Je veux travailler en français » n'etait pas reconnu : Akili parlait
+# de francais mais le profil restait en philosophie, donc la methode de la philosophie etait appliquee.
+VERBES_PASSAGE = (r"(?:PASSONS|PASSER|ON PASSE|ALLONS|ALLER|ON VA|JE VEUX FAIRE|JE PREFERE|FAISONS|ON FAIT"
+                  r"|(?:JE VEUX|JE VOUDRAIS|J AIMERAIS|JE SOUHAITE) (?:TRAVAILLER|ETUDIER|REVISER|APPRENDRE|FAIRE)"
+                  r"|TRAVAILLONS|ON TRAVAILLE|ETUDIONS|REVISONS)")
 
 
 def est_demande_changement_matiere(text, matiere_actuelle=""):
