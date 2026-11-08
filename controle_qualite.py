@@ -74,6 +74,10 @@ changement de matiere ou de niveau demande par l'eleve (menu, liste, « je veux 
 une erreur d'Akili. « Bonjour Akili META-STUDENT » est le message prerempli d'une publicite.
 Si l'eleve demande ou envoie (photo, document) un exercice d'une autre matiere, l'aider brievement puis lui
 dire d'ecrire menu pour changer de matiere est le comportement attendu : ce n'est pas « mauvaise_matiere ».
+Un eleve qui travaille volontairement plusieurs matieres dans la journee (allemand, philosophie, litterature...)
+alors que son profil n'en nomme qu'une n'est pas un probleme d'Akili tant que celui-ci suit sa demande :
+ne signale JAMAIS « mauvaise_matiere » quand c'est l'eleve qui a demande ou envoye le contenu. Un rappel
+« ecris menu » repete est au pire un defaut « faible » de type « autre », jamais « mauvaise_matiere ».
 C'en est une seulement si Akili passe de lui-meme a une autre matiere. « Ta question relève de X : je passe
 en X » ou « Ta photo est un exercice de X : je passe en X » est un changement fait par l'application : ce
 n'est pas une erreur, juge la suite d'apres la nouvelle matiere.
