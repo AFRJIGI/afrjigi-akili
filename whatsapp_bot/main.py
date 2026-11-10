@@ -1317,16 +1317,25 @@ def proposer_mode_etude(phone, profile, text, now=None):
 
 
 def copier_historique(ancienne_cle, nouvelle_cle):
-    """L'exercice commence en mode examen continue en mode etude avec son historique."""
+    """L'exercice commence en mode examen continue en mode etude avec son historique.
+    Si l'eleve avait deja un historique d'etude pour cette matiere (autre exercice, souvent d'un autre jour),
+    on y ajoute la fin de l'echange d'examen : sinon « je veux la correction » portait sur l'ancien exercice
+    (essai du 10 nov. : sujet de probabilites, correction de derivees)."""
     if ancienne_cle == nouvelle_cle:
         return
-    nouveau = charger_historique_conv(nouvelle_cle)
-    if nouveau:
-        return
     ancien = charger_historique_conv(ancienne_cle) or list(conversations.get(ancienne_cle) or [])
-    if ancien:
+    if not ancien:
+        return
+    nouveau = charger_historique_conv(nouvelle_cle) or list(conversations.get(nouvelle_cle) or [])
+    if not nouveau:
         conversations[nouvelle_cle] = list(ancien)[-HISTORIQUE_MAX:]
-        sauver_historique_conv(nouvelle_cle, conversations[nouvelle_cle])
+    else:
+        deja = {(m.get("role"), m.get("content")) for m in nouveau}
+        ajout = [m for m in list(ancien)[-4:] if (m.get("role"), m.get("content")) not in deja]
+        if not ajout:
+            return
+        conversations[nouvelle_cle] = (list(nouveau) + ajout)[-HISTORIQUE_MAX:]
+    sauver_historique_conv(nouvelle_cle, conversations[nouvelle_cle])
 
 
 def traiter_bouton_mode(phone, bouton_id):
