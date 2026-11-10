@@ -6496,6 +6496,39 @@ def strip_filler_opening(text):
     return reste if reste else text
 
 
+# Controle qualite du 10 nov. (8962) : l'eleve ecrivait « Je veux la correction » puis « la correction de
+# l'exercice seulement » et Akili repondait par la reponse de l'etape en cours suivie d'une nouvelle question
+# a choix : l'eleve n'a jamais eu la correction. Quand la demande est claire, la consigne du tour l'impose.
+EXPRESSIONS_CORRECTION_COMPLETE = (
+    "JE VEUX LA CORRECTION", "LA CORRECTION", "DONNE MOI LA CORRECTION", "CORRECTION COMPLETE",
+    "CORRECTION DE L EXERCICE", "SOLUTION COMPLETE", "LA SOLUTION COMPLETE", "DONNE MOI LA SOLUTION",
+    "JE VEUX LA SOLUTION", "TOUTES LES ETAPES", "LES ETAPES DE LA SOLUTION", "CORRIGE L EXERCICE",
+    "CORRIGE MOI L EXERCICE",
+)
+MOTS_CORRECTION_NON_COMPLETE = {"MA", "MON", "MES", "COPIE", "QUESTION", "QUESTIONS", "INDICE"}
+CORRECTION_COMPLETE_INSTRUCTION = (
+    "CORRECTION COMPLETE DEMANDEE : l'élève veut la correction de l'exercice en cours, pas une nouvelle "
+    "question. Donne en UN SEUL message toutes les étapes de la correction, du début à la fin de l'exercice "
+    "(*Étape 1.* ... *Étape 2.* ..., une ligne par étape, avec les résultats), puis la *Réponse :* finale. "
+    "N'attends pas sa réponse, ne pose aucune question à choix sur cet exercice et ne continue pas étape par "
+    "étape. Termine par UN exercice semblable à faire seul (*Exercice* puis *À toi d'essayer*). Si le message "
+    "devient trop long, garde l'essentiel de chaque étape.\n\n"
+)
+
+
+def demande_correction_complete(text):
+    """« Je veux la correction », « la correction de l'exercice seulement », « montre-moi les étapes de la
+    solution » : l'eleve veut tout voir d'un coup. Faux pour « corrige ma copie », « indice », une question
+    precise ou un message long."""
+    msg = normalize_for_match(text)
+    mots = msg.split()
+    if not mots or len(mots) > 12 or MOTS_CORRECTION_NON_COMPLETE & set(mots):
+        return False
+    if msg in ("CORRECTION", "SOLUTION", "LA SOLUTION"):
+        return True
+    return any(has_expr(msg, expr) for expr in EXPRESSIONS_CORRECTION_COMPLETE)
+
+
 def get_akili_response(question, matiere, serie, history, phone="whatsapp_user", type_examen=None,
                        mode=None, media_file=None, user_type=None, raise_on_error=False,
                        return_details=False, active_session=None, classe=None, espace_enseignant=False,
@@ -6534,6 +6567,12 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             "nouvelle image n'est joint. Interprète cette réponse dans l'exercice en "
             "cours et ne demande jamais de renvoyer un fichier.\n\n"
             if media_file is None and is_short_pedagogical_answer(question) else ""
+        )
+
+        correction_complete_instruction = (
+            CORRECTION_COMPLETE_INSTRUCTION
+            if (user_type or "").upper() != "ENSEIGNANT" and (mode or "etude") == "etude"
+            and demande_correction_complete(question) else ""
         )
 
         bepc_instruction = ""
@@ -6648,6 +6687,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
                 f"{format_guard}"
                 f"{active_context_instruction}"
                 f"{short_answer_instruction}"
+                f"{correction_complete_instruction}"
                 f"NOUVEAU DOCUMENT RECU AVEC CE MESSAGE: l'eleve vient de joindre un nouveau fichier ou une nouvelle photo. "
                 f"Ce nouveau document contient l'exercice ACTUEL a traiter en priorite absolue, meme s'il ne correspond pas au sujet de l'historique ci-dessous. "
                 f"Ne continue PAS l'ancien exercice de l'historique si le nouveau document presente un exercice different: lis le nouveau document et pars de son contenu. "
@@ -6661,6 +6701,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
                 f"{format_guard}"
                 f"{active_context_instruction}"
                 f"{short_answer_instruction}"
+                f"{correction_complete_instruction}"
                 f"{enonce_instruction}"
                 f"HISTORIQUE RECENT:\n{contexte}\n\n"
                 f"QUESTION REELLE DE L'ELEVE:\n{question}"
@@ -6671,6 +6712,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
                 f"{format_guard}"
                 f"{active_context_instruction}"
                 f"{short_answer_instruction}"
+                f"{correction_complete_instruction}"
                 f"QUESTION REELLE DE L'ELEVE:\n{question}"
             )
 
