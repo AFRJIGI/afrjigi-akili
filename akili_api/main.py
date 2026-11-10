@@ -693,6 +693,30 @@ Pour une question de cours, réponds court et précis, avec un exemple concret. 
 Pas de LaTeX. Toute ta réponse doit tenir en 700 caractères au maximum."""
 
 
+# Cache de Gemini (mesure du 10 nov. : 0 token en cache sur 12 000 a 16 000 en entree). Le prompt systeme
+# (~14 500 caracteres, ~4 000 tokens) est stable par matiere/mode/serie mais ne depasse pas le minimum de 4 096
+# tokens exige pour le cache ; juste apres venait le contexte documentaire, different a chaque question. Le bot
+# marque la fin de ses consignes fixes (~10 700 caracteres, identiques pour une matiere) avec ce marqueur : avec
+# AKILI_ORDRE_CACHE=1 elles sont placees juste apres le prompt systeme, ce qui allonge la partie stable. Avec
+# AKILI_ORDRE_CACHE=0 (defaut) le texte envoye au modele reste le meme qu'avant, sans le marqueur.
+MARQUEUR_FIN_CONSIGNES_FIXES = "<<<FIN_CONSIGNES_FIXES>>>"
+ORDRE_CACHE = os.environ.get("AKILI_ORDRE_CACHE", "0").strip() == "1"
+
+
+def separer_consignes_fixes(question, actif=None):
+    """(consignes fixes a placer apres le prompt systeme, reste de la question). Le marqueur n'est jamais envoye au modele ;
+    inactif, le texte rendu est exactement celui d'avant."""
+    actif = ORDRE_CACHE if actif is None else actif
+    texte = question or ""
+    if MARQUEUR_FIN_CONSIGNES_FIXES not in texte:
+        return "", texte
+    if not actif:
+        avec_saut = MARQUEUR_FIN_CONSIGNES_FIXES + "\n"
+        return "", texte.replace(avec_saut if avec_saut in texte else MARQUEUR_FIN_CONSIGNES_FIXES, "", 1)
+    fixes, reste = texte.split(MARQUEUR_FIN_CONSIGNES_FIXES, 1)
+    return fixes + "\n", reste[1:] if reste.startswith("\n") else reste
+
+
 def decrire_prompt(system_prompt, question, contexte_texte, matiere, mode):
     """Une ligne de journal par appel : taille de chaque bloc et empreinte du debut du prompt.
     Sert a comprendre pourquoi le cache de Gemini ne s'applique que dans 2 % des appels (mesure du 5 nov. :
@@ -1750,7 +1774,11 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
             system_prompt = system_prompt + "\n" + consigne_bonne_lettre()
 
         # ─── 4. PRÉPARATION DU CONTENU MULTIMODAL POUR VERTEX AI ───
+        consignes_fixes, question_sans_fixes = separer_consignes_fixes(question)
+        question = (question or "").replace(MARQUEUR_FIN_CONSIGNES_FIXES + "\n", "").replace(MARQUEUR_FIN_CONSIGNES_FIXES, "")
         contents = [system_prompt]
+        if consignes_fixes:
+            contents.append(consignes_fixes)
         
         # Le bot WhatsApp met deja l'historique dans la question (« HISTORIQUE RECENT ») : ne pas l'envoyer deux fois.
         if history and "HISTORIQUE RECENT" not in (question or ""):
@@ -1800,7 +1828,7 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
                 print(f"⚠️ Erreur sauvegarde fichier : {upload_err}")
             
         if question:
-            contents.append(f"QUESTION / EXERCICE DE L'ÉLÈVE :\n{question}")
+            contents.append(f"QUESTION / EXERCICE DE L'ÉLÈVE :\n{question_sans_fixes if consignes_fixes else question}")
         else:
             contents.append("Prends en charge cette image, identifie l'exercice, résous-le et explique-moi les étapes.")
 
@@ -1809,6 +1837,7 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
         last_error = None
         try:
             print(decrire_prompt(system_prompt, question, contexte_texte, matiere_propre, mode_registre), flush=True)
+            print(f"ORDRE_CACHE actif={ORDRE_CACHE} fixes={len(consignes_fixes)}", flush=True)
         except Exception as erreur_journal:
             print(f"PROMPT_STRUCTURE indisponible : {erreur_journal!r}", flush=True)
         debut_appel = time.time()

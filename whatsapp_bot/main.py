@@ -6515,6 +6515,8 @@ EXPRESSIONS_CORRECTION_COMPLETE = (
     "CORRIGE MOI L EXERCICE",
 )
 MOTS_CORRECTION_NON_COMPLETE = {"MA", "MON", "MES", "COPIE", "QUESTION", "QUESTIONS", "INDICE"}
+# Doit rester identique a akili_api/main.py : l'API l'enleve toujours avant d'appeler le modele.
+MARQUEUR_FIN_CONSIGNES_FIXES = "<<<FIN_CONSIGNES_FIXES>>>"
 CORRECTION_COMPLETE_INSTRUCTION = (
     "CORRECTION COMPLETE DEMANDEE : l'élève veut la correction de l'exercice en cours, pas une nouvelle "
     "question. Donne en UN SEUL message toutes les étapes de la correction, du début à la fin de l'exercice "
@@ -6692,7 +6694,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
 
         if contexte and media_file:
             question_api = (
-                f"{instructions_whatsapp}\n"
+                f"{instructions_whatsapp}\n{MARQUEUR_FIN_CONSIGNES_FIXES}\n"
                 f"{format_guard}"
                 f"{active_context_instruction}"
                 f"{short_answer_instruction}"
@@ -6706,7 +6708,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             )
         elif contexte:
             question_api = (
-                f"{instructions_whatsapp}\n"
+                f"{instructions_whatsapp}\n{MARQUEUR_FIN_CONSIGNES_FIXES}\n"
                 f"{format_guard}"
                 f"{active_context_instruction}"
                 f"{short_answer_instruction}"
@@ -6717,7 +6719,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             )
         else:
             question_api = (
-                f"{instructions_whatsapp}\n"
+                f"{instructions_whatsapp}\n{MARQUEUR_FIN_CONSIGNES_FIXES}\n"
                 f"{format_guard}"
                 f"{active_context_instruction}"
                 f"{short_answer_instruction}"
