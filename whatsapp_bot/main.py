@@ -6134,8 +6134,10 @@ def is_profile_ready(profile):
     profile = profile or {}
     if profile.get("onboarding_step"):
         return False
+    # 0150 : « Profil prêt » est annoncé quand onboarding_completed_at est écrit ; si le drapeau profile_ready se
+    # perd (état réécrit par une copie en retard), l'élève inscrit ne repasse plus par l'inscription.
     return bool(
-        profile.get("profile_ready")
+        (profile.get("profile_ready") or profile.get("onboarding_completed_at"))
         and profile.get("type_examen")
         and profile.get("matiere")
         and profile.get("mode")
