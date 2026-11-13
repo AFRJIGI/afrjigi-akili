@@ -3472,7 +3472,12 @@ EXPRESSIONS_AU_REVOIR = [
     "LAISSE TOMBER", "ON LAISSE TOMBER",
     # Controle qualite du 13 oct. : « Ok demain » apres le bilan, « je te laisse » -> Akili relancait l'exercice.
     "JE TE LAISSE", "JE VOUS LAISSE", "JE N AI PLUS BESOIN", "PLUS BESOIN DE TOI",
+    # 0153 : autres facons de prendre conge.
+    "A TANTOT", "A TOUT A L HEURE", "BONNE JOURNEE", "BONNE FIN DE JOURNEE", "CIAO",
 ]
+# 0153 (controle qualite du 12 nov., …0971) : « Merci beaucoup Akili pour ton aide aujourd'hui, à demain » depasse
+# dix mots et n'etait pas reconnu. Un message de 16 mots au plus qui SE TERMINE par un adieu clair en est un.
+ADIEUX_EN_FIN_DE_MESSAGE = ("A DEMAIN", "A BIENTOT", "BONNE NUIT", "AU REVOIR", "A LA PROCHAINE", "BONNE SOIREE")
 # « Ok demain », « demain matin », « d'accord à demain » : seulement des mots de ce type autour de « demain »
 # (« exercice pour demain » reste une demande).
 MOTS_AUTOUR_DE_DEMAIN = {"OK", "OKAY", "D", "ACCORD", "DACCORD", "BON", "ALORS", "DEMAIN", "MATIN", "SOIR",
@@ -3485,6 +3490,9 @@ def est_message_au_revoir(text):
     """Vrai si l'eleve termine sa session ("merci, au revoir", "bonne nuit", "je m'arrete la").
     "j'ai fini" / "terminer" ne comptent pas : en mode examen, ils demandent la correction."""
     msg = normalize_for_match(text)
+    if msg and 10 < len(msg.split()) <= 16 and "?" not in (text or ""):
+        fin = " ".join(msg.split()[-4:])
+        return any(fin.endswith(expr) for expr in ADIEUX_EN_FIN_DE_MESSAGE)
     if not msg or len(msg.split()) > 10:
         return False
     if "?" in (text or ""):

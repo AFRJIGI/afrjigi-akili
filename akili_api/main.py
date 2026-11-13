@@ -1942,7 +1942,7 @@ BILAN_REGLES_COMMUNES = """- Appuie-toi UNIQUEMENT sur l'historique ci-dessous. 
 BILAN_ETUDE = """L'eleve termine une seance de travail en MODE ETUDE.
 Redige son message de fin de seance, dans cet ordre :
 1. Une phrase d'encouragement qui cite la matiere.
-2. "Aujourd'hui tu as vu :" puis 1 a 3 notions reellement travaillees dans l'historique.
+2. "Aujourd'hui tu as vu :" puis 1 a 3 notions que l'eleve a REELLEMENT travaillees : il a repondu, ecrit ou demande quelque chose dessus dans l'historique. N'ecris JAMAIS une notion que seule Akili a proposee ou annoncee sans que l'eleve y ait repondu, ni une notion qui n'apparait pas dans l'historique. Si l'eleve n'a travaille qu'une notion, n'en cite qu'une ; s'il n'a presque rien fait, dis-le simplement sans inventer de contenu.
 3. "À revoir la prochaine fois :" une notion ou la DERNIERE reponse de l'eleve est restee fausse ou inachevee. Une notion qu'il a fini par reussir n'est jamais « a revoir », meme s'il s'est trompe avant. S'il n'y en a pas, propose la suite logique de ce qu'il a travaille.
 4. Une courte invitation a revenir."""
 
