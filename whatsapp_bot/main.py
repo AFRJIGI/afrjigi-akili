@@ -6527,7 +6527,10 @@ CORRECTION_COMPLETE_INSTRUCTION = (
     "(*Étape 1.* ... *Étape 2.* ..., une ligne par étape, avec les résultats), puis la *Réponse :* finale. "
     "N'attends pas sa réponse, ne pose aucune question à choix sur cet exercice et ne continue pas étape par "
     "étape. Termine par UN exercice semblable à faire seul (*Exercice* puis *À toi d'essayer*). Si le message "
-    "devient trop long, garde l'essentiel de chaque étape.\n\n"
+    "devient trop long, garde l'essentiel de chaque étape. RIGUEUR : résous l'énoncé EXACT, sans le simplifier. "
+    "Garde chaque valeur absolue, chaque condition d'existence et chaque cas (par exemple |x − 3| se traite en "
+    "deux cas : x ≥ 3 puis x < 3, et chaque solution est vérifiée dans son cas). Avant d'écrire la *Réponse :*, "
+    "remplace la solution trouvée dans l'énoncé de départ pour t'assurer qu'elle le vérifie.\n\n"
 )
 
 
