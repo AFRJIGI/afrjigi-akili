@@ -24,6 +24,8 @@ import notation
 import mini_test
 import programme
 import verrou_eleve
+import asyncio
+import file_attente
 from marketing_consent import (
     OPTED_IN,
     consent_document_id,
@@ -7128,6 +7130,14 @@ def expediteur_du_message(body):
         return None
 
 
+def horodatage_du_message(body):
+    """Horodatage WhatsApp du message (secondes), 0 s'il manque."""
+    try:
+        return int(body["entry"][0]["changes"][0]["value"]["messages"][0].get("timestamp") or 0)
+    except (KeyError, IndexError, TypeError, ValueError, AttributeError):
+        return 0
+
+
 def verrou_actif():
     """Sur Cloud Run seulement (K_SERVICE) : les tests unitaires n'ecrivent jamais de verrou dans la base.
     21 oct. : la version precedente testait une classe de fausse base absente de ce depot ; l'erreur
@@ -7165,9 +7175,35 @@ async def receive_message(request: Request):
             print(f"Message déjà traité: {message_id}", flush=True)
             return {"status": "ok", "reason": "duplicate"}
         processed_messages.add(message_id)
+    ordre = False
+    recu_a = datetime.now(timezone.utc)
+    ts_meta = horodatage_du_message(corps) if phone_verrou else 0
+    try:
+        if phone_verrou and message_id and verrou_actif():
+            file_attente.enregistrer(feedback_db, phone_verrou, message_id, ts_meta, recu_a)
+            ordre = True
+    except Exception as exc:
+        print(f"FILE_ATTENTE non enregistree : {exc!r}", flush=True)
     try:
         if phone_verrou:
             jeton_verrou = await prendre_verrou_eleve(phone_verrou)
+            attendu = 0.0
+            # Un message plus ancien du meme eleve attend encore : on lui laisse la place.
+            while ordre and jeton_verrou and attendu < file_attente.ATTENTE_MAX:
+                try:
+                    if not file_attente.predecesseur_en_attente(
+                            feedback_db, phone_verrou, message_id, ts_meta, recu_a):
+                        break
+                except Exception as exc:
+                    print(f"FILE_ATTENTE lecture impossible : {exc!r}", flush=True)
+                    break
+                liberer_verrou_eleve(phone_verrou, jeton_verrou)
+                await asyncio.sleep(file_attente.PAS)
+                attendu += file_attente.PAS
+                jeton_verrou = await prendre_verrou_eleve(phone_verrou)
+            if attendu:
+                print(f"FILE_ATTENTE message {message_id} passe apres {attendu:.0f} s d'attente d'un message plus ancien",
+                      flush=True)
     except Exception as exc:
         print(f"VERROU non pris : {exc!r}", flush=True)
     jeton_reserve = _message_reserve.set(message_id)
@@ -7185,6 +7221,8 @@ async def receive_message(request: Request):
         finally:
             _message_reserve.reset(jeton_reserve)
             liberer_verrou_eleve(phone_verrou, jeton_verrou)
+            if ordre:
+                file_attente.retirer(feedback_db, message_id)
 
 
 async def _receive_message_impl(request: Request):
