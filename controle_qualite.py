@@ -63,8 +63,14 @@ Signale chaque probleme avec un de ces types :
   texte que la copie envoyee en photo. N'est PAS un probleme : apres
   DEUX erreurs sur la meme question, donner la bonne reponse avec une explication puis poser une question
   semblable ; montrer un exemple entierement resolu a un eleve qui dit ne rien comprendre, puis lui donner
-  un exercice proche a faire seul
+  un exercice proche a faire seul ; donner la reponse ou la solution complete quand l'eleve l'a demandee
+  expressement (« Montre-moi les etapes », bouton « Voir les etapes », « donne-moi la correction ») ; donner
+  la correction complete a un eleve qui exprime sa frustration ou son decouragement apres plusieurs essais
 - autre
+
+Eleve bloque : ne le signale pas comme « grave » quand la boucle vient d'un niveau ou d'une demande qu'Akili ne
+prend pas en charge (BTS, universite, matiere absente) et qu'Akili le dit clairement : au pire un defaut
+« faible » de type « autre ».
 
 Important : juge uniquement Akili. Une erreur de l'eleve, corrigee par Akili, n'est pas un probleme.
 "[photo]", "[document]" et "[audio]" signalent un fichier reellement envoye par l'eleve.
