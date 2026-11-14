@@ -16,6 +16,8 @@ LARGEUR_MAX = 1600
 HAUTEUR_MAX = 6000
 ATTENTE_PHOTO = 1.5      # secondes d'attente apres une photo : une autre arrive souvent juste apres
 ATTENTE_PHOTO_MAX = 6.0
+ATTENTE_TEXTE = 2.0      # idem pour un texte : un eleve ecrit souvent en plusieurs morceaux (controle du 14 nov.)
+ATTENTE_TEXTE_MAX = 6.0
 TYPES_FUSIONNABLES = {"text", "image"}
 
 
@@ -99,16 +101,18 @@ async def regrouper(db, file_attente, corps, phone, message_id, ts_meta, recu_a,
     if not chef or chef.get("type") not in TYPES_FUSIONNABLES:
         return None, {}
     suivants = file_attente.suivants_en_attente(db, phone, message_id, ts_meta, recu_a)
-    if chef.get("type") == "image":
-        # Une photo est souvent suivie d'une autre : on laisse un court instant avant de repondre.
-        attendu, vus = 0.0, len(suivants)
-        while attendu < ATTENTE_PHOTO_MAX:
-            await dormir(ATTENTE_PHOTO)
-            attendu += ATTENTE_PHOTO
-            suivants = file_attente.suivants_en_attente(db, phone, message_id, ts_meta, recu_a)
-            if len(suivants) == vus:
-                break
-            vus = len(suivants)
+    # Une photo ou un texte est souvent suivi d'un autre : on laisse un court instant avant de repondre,
+    # tant que de nouveaux messages arrivent (le plafond evite d'attendre sans fin).
+    pas, plafond = ((ATTENTE_PHOTO, ATTENTE_PHOTO_MAX) if chef.get("type") == "image"
+                    else (ATTENTE_TEXTE, ATTENTE_TEXTE_MAX))
+    attendu, vus = 0.0, len(suivants)
+    while attendu < plafond:
+        await dormir(pas)
+        attendu += pas
+        suivants = file_attente.suivants_en_attente(db, phone, message_id, ts_meta, recu_a)
+        if len(suivants) == vus:
+            break
+        vus = len(suivants)
     if not suivants:
         return None, {}
     messages, ids = [chef], []

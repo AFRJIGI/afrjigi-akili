@@ -150,6 +150,35 @@ class RafaleTests(unittest.TestCase):
         self.assertEqual(self.lancer(a), (None, {}))
         self.assertFalse(file_attente.est_fusionne(self.db, "b"))
 
+    def test_texte_suivi_d_un_autre_pendant_l_attente(self):
+        a, b = texte("a", 100, "bonjour"), texte("b", 102, "je veux de l'aide")
+        enregistrer(self.db, a)
+        pauses = []
+
+        async def pause(duree):
+            pauses.append(duree)
+            if len(pauses) == 1:
+                enregistrer(self.db, b, 2)  # le deuxieme message arrive pendant l'attente
+
+        fusionne, _ = asyncio.run(rafale.regrouper(
+            self.db, file_attente, corps(a), "225", "a", 100, MAINTENANT, self.telecharger, pause))
+        msg = fusionne["entry"][0]["changes"][0]["value"]["messages"][0]
+        self.assertEqual(msg["text"]["body"], "bonjour\nje veux de l'aide")
+        self.assertEqual(pauses, [rafale.ATTENTE_TEXTE, rafale.ATTENTE_TEXTE])
+
+    def test_texte_seul_attend_une_fois(self):
+        a = texte("a", 100, "bonjour")
+        enregistrer(self.db, a)
+        pauses = []
+
+        async def pause(duree):
+            pauses.append(duree)
+
+        res = asyncio.run(rafale.regrouper(
+            self.db, file_attente, corps(a), "225", "a", 100, MAINTENANT, self.telecharger, pause))
+        self.assertEqual(res, (None, {}))
+        self.assertEqual(pauses, [rafale.ATTENTE_TEXTE])
+
     def test_rien_a_regrouper(self):
         a = texte("a", 100, "bonjour")
         enregistrer(self.db, a)
