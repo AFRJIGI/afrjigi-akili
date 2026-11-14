@@ -1607,9 +1607,52 @@ def est_demande_changement_niveau(text):
     return bool(msg) and len(msg.split()) <= 30 and DEMANDES_CHANGEMENT_NIVEAU.search(msg) is not None
 
 
+SIGNES_PARENT = ("ELEVE DE", "MON FILS", "MA FILLE", "MON ENFANT", "MON GARCON", "MES ENFANTS")
+SERIE_TECH_SEULE = re.compile(r"(?<![A-Z0-9])(G1|G2|F1|F2|F3|F4|F7)(?![A-Z0-9])")
+CLASSE_TECH_MOTS = re.compile(r"(?<![A-Z0-9])(SECONDE|2NDE|2ND(?!E)|PREMIERE|1ERE|1IERE|TERMINALE|TLE)(?![A-Z0-9])")
+
+
+def parent_declare_niveau_technique(text):
+    """Un parent ecrit « je suis la mere d un eleve de la premiere F2 ... » (cas 9622, controle qualite
+    du 14 nov.) : phrase de plus de 14 mots, mais le niveau technique est bien annonce."""
+    msg = normalize_for_match(text)
+    if not msg or len(msg.split()) > 30:
+        return None
+    if not any(has_expr(msg, x) for x in SIGNES_PARENT):
+        return None
+    tech = re.search(r"(?<![A-Z0-9])(SECONDE|2NDE|2ND(?!E)|PREMIERE|1ERE|1IERE|TERMINALE|TLE)\s*("
+                     + "|".join(SERIES_TECHNIQUES) + r")(?![A-Z0-9])", msg)
+    if not tech:
+        return None
+    return {"type_examen": "BAC_TECHNIQUE", "serie": tech.group(2), "classe": CLASSES_DU_TEXTE[tech.group(1)]}
+
+
+def serie_technique_tapee(text):
+    """Pendant l'inscription, serie technique ecrite a la main (« F2 », « premiere F2 », « serie G1 »)
+    au lieu d'une lettre de la liste : {serie, classe ou ""} ou None. Les series B et E, ambigues
+    avec des lettres de choix, restent exclues ; seulement un message court."""
+    msg = normalize_for_match(text)
+    mots = msg.split()
+    if not mots or len(mots) > 5:
+        return None
+    m = SERIE_TECH_SEULE.search(msg)
+    if not m:
+        return None
+    reste = SERIE_TECH_SEULE.sub(" ", msg)
+    autres = [w for w in reste.split() if w not in {"SERIE", "CLASSE", "EN", "JE", "SUIS", "DE", "LA", "EN", "BT", "TECHNIQUE"}
+              and not CLASSE_TECH_MOTS.fullmatch(w)]
+    if autres:
+        return None
+    c = CLASSE_TECH_MOTS.search(msg)
+    return {"serie": m.group(1), "classe": CLASSES_DU_TEXTE[c.group(1)] if c else ""}
+
+
 def niveau_declare(text):
     """Niveau que l'eleve annonce (« je suis en 2nde C », « en classe de premiere G1 », « 2ndc ») :
     {type_examen, serie, classe} ou None. Seulement si le message annonce bien un niveau."""
+    parent = parent_declare_niveau_technique(text)
+    if parent:
+        return parent
     msg = normalize_for_match(text)
     mots = msg.split()
     # Au-dela de 14 mots, seulement une demande de changement (« est-ce que je peux changer de classe pour
@@ -1909,7 +1952,8 @@ def inscrire_niveau_donne(phone, profile, texte):
     # correction du niveau deja choisi est acceptee jusqu'a 14 mots ; sinon 8 (une vraie question plus
     # longue reste gardee pour apres l'inscription).
     correction = bool(profile.get("type_examen")) and niveau_different(profile, niveau)
-    if len(normalize_for_match(texte).split()) > (14 if correction else 8):
+    if (len(normalize_for_match(texte).split()) > (14 if correction else 8)
+            and not parent_declare_niveau_technique(texte)):
         return False
     profile["type_examen"], profile["serie"] = niveau["type_examen"], niveau["serie"]
     if niveau["classe"]:
@@ -2125,6 +2169,25 @@ def handle_onboarding_choice(phone, profile, text):
                  "classe_intermediaire"}
             and not choice_key(text) and inscrire_niveau_donne(phone, profile, text)):
         return True
+
+    # « F2 » (ou « premiere F2 ») tape a une question de niveau : BAC technique, serie reconnue (cas 9622).
+    if step in {"exam", "serie_general", "serie_technique", "classe_technique", "seconde",
+                "classe_intermediaire"} and not choice_key(text):
+        tech = serie_technique_tapee(text)
+        if tech:
+            profile["type_examen"], profile["serie"] = "BAC_TECHNIQUE", tech["serie"]
+            for cle in ("pending_question", "pending_question_display"):
+                profile.pop(cle, None)
+            if tech["classe"]:
+                profile["classe"] = tech["classe"]
+                demander_matiere_ou_terminer(phone, profile)
+            else:
+                profile.pop("classe", None)
+                profile["onboarding_step"] = "classe_technique"
+                user_profiles[phone] = profile
+                sauver_etat_whatsapp(phone, profile)
+                ask_classe_technique(phone)
+            return True
 
     if step == "ville":
         ville = (text or "").strip()
