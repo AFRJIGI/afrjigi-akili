@@ -83,6 +83,8 @@ def construire_corps(corps_chef, messages, chemin_image=None):
     if images:
         base = copy.deepcopy(images[0].get("image") or {})
         base["caption"] = "\n".join(textes)
+        if len(images) > 1:
+            base["photos_regroupees"] = len(images)
         chef["type"] = "image"
         chef.pop("text", None)
         chef["image"] = base

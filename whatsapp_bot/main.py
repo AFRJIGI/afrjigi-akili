@@ -6756,7 +6756,7 @@ def get_akili_response(question, matiere, serie, history, phone="whatsapp_user",
             instructions_whatsapp += (CONSIGNE_PHOTO_AUTRE_MATIERE if media_file is not None
                                       else CONSIGNE_QUESTION_AUTRE_MATIERE)
 
-        format_guard = ""
+        format_guard = consigne_photos_regroupees()
         if (user_type or "").upper() == "ENSEIGNANT" and (matiere or "").upper() == "ESPAGNOL":
             q_up = (question or "").upper()
             is_apc_request = any(k in q_up for k in ["APC", "SEANCE", "SÉANCE", "LECON", "LEÇON", "FONCTION LANGAGIERE", "FONCTION LANGAGIÈRE"])
@@ -7235,6 +7235,22 @@ async def prendre_verrou_eleve(phone):
 def liberer_verrou_eleve(phone, jeton):
     if jeton:
         verrou_eleve.liberer(feedback_db, phone, jeton)
+
+
+def consigne_photos_regroupees():
+    """Plusieurs photos envoyees d'affilee (0155) arrivent en une seule image, empilees de haut en bas :
+    la reponse doit le dire, sinon l'eleve ne sait pas si ses autres photos ont ete vues (essai du 14 nov.)."""
+    try:
+        n = int((((_corps_fusionne.get() or {})["entry"][0]["changes"][0]["value"]["messages"][0])
+                 .get("image") or {}).get("photos_regroupees") or 0)
+    except Exception:
+        return ""
+    if n < 2:
+        return ""
+    return (f"PHOTOS REGROUPEES : l'eleve a envoye {n} photos d'affilee ; elles sont empilees de haut en bas dans "
+            f"l'image jointe. Dis-le en une courte phrase au debut de ta reponse (« J'ai bien recu tes {n} photos, "
+            f"on commence par la premiere, puis on passera aux autres. »), traite seulement le premier exercice "
+            f"visible, sans lister les autres.\n")
 
 
 @app.post("/whatsapp/webhook")
