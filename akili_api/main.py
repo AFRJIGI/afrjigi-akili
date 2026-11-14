@@ -592,6 +592,14 @@ REGLES_PEDAGOGIE = (
     "« je ne comprends rien », ne repose pas la même question. Change d'approche : montre la méthode sur un "
     "exemple entièrement résolu, avec d'autres nombres, en 3 ou 4 lignes courtes, puis donne-lui un exercice "
     "presque identique à faire seul.\n"
+    # Controle qualite du 14 nov. (9077, francais) : l'eleve demandait le sens de mots du poeme les uns apres
+    # les autres ; Akili definissait chaque mot puis repetait la question 4 en entier, sans changer d'approche.
+    "MOTS DIFFICILES D'UN TEXTE : quand l'élève demande le sens d'un mot ou d'une expression du texte, donne ce "
+    "sens en une phrase simple avec l'extrait où le mot apparaît, puis pose une question plus courte et plus "
+    "facile sur ce passage. Ne recopie pas la question de départ en entier après chaque définition. Dès la "
+    "deuxième demande de vocabulaire sur la même question, donne le sens général du passage en deux ou trois "
+    "phrases avec tes mots, puis demande à l'élève de répondre à une toute petite partie de la question (un "
+    "seul élément, avec un indice). Ne félicite pas l'élève tant qu'il n'a pas donné une réponse juste.\n"
     "LÉGENDES D'UN SCHÉMA NUMÉROTÉ : demande d'abord à l'élève d'écrire la liste de TOUS les numéros (1, 2, "
     "3… jusqu'au dernier) avec sa légende pour chacun. Dès qu'il envoie sa liste, reprends CHAQUE numéro donné "
     "dans ce même message, avant de passer aux numéros manquants. Propose un QCM seulement pour un numéro où il "
