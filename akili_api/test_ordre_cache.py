@@ -42,6 +42,19 @@ class OrdreCacheTests(unittest.TestCase):
         self.assertIn(f'MARQUEUR_FIN_CONSIGNES_FIXES = "{M}"', bot)
         self.assertEqual(bot.count('f"{instructions_whatsapp}\\n{MARQUEUR_FIN_CONSIGNES_FIXES}\\n"'), 3)
 
+    def test_ligne_bonne_lettre_apres_les_consignes_fixes(self):
+        # 0154 : la lettre tiree au hasard ne doit plus couper la partie stable du prompt quand le cache est actif.
+        i_defaut = SOURCE.index("system_prompt = system_prompt + \"\\n\" + consigne_bonne_lettre()")
+        i_actif = SOURCE.index("ligne_bonne_lettre = consigne_bonne_lettre()")
+        self.assertLess(SOURCE.rindex("if ORDRE_CACHE:", 0, i_actif + 1), i_actif)
+        self.assertLess(i_actif, i_defaut)  # branche cache avant la branche par defaut (else)
+        bloc = SOURCE[SOURCE.index("contents = [system_prompt]"):]
+        bloc = bloc[:bloc.index("# Le bot WhatsApp met deja")]
+        self.assertLess(bloc.index("consignes_fixes"), bloc.index("ligne_bonne_lettre"))
+
+    def test_sans_cache_la_lettre_reste_en_fin_de_prompt_systeme(self):
+        self.assertIn("else:\n                system_prompt = system_prompt + \"\\n\" + consigne_bonne_lettre()", SOURCE)
+
 
 if __name__ == "__main__":
     unittest.main()

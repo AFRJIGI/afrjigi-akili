@@ -1745,6 +1745,7 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
 
         # Enseignant verifie (espace enseignant du bot) : assistant de preparation, pas tuteur d'eleve.
         enseignant = (user_type or "").strip().upper() == "ENSEIGNANT"
+        ligne_bonne_lettre = ""
         if enseignant:
             system_prompt = prompt_enseignant(matiere_propre, examen_registre, serie, classe) + "\n\n" + SCHEMA_PHOTO_ENSEIGNANT
 
@@ -1771,7 +1772,13 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
             # En dernier : la fin du prompt pese le plus (conseil Google for Startups, 17 oct.).
             system_prompt = system_prompt + "\n\n" + REGLES_PEDAGOGIE
             system_prompt = system_prompt + "\n\n" + REGLE_FINALE_UNE_QUESTION
-            system_prompt = system_prompt + "\n" + consigne_bonne_lettre()
+            if ORDRE_CACHE:
+                # 0154 : cette ligne change a chaque message (lettre tiree au hasard). Placee ici, elle coupait la
+                # partie stable du prompt avant les consignes fixes : cache=0 sur 100 % des appels (mesure du 14 nov.,
+                # ~15 000 tokens d'entree). Elle part maintenant dans un bloc a part, apres les consignes fixes.
+                ligne_bonne_lettre = consigne_bonne_lettre()
+            else:
+                system_prompt = system_prompt + "\n" + consigne_bonne_lettre()
 
         # ─── 4. PRÉPARATION DU CONTENU MULTIMODAL POUR VERTEX AI ───
         consignes_fixes, question_sans_fixes = separer_consignes_fixes(question)
@@ -1779,6 +1786,8 @@ POSTURE : encourageant, rigoureux, jamais condescendant."""
         contents = [system_prompt]
         if consignes_fixes:
             contents.append(consignes_fixes)
+        if ligne_bonne_lettre:
+            contents.append(ligne_bonne_lettre)
         
         # Le bot WhatsApp met deja l'historique dans la question (« HISTORIQUE RECENT ») : ne pas l'envoyer deux fois.
         if history and "HISTORIQUE RECENT" not in (question or ""):
