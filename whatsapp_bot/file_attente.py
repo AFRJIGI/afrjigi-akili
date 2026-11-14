@@ -24,11 +24,14 @@ def _date(valeur):
     return None
 
 
-def enregistrer(db, phone, message_id, ts_meta, maintenant=None):
-    """Note l'arrivee du message. ts_meta : horodatage WhatsApp (secondes) ou 0 s'il manque."""
+def enregistrer(db, phone, message_id, ts_meta, maintenant=None, corps=None):
+    """Note l'arrivee du message. ts_meta : horodatage WhatsApp (secondes) ou 0 s'il manque.
+    corps : texte JSON du webhook, gardé pour qu'un message précédent puisse le regrouper (0155)."""
     maintenant = maintenant or _maintenant()
-    db.collection(COLLECTION).document(str(message_id)).set(
-        {"phone": str(phone), "ts": int(ts_meta or 0), "recu_a": maintenant})
+    donnees = {"phone": str(phone), "ts": int(ts_meta or 0), "recu_a": maintenant, "fusionne": False}
+    if corps:
+        donnees["corps"] = corps
+    db.collection(COLLECTION).document(str(message_id)).set(donnees)
 
 
 def retirer(db, message_id):
@@ -52,3 +55,34 @@ def predecesseur_en_attente(db, phone, message_id, ts_meta, recu_a, maintenant=N
         if (int(d.get("ts") or 0), arrive) < moi:
             return True
     return False
+
+
+def suivants_en_attente(db, phone, message_id, ts_meta, recu_a, maintenant=None):
+    """Messages PLUS RECENTS du meme eleve, deja arrives et pas encore traites ni fusionnes, du plus ancien au plus
+    recent : liste de (message_id, corps JSON)."""
+    maintenant = maintenant or _maintenant()
+    moi = (int(ts_meta or 0), _date(recu_a) or maintenant)
+    trouves = []
+    for doc in db.collection(COLLECTION).where("phone", "==", str(phone)).stream():
+        if doc.id == str(message_id):
+            continue
+        d = doc.to_dict() or {}
+        arrive = _date(d.get("recu_a"))
+        if arrive is None or maintenant - arrive > AGE_MAX or d.get("fusionne"):
+            continue
+        cle = (int(d.get("ts") or 0), arrive)
+        if cle > moi:
+            trouves.append((cle, doc.id, d.get("corps")))
+    trouves.sort(key=lambda t: t[0])
+    return [(i, c) for _, i, c in trouves]
+
+
+def marquer_fusionnes(db, ids):
+    for i in ids:
+        db.collection(COLLECTION).document(str(i)).update({"fusionne": True})
+
+
+def est_fusionne(db, message_id):
+    """Vrai si un message plus ancien a deja traite celui-ci (il ne doit plus recevoir de reponse)."""
+    doc = db.collection(COLLECTION).document(str(message_id)).get()
+    return bool(doc.exists and (doc.to_dict() or {}).get("fusionne"))

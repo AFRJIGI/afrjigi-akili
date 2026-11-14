@@ -26,6 +26,7 @@ import programme
 import verrou_eleve
 import asyncio
 import file_attente
+import rafale
 from marketing_consent import (
     OPTED_IN,
     consent_document_id,
@@ -630,6 +631,9 @@ def liberer_message_whatsapp(message_id):
 
 # Telephone dont le profil a ete charge pendant la requete en cours (sauve a la fin).
 _profil_charge_requete = contextvars.ContextVar("profil_charge_requete", default=None)
+# 0155 : messages d'une rafale regroupes en un seul (voir rafale.py).
+_corps_fusionne = contextvars.ContextVar("corps_fusionne", default=None)
+_medias_fusionnes = contextvars.ContextVar("medias_fusionnes", default=None)
 
 def effacer_etat_whatsapp(phone):
     """Supprime completement l'etat persiste dans Firestore (vrai reset)."""
@@ -835,6 +839,9 @@ def transcribe_whatsapp_audio(audio_path):
 
 def download_whatsapp_media(media_id, filename="whatsapp_media", fallback_mime="application/octet-stream"):
     """Télécharge une image/document/audio WhatsApp depuis Graph API et retourne le chemin local."""
+    deja = (_medias_fusionnes.get() or {}).get(media_id)
+    if deja:  # photos d'une rafale : l'image empilee a deja ete preparee
+        return deja
     try:
         if not WHATSAPP_TOKEN:
             print("WHATSAPP_MEDIA error: WHATSAPP_TOKEN manquant", flush=True)
@@ -7191,7 +7198,9 @@ async def receive_message(request: Request):
     ts_meta = horodatage_du_message(corps) if phone_verrou else 0
     try:
         if phone_verrou and message_id and verrou_actif():
-            file_attente.enregistrer(feedback_db, phone_verrou, message_id, ts_meta, recu_a)
+            corps_json = json.dumps(corps, ensure_ascii=False)
+            file_attente.enregistrer(feedback_db, phone_verrou, message_id, ts_meta, recu_a,
+                                     corps=corps_json if len(corps_json) < 50000 else None)
             ordre = True
     except Exception as exc:
         print(f"FILE_ATTENTE non enregistree : {exc!r}", flush=True)
@@ -7219,11 +7228,29 @@ async def receive_message(request: Request):
         print(f"VERROU non pris : {exc!r}", flush=True)
     jeton_reserve = _message_reserve.set(message_id)
     jeton = _profil_charge_requete.set(None)
+    jeton_corps = _corps_fusionne.set(None)
+    jeton_medias = _medias_fusionnes.set({})
     try:
+        if ordre:
+            try:
+                if file_attente.est_fusionne(feedback_db, message_id):
+                    print(f"RAFALE message {message_id} deja regroupe dans la reponse precedente", flush=True)
+                    return {"status": "ok", "reason": "fusionne"}
+                if jeton_verrou:
+                    corps_fusionne, medias = await rafale.regrouper(
+                        feedback_db, file_attente, corps, phone_verrou, message_id, ts_meta, recu_a,
+                        download_whatsapp_media, asyncio.sleep)
+                    if corps_fusionne:
+                        _corps_fusionne.set(corps_fusionne)
+                        _medias_fusionnes.set(medias)
+            except Exception as exc:
+                print(f"RAFALE regroupement impossible, messages traites un par un : {exc!r}", flush=True)
         return await _receive_message_impl(request)
     finally:
         phone = _profil_charge_requete.get()
         _profil_charge_requete.reset(jeton)
+        _corps_fusionne.reset(jeton_corps)
+        _medias_fusionnes.reset(jeton_medias)
         try:
             if phone:
                 profil = user_profiles.get(phone)
@@ -7237,7 +7264,7 @@ async def receive_message(request: Request):
 
 
 async def _receive_message_impl(request: Request):
-    body = await request.json()
+    body = _corps_fusionne.get() or await request.json()
 
     try:
         valeur = body["entry"][0]["changes"][0]["value"]
